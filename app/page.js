@@ -1,65 +1,66 @@
-import Navbar from "../components/Navbar"
-import Pipeline from "../components/Pipeline"
-import PendingInterviews from "../components/PendingInterviews"
-import RecordedInterviews from "../components/RecordedInterviews"
-import CandidateList from "../components/CandidateList"
-import Sidebar from "../components/Sidebar"
-import VerisSummary from "../components/VerisSummary"
-import AlertsPanel from "../components/AlertsPanel"
-import WarRoomButton from "../components/WarRoomButton"
+"use client";
+
+import { useState } from "react";
+
+import Navbar from "../components/Navbar";
+import Pipeline from "../components/Pipeline";
+import PendingInterviews from "../components/PendingInterviews";
+import RecordedInterviews from "../components/RecordedInterviews";
+import CandidateList from "../components/CandidateList";
+import Sidebar from "../components/Sidebar";
+import VerisSummary from "../components/VerisSummary";
+import AlertsPanel from "../components/AlertsPanel";
+import WarRoomButton from "../components/WarRoomButton";
+import SendInterviewModal from "../components/SendInterviewModal";
 
 export default function Home() {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
   return (
     <div className="min-h-screen bg-[#0b1220] text-white">
 
-      {/* Top Navigation */}
-      <Navbar />
+      {/* 🔝 Navbar */}
+      <Navbar onSendInterviewClick={() => setIsModalOpen(true)} />
 
-      {/* Main Dashboard Layout */}
+      {/* 🧩 Main Layout */}
       <div className="p-8 grid grid-cols-4 gap-6">
 
-        {/* Main Content */}
+        {/* 🟦 Main Content */}
         <div className="col-span-3">
 
-          <h1 className="text-2xl font-semibold">
-            Recruiter Dashboard
-          </h1>
+          <div className="mb-6">
+            <h1 className="text-2xl font-semibold">
+              Recruiter Dashboard
+            </h1>
 
-          <p className="text-gray-400 mt-2 mb-6">
-            Overview of interviews, candidates and hiring insights
-          </p>
+            <p className="text-gray-400 mt-2">
+              Overview of interviews, candidates and hiring insights
+            </p>
+          </div>
 
-          {/* Interview Pipeline */}
           <Pipeline />
-
-          {/* Pending Interviews */}
           <PendingInterviews />
-
-          {/* Recorded Interviews */}
           <RecordedInterviews />
-
-          {/* Candidate Table */}
           <CandidateList />
-
-          {/* VERIS AI Summary */}
           <VerisSummary />
-
-          {/* War Room Button */}
           <WarRoomButton />
 
         </div>
 
-        {/* Sidebar */}
+        {/* 🟪 Sidebar */}
         <div className="col-span-1">
-
           <Sidebar />
-
           <AlertsPanel />
-
         </div>
 
       </div>
 
+      {/* 🔥 MODAL */}
+      <SendInterviewModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+      />
+
     </div>
-  )
+  );
 }

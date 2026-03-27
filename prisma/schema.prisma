@@ -1,0 +1,167 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum DifficultyProfile {
+  JUNIOR
+  MID
+  SENIOR
+}
+
+enum UserRole {
+  CANDIDATE
+  RECRUITER
+  ORG_OWNER
+  ADMIN
+  SYSTEM
+}
+
+model JobPosition {
+  jobId                 String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("job_id")
+  organizationId        String                 @db.Uuid @map("organization_id")
+  jobTitle              String                 @map("job_title")
+  jobDescription        String?                @map("job_description")
+  experienceLevelId     Int                    @db.SmallInt @map("experience_level_id")
+  coreSkills            String[]               @map("core_skills")
+  difficultyProfile     DifficultyProfile      @map("difficulty_profile")
+  companySkillBaselines CompanySkillBaseline[]
+  interviewConfigs      InterviewConfig[]
+  interviews            Interview[]
+
+  @@map("job_positions")
+}
+
+model ExperienceLevelPool {
+  experienceLevelId Int    @id @db.SmallInt @map("experience_level_id")
+  label             String
+
+  @@map("experience_level_pool")
+}
+
+model CompanySkillBaseline {
+  organizationId String      @db.Uuid @map("organization_id")
+  jobId          String      @db.Uuid @map("job_id")
+  skillDomain    String      @map("skill_domain")
+  expectedLevel  Int         @map("expected_level")
+  job            JobPosition @relation(fields: [jobId], references: [jobId])
+
+  @@id([organizationId, jobId, skillDomain])
+  @@map("company_skill_baseline")
+}
+
+model EvaluationTemplatePool {
+  templateId           String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("template_id")
+  name                 String
+  codingWeight         Int               @default(0) @map("coding_weight")
+  verbalWeight         Int               @default(0) @map("verbal_weight")
+  systemDesignWeight   Int               @default(0) @map("system_design_weight")
+  totalDurationMinutes Int               @default(30) @map("total_duration_minutes")
+  isActive             Boolean?          @default(true) @map("is_active")
+  createdAt            DateTime?         @default(now()) @db.Timestamptz(6) @map("created_at")
+  interviewConfigs     InterviewConfig[]
+
+  @@map("evaluation_template_pool")
+}
+
+model InterviewConfig {
+  interviewId          String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("interview_id")
+  jobId                String                 @db.Uuid @map("job_id")
+  templateId           String                 @db.Uuid @map("template_id")
+  codingWeight         Int?                   @map("coding_weight")
+  verbalWeight         Int?                   @map("verbal_weight")
+  systemDesignWeight   Int?                   @map("system_design_weight")
+  totalDurationMinutes Int                    @map("total_duration_minutes")
+  mode                 String                 @default("AI")
+  isActive             Boolean?               @default(true) @map("is_active")
+  createdAt            DateTime?              @default(now()) @db.Timestamptz(6) @map("created_at")
+  job                  JobPosition            @relation(fields: [jobId], references: [jobId])
+  template             EvaluationTemplatePool @relation(fields: [templateId], references: [templateId])
+
+  @@map("interview_configs")
+}
+
+model User {
+  userId          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("user_id")
+  organizationId  String     @db.Uuid @map("organization_id")
+  fullName        String?    @map("full_name")
+  email           String     @unique
+  role            UserRole
+  isActive        Boolean    @default(true) @map("is_active")
+  createdAt       DateTime   @default(now()) @db.Timestamptz(6) @map("created_at")
+  phone           String?
+  passwordHash    String?    @map("password_hash")
+  isEmailVerified Boolean?   @default(false) @map("is_email_verified")
+  isPhoneVerified Boolean?   @default(false) @map("is_phone_verified")
+  lastLoginAt     DateTime?  @db.Timestamptz(6) @map("last_login_at")
+  userTypeId      Int?       @db.SmallInt @map("user_type_id")
+  firstName       String?    @map("first_name")
+  lastName        String?    @map("last_name")
+  candidates      Candidate[]
+
+  @@map("users")
+}
+
+model Candidate {
+  candidateId    String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("candidate_id")
+  userId         String?     @db.Uuid @map("user_id")
+  organizationId String      @db.Uuid @map("organization_id")
+  fullName       String      @map("full_name")
+  email          String
+  resumeUrl      String?     @map("resume_url")
+  resumeText     String?     @map("resume_text")
+  extractedSkills String[]   @default([]) @map("extracted_skills")
+  experienceYears Float?     @map("experience_years")
+  createdAt      DateTime    @default(now()) @db.Timestamptz(6) @map("created_at")
+  user           User?       @relation(fields: [userId], references: [userId])
+  interviews     Interview[]
+
+  @@map("candidates")
+}
+
+model Interview {
+  interviewId       String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("interview_id")
+  organizationId    String            @db.Uuid @map("organization_id")
+  jobId             String            @db.Uuid @map("job_id")
+  candidateId       String            @db.Uuid @map("candidate_id")
+  interviewType     String            @map("interview_type")
+  createdBy         String?           @db.Uuid @map("created_by")
+  isActive          Boolean           @default(true) @map("is_active")
+  createdAt         DateTime          @default(now()) @db.Timestamptz(6) @map("created_at")
+  durationMinutes   Int?              @default(30) @map("duration_minutes")
+  questionCount     Int?              @default(10) @map("question_count")
+  aiStrictness      String?           @default("MEDIUM") @map("ai_strictness")
+  resumeAiEnabled   Boolean?          @default(true) @map("resume_ai_enabled")
+  maxAttempts       Int?              @default(1) @map("max_attempts")
+  proctoringEnabled Boolean?          @default(true) @map("proctoring_enabled")
+  job               JobPosition       @relation(fields: [jobId], references: [jobId])
+  candidate         Candidate         @relation(fields: [candidateId], references: [candidateId])
+  interviewInvites  InterviewInvite[]
+
+  @@map("interviews")
+}
+
+model InterviewInvite {
+  inviteId     String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("invite_id")
+  interviewId  String?     @db.Uuid @map("interview_id")
+  token        String      @unique
+  usedAt       DateTime?   @db.Timestamptz(6) @map("used_at")
+  createdAt    DateTime    @default(now()) @db.Timestamptz(6) @map("created_at")
+  expiresAt    DateTime?   @db.Timestamptz(6) @map("expires_at")
+  maxAttempts  Int?        @default(1) @map("max_attempts")
+  attemptsUsed Int?        @default(0) @map("attempts_used")
+  status       String?     @default("ACTIVE")
+  issuedBy     String?     @db.Uuid @map("issued_by")
+  accessType   String?     @default("FLEXIBLE") @map("access_type")
+  startTime    DateTime?   @db.Timestamptz(6) @map("start_time")
+  endTime      DateTime?   @db.Timestamptz(6) @map("end_time")
+  interview    Interview?  @relation(fields: [interviewId], references: [interviewId])
+
+  @@map("interview_invites")
+}
+
+
