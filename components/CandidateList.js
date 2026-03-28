@@ -1,88 +1,137 @@
-export default function CandidateList() {
+"use client"
 
-  const candidates = [
-    {
-      name: "Rahul Sharma",
-      role: "Data Engineer",
-      status: "Completed",
-      confidence: "88%",
-      risk: "Low",
-      identity: "Verified"
-    },
-    {
-      name: "Neha Kapoor",
-      role: "Python Developer",
-      status: "Pending",
-      confidence: "-",
-      risk: "-",
-      identity: "Submitted"
-    },
-    {
-      name: "Arjun Patel",
-      role: "DevOps Engineer",
-      status: "Completed",
-      confidence: "82%",
-      risk: "Low",
-      identity: "Verified"
+import Link from "next/link"
+import { useEffect, useState } from "react"
+
+import CandidateInsightModal from "./CandidateInsightModal"
+
+function getStatusColor(status) {
+  const normalized = String(status ?? "PENDING").toUpperCase()
+
+  if (normalized === "COMPLETED") {
+    return "text-green-400"
+  }
+
+  if (normalized === "IN_PROGRESS") {
+    return "text-blue-400"
+  }
+
+  return "text-yellow-400"
+}
+
+function getScoreColor(score) {
+  if (score === null || score === undefined) {
+    return "text-gray-300"
+  }
+
+  if (score > 80) {
+    return "text-green-400"
+  }
+
+  if (score >= 60) {
+    return "text-yellow-400"
+  }
+
+  return "text-red-400"
+}
+
+function formatScore(score) {
+  if (score === null || score === undefined) {
+    return "-"
+  }
+
+  return `${Math.round(score)}%`
+}
+
+export default function CandidateList() {
+  const [candidates, setCandidates] = useState([])
+  const [selectedCandidate, setSelectedCandidate] = useState(null)
+
+  useEffect(() => {
+    let isMounted = true
+
+    fetch("/api/dashboard/candidates")
+      .then((res) => res.json())
+      .then((data) => {
+        if (isMounted && data.success) {
+          setCandidates(data.data ?? [])
+        }
+      })
+      .catch((error) => {
+        console.error("Failed to fetch dashboard candidates", error)
+      })
+
+    return () => {
+      isMounted = false
     }
-  ]
+  }, [])
 
   return (
-    <div className="mt-10">
+    <>
+      <div className="mt-10">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-semibold">
+            Candidates
+          </h2>
 
-      <div className="flex justify-between items-center mb-4">
+          <Link href="/candidates" className="text-blue-400 text-sm">
+            View More
+          </Link>
+        </div>
 
-        <h2 className="text-xl font-semibold">
-          Candidates
-        </h2>
-
-        <button className="text-blue-400 text-sm">
-          View More
-        </button>
-
-      </div>
-
-      <div className="bg-[#111a2e] rounded-lg overflow-hidden">
-
-        <table className="w-full text-sm">
-
-          <thead className="text-gray-400 border-b border-gray-700">
-            <tr>
-              <th className="text-left p-4">Candidate</th>
-              <th className="text-left p-4">Job</th>
-              <th className="text-left p-4">Status</th>
-              <th className="text-left p-4">Confidence</th>
-              <th className="text-left p-4">Risk</th>
-              <th className="text-left p-4">Identity</th>
-            </tr>
-          </thead>
-
-          <tbody>
-
-            {candidates.map((c, index) => (
-              <tr key={index} className="border-b border-gray-800">
-
-                <td className="p-4">{c.name}</td>
-
-                <td className="p-4 text-gray-300">{c.role}</td>
-
-                <td className="p-4 text-blue-400">{c.status}</td>
-
-                <td className="p-4">{c.confidence}</td>
-
-                <td className="p-4 text-green-400">{c.risk}</td>
-
-                <td className="p-4 text-gray-300">{c.identity}</td>
-
+        <div className="bg-[#111a2e] rounded-lg overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="text-gray-400 border-b border-gray-700">
+              <tr>
+                <th className="text-left p-4">Candidate</th>
+                <th className="text-left p-4">Job</th>
+                <th className="text-left p-4">Status</th>
+                <th className="text-left p-4">Score</th>
+                <th className="text-left p-4">VERIS Insight</th>
               </tr>
-            ))}
+            </thead>
 
-          </tbody>
-
-        </table>
-
+            <tbody>
+              {candidates.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="p-4 text-gray-400 text-center">
+                    No candidates available
+                  </td>
+                </tr>
+              ) : (
+                candidates.map((candidate, index) => (
+                  <tr key={`${candidate.candidateName}-${index}`} className="border-b border-gray-800">
+                    <td className="p-4">{candidate.candidateName}</td>
+                    <td className="p-4 text-gray-300">{candidate.jobTitle}</td>
+                    <td className={`p-4 ${getStatusColor(candidate.status)}`}>{candidate.status}</td>
+                    <td className={`p-4 ${getScoreColor(candidate.score)}`}>{formatScore(candidate.score)}</td>
+                    <td className="p-4">
+                      {candidate.aiSummaryFull ? (
+                        <button
+                          type="button"
+                          className="text-blue-400 text-left"
+                          onClick={() => setSelectedCandidate(candidate)}
+                        >
+                          {candidate.aiSummaryShort}
+                        </button>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-    </div>
+      <CandidateInsightModal
+        isOpen={Boolean(selectedCandidate)}
+        onClose={() => setSelectedCandidate(null)}
+        candidateName={selectedCandidate?.candidateName}
+        summary={selectedCandidate?.aiSummaryFull}
+      />
+    </>
   )
 }

@@ -1,16 +1,32 @@
 import { NextResponse } from "next/server"
 
+import { getCurrentUser } from "@/lib/server/currentUser"
 import { prisma } from "@/lib/server/prisma"
 
 export async function GET() {
   try {
+    const user = getCurrentUser()
+
     const jobs = await prisma.jobPosition.findMany({
+      where: {
+        organizationId: user.organizationId,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
       select: {
         jobId: true,
         jobTitle: true,
-      },
-      orderBy: {
-        jobId: "desc",
+        jobDescription: true,
+        experienceLevelId: true,
+        difficultyProfile: true,
+        createdAt: true,
+        coreSkills: true,
+        _count: {
+          select: {
+            interviews: true,
+          },
+        },
       },
     })
 

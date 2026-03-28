@@ -1,5 +1,7 @@
+import { Prisma } from "@prisma/client"
 import { NextResponse } from "next/server"
 
+import { getCurrentUser } from "@/lib/server/currentUser"
 import { prisma } from "@/lib/server/prisma"
 import { parseResumeText } from "@/lib/server/resumeParser"
 import { uploadFileToS3 } from "@/lib/server/s3"
@@ -40,8 +42,28 @@ async function extractResumeText(file: File) {
   }
 }
 
+type CandidateUserRow = {
+  userId?: string
+  organizationId?: string
+  user_id?: string
+  organization_id?: string
+}
+
+type CandidateRow = {
+  candidate_id: string
+  resume_url?: string | null
+  resume_text?: string | null
+  extracted_skills?: string[] | null
+  experience_years?: number | null
+}
+
+type ColumnRow = {
+  column_name: string
+}
+
 export async function POST(req: Request) {
   try {
+    const user = getCurrentUser()
     const formData = await req.formData()
 
     const fullName = getStringValue(formData.get("fullName"))
@@ -59,8 +81,11 @@ export async function POST(req: Request) {
       )
     }
 
-    const job = await prisma.jobPosition.findUnique({
-      where: { jobId },
+    const job = await prisma.jobPosition.findFirst({
+      where: {
+        jobId,
+        organizationId: user.organizationId,
+      },
       select: { organizationId: true },
     })
 
@@ -68,7 +93,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           success: false,
-          message: "Job not found",
+          message: "Job not found for this organization",
         },
         { status: 404 }
       )
@@ -95,84 +120,177 @@ export async function POST(req: Request) {
     const { firstName, lastName } = getNameParts(fullName)
 
     const result = await prisma.$transaction(async (tx) => {
-      let user = await tx.user.findUnique({
+      let candidateUser = await tx.user.findUnique({
         where: { email },
         select: {
           userId: true,
           organizationId: true,
         },
-      })
+      }) as CandidateUserRow | null
 
-      if (user && user.organizationId !== job.organizationId) {
+      if (candidateUser && candidateUser.organizationId !== user.organizationId) {
         throw new Error("User already exists under a different organization")
       }
 
-      if (!user) {
-        user = await tx.user.create({
-          data: {
-            organizationId: job.organizationId,
-            fullName,
+      if (!candidateUser) {
+        const createdUsers = await tx.$queryRaw<CandidateUserRow[]>(Prisma.sql`
+          insert into public.users (
+            organization_id,
+            full_name,
             email,
-            role: "CANDIDATE",
-            isActive: true,
-            firstName,
-            lastName,
-          },
-          select: {
-            userId: true,
-            organizationId: true,
-          },
-        })
+            role,
+            is_active,
+            first_name,
+            last_name
+          )
+          values (
+            ${user.organizationId}::uuid,
+            ${fullName},
+            ${email},
+            'CANDIDATE',
+            true,
+            ${firstName},
+            ${lastName}
+          )
+          returning user_id, organization_id
+        `)
+
+        candidateUser = createdUsers[0] ?? null
       }
 
-      const existingCandidate = await tx.candidate.findFirst({
-        where: {
-          OR: [{ userId: user.userId }, { email }],
-        },
-        select: {
-          candidateId: true,
-        },
-      })
+      const candidateColumns = await tx.$queryRaw<ColumnRow[]>(Prisma.sql`
+        select column_name
+        from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'candidates'
+      `)
 
-      const candidateData = {
-        fullName,
-        email,
-        resumeUrl: resumeUrl ?? undefined,
-        resumeText: resumeText ?? undefined,
-        extractedSkills: parsedResume?.skills ?? undefined,
-        experienceYears: parsedResume?.experienceYears ?? undefined,
-      }
+      const columnSet = new Set(candidateColumns.map((column) => column.column_name))
+      const hasResumeUrl = columnSet.has('resume_url')
+      const hasResumeText = columnSet.has('resume_text')
+      const hasExtractedSkills = columnSet.has('extracted_skills')
+      const hasExperienceYears = columnSet.has('experience_years')
+
+      const existingCandidates = await tx.$queryRaw<CandidateRow[]>(Prisma.sql`
+        select candidate_id
+        from public.candidates
+        where organization_id = ${user.organizationId}::uuid
+          and email = ${email}
+        order by created_at desc
+        limit 1
+      `)
+
+      const existingCandidate = existingCandidates[0]
 
       if (existingCandidate) {
-        const updatedCandidate = await tx.candidate.update({
-          where: { candidateId: existingCandidate.candidateId },
-          data: candidateData,
-          select: {
-            candidateId: true,
-            resumeUrl: true,
-            resumeText: true,
-            extractedSkills: true,
-            experienceYears: true,
-          },
-        })
+        await tx.$executeRaw(Prisma.sql`
+          update public.candidates
+          set
+            full_name = ${fullName},
+            email = ${email}
+          where candidate_id = ${existingCandidate.candidate_id}::uuid
+        `)
 
-        return updatedCandidate
+        if (hasResumeUrl) {
+          await tx.$executeRaw(Prisma.sql`
+            update public.candidates
+            set resume_url = ${resumeUrl}
+            where candidate_id = ${existingCandidate.candidate_id}::uuid
+          `)
+        }
+
+        if (hasResumeText) {
+          await tx.$executeRaw(Prisma.sql`
+            update public.candidates
+            set resume_text = ${resumeText}
+            where candidate_id = ${existingCandidate.candidate_id}::uuid
+          `)
+        }
+
+        if (hasExtractedSkills) {
+          await tx.$executeRaw(Prisma.sql`
+            update public.candidates
+            set extracted_skills = ${parsedResume?.skills ?? []}::text[]
+            where candidate_id = ${existingCandidate.candidate_id}::uuid
+          `)
+        }
+
+        if (hasExperienceYears) {
+          await tx.$executeRaw(Prisma.sql`
+            update public.candidates
+            set experience_years = ${parsedResume?.experienceYears ?? null}
+            where candidate_id = ${existingCandidate.candidate_id}::uuid
+          `)
+        }
+
+        return {
+          candidateId: existingCandidate.candidate_id,
+          resumeUrl,
+          resumeText,
+          extractedSkills: parsedResume?.skills ?? [],
+          experienceYears: parsedResume?.experienceYears ?? null,
+        }
       }
 
-      return tx.candidate.create({
-        data: {
-          userId: user.userId,
-          organizationId: job.organizationId,
-          ...candidateData,
-        },
-        select: {
-          candidateId: true,
-          resumeUrl: true,
-          resumeText: true,
-          extractedSkills: true,
-          experienceYears: true,
-        },
-      })
+      const createdCandidates = await tx.$queryRaw<CandidateRow[]>(Prisma.sql`
+        insert into public.candidates (
+          organization_id,
+          full_name,
+          email
+        )
+        values (
+          ${user.organizationId}::uuid,
+          ${fullName},
+          ${email}
+        )
+        returning candidate_id
+      `)
+
+      const createdCandidate = createdCandidates[0]
+
+      if (!createdCandidate) {
+        throw new Error("Failed to create candidate")
+      }
+
+      if (hasResumeUrl) {
+        await tx.$executeRaw(Prisma.sql`
+          update public.candidates
+          set resume_url = ${resumeUrl}
+          where candidate_id = ${createdCandidate.candidate_id}::uuid
+        `)
+      }
+
+      if (hasResumeText) {
+        await tx.$executeRaw(Prisma.sql`
+          update public.candidates
+          set resume_text = ${resumeText}
+          where candidate_id = ${createdCandidate.candidate_id}::uuid
+        `)
+      }
+
+      if (hasExtractedSkills) {
+        await tx.$executeRaw(Prisma.sql`
+          update public.candidates
+          set extracted_skills = ${parsedResume?.skills ?? []}::text[]
+          where candidate_id = ${createdCandidate.candidate_id}::uuid
+        `)
+      }
+
+      if (hasExperienceYears) {
+        await tx.$executeRaw(Prisma.sql`
+          update public.candidates
+          set experience_years = ${parsedResume?.experienceYears ?? null}
+          where candidate_id = ${createdCandidate.candidate_id}::uuid
+        `)
+      }
+
+      return {
+        candidateId: createdCandidate.candidate_id,
+        resumeUrl,
+        resumeText,
+        extractedSkills: parsedResume?.skills ?? [],
+        experienceYears: parsedResume?.experienceYears ?? null,
+      }
     })
 
     return NextResponse.json({

@@ -1,46 +1,69 @@
-export default function Pipeline() {
+"use client"
 
-  const pipeline = [
-    { title: "Pending", count: 12, color: "bg-blue-500" },
-    { title: "In Progress", count: 4, color: "bg-indigo-500" },
-    { title: "Completed", count: 28, color: "bg-green-500" },
-    { title: "Flagged", count: 2, color: "bg-red-500" }
+import { useEffect, useState } from "react"
+
+const FALLBACK_PIPELINE = {
+  pending: 0,
+  inProgress: 0,
+  completed: 0,
+  flagged: 0,
+}
+
+export default function Pipeline() {
+  const [pipeline, setPipeline] = useState(FALLBACK_PIPELINE)
+
+  useEffect(() => {
+    let isMounted = true
+
+    fetch("/api/dashboard/pipeline")
+      .then((res) => res.json())
+      .then((data) => {
+        if (isMounted && data.success) {
+          setPipeline(data.data?.pipeline ?? FALLBACK_PIPELINE)
+        }
+      })
+      .catch((error) => {
+        console.error("Failed to fetch interview pipeline", error)
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  const cards = [
+    { title: "Pending", count: pipeline.pending, color: "bg-blue-500" },
+    { title: "In Progress", count: pipeline.inProgress, color: "bg-indigo-500" },
+    { title: "Completed", count: pipeline.completed, color: "bg-green-500" },
+    { title: "Flagged", count: pipeline.flagged, color: "bg-red-500" },
   ]
 
   return (
     <div className="mt-8">
-
       <h2 className="text-xl font-semibold mb-4">
         Interview Pipeline
       </h2>
 
       <div className="grid grid-cols-4 gap-4">
-
-        {pipeline.map((item, index) => (
+        {cards.map((item) => (
           <div
-            key={index}
+            key={item.title}
             className="bg-[#111a2e] rounded-lg p-5 shadow-md"
           >
-
             <div className="flex justify-between items-center">
-
               <span className="text-gray-400 text-sm">
                 {item.title}
               </span>
 
               <div className={`w-3 h-3 rounded-full ${item.color}`}></div>
-
             </div>
 
             <div className="text-3xl font-bold mt-3">
               {item.count}
             </div>
-
           </div>
         ))}
-
       </div>
-
     </div>
   )
 }

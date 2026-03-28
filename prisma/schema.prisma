@@ -21,6 +21,14 @@ enum UserRole {
   SYSTEM
 }
 
+model Organization {
+  organizationId   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("organization_id")
+  organizationName String    @map("organization_name")
+  isActive         Boolean   @default(true) @map("is_active")
+  createdAt        DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@map("organizations")
+}
 model JobPosition {
   jobId                 String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("job_id")
   organizationId        String                 @db.Uuid @map("organization_id")
@@ -101,24 +109,21 @@ model User {
   userTypeId      Int?       @db.SmallInt @map("user_type_id")
   firstName       String?    @map("first_name")
   lastName        String?    @map("last_name")
-  candidates      Candidate[]
 
   @@map("users")
 }
 
 model Candidate {
-  candidateId    String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("candidate_id")
-  userId         String?     @db.Uuid @map("user_id")
-  organizationId String      @db.Uuid @map("organization_id")
-  fullName       String      @map("full_name")
-  email          String
-  resumeUrl      String?     @map("resume_url")
-  resumeText     String?     @map("resume_text")
-  extractedSkills String[]   @default([]) @map("extracted_skills")
-  experienceYears Float?     @map("experience_years")
-  createdAt      DateTime    @default(now()) @db.Timestamptz(6) @map("created_at")
-  user           User?       @relation(fields: [userId], references: [userId])
-  interviews     Interview[]
+  candidateId     String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("candidate_id")
+  organizationId  String      @db.Uuid @map("organization_id")
+  fullName        String      @map("full_name")
+  email           String
+  phone           String?
+  status          String?
+  resumeUrl       String?     @map("resume_url")
+  resumeText      String?     @map("resume_text")
+  createdAt       DateTime    @default(now()) @db.Timestamptz(6) @map("created_at")
+  interviews      Interview[]
 
   @@map("candidates")
 }
@@ -138,13 +143,40 @@ model Interview {
   resumeAiEnabled   Boolean?          @default(true) @map("resume_ai_enabled")
   maxAttempts       Int?              @default(1) @map("max_attempts")
   proctoringEnabled Boolean?          @default(true) @map("proctoring_enabled")
+  status            String?           @map("status")
   job               JobPosition       @relation(fields: [jobId], references: [jobId])
   candidate         Candidate         @relation(fields: [candidateId], references: [candidateId])
+  attempts          InterviewAttempt[]
   interviewInvites  InterviewInvite[]
 
   @@map("interviews")
 }
 
+model InterviewAttempt {
+  attemptId     String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("attempt_id")
+  interviewId   String               @db.Uuid @map("interview_id")
+  attemptNumber Int                  @map("attempt_number")
+  startedAt     DateTime             @default(now()) @db.Timestamptz(6) @map("started_at")
+  endedAt       DateTime?            @db.Timestamptz(6) @map("ended_at")
+  status        String               @map("status")
+  interview     Interview            @relation(fields: [interviewId], references: [interviewId])
+  evaluation    InterviewEvaluation?
+
+  @@map("interview_attempts")
+}
+
+model InterviewEvaluation {
+  evaluationId String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("evaluation_id")
+  attemptId    String           @unique @db.Uuid @map("attempt_id")
+  finalScore   Decimal?         @db.Decimal @map("final_score")
+  decision     String?
+  aiSummary    String?          @map("ai_summary")
+  createdAt    DateTime?        @default(now()) @db.Timestamptz(6) @map("created_at")
+  isLocked     Boolean?         @default(true) @map("is_locked")
+  attempt      InterviewAttempt @relation(fields: [attemptId], references: [attemptId])
+
+  @@map("interview_evaluations")
+}
 model InterviewInvite {
   inviteId     String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("invite_id")
   interviewId  String?     @db.Uuid @map("interview_id")
@@ -163,5 +195,10 @@ model InterviewInvite {
 
   @@map("interview_invites")
 }
+
+
+
+
+
 
 
