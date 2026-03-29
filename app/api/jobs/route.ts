@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+﻿import { NextResponse } from "next/server"
 
 import { getCurrentUser } from "@/lib/server/currentUser"
 import { prisma } from "@/lib/server/prisma"
@@ -12,7 +12,7 @@ export async function GET() {
         organizationId: user.organizationId,
       },
       orderBy: {
-        createdAt: "desc",
+        jobId: "desc",
       },
       select: {
         jobId: true,
@@ -20,7 +20,6 @@ export async function GET() {
         jobDescription: true,
         experienceLevelId: true,
         difficultyProfile: true,
-        createdAt: true,
         coreSkills: true,
         _count: {
           select: {

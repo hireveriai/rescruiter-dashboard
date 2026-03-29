@@ -1,23 +1,10 @@
-"use client"
+﻿"use client"
 
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 
 import Navbar from "../../components/Navbar"
 import SendInterviewModal from "../../components/SendInterviewModal"
-
-function formatDate(dateValue) {
-  const date = new Date(dateValue)
-  if (Number.isNaN(date.getTime())) {
-    return "-"
-  }
-
-  return date.toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  })
-}
 
 function getDifficultyTone(profile) {
   const normalized = String(profile ?? "MID").toUpperCase()
@@ -118,13 +105,12 @@ export default function JobsPage() {
                   <th className="p-5 text-left font-medium">Experience Level</th>
                   <th className="p-5 text-left font-medium">Core Skills</th>
                   <th className="p-5 text-left font-medium">Open Interviews</th>
-                  <th className="p-5 text-left font-medium">Created</th>
                 </tr>
               </thead>
               <tbody>
                 {jobs.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="p-10 text-center text-slate-400">No jobs available</td>
+                    <td colSpan={6} className="p-10 text-center text-slate-400">No jobs available</td>
                   </tr>
                 ) : (
                   jobs.map((job) => (
@@ -155,7 +141,6 @@ export default function JobsPage() {
                         </div>
                       </td>
                       <td className="p-5 text-slate-300">{job._count?.interviews ?? 0}</td>
-                      <td className="p-5 text-slate-400">{formatDate(job.createdAt)}</td>
                     </tr>
                   ))
                 )}
