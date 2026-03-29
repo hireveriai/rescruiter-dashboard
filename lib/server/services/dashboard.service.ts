@@ -1,7 +1,21 @@
-import { getCurrentUser } from "@/lib/server/currentUser"
+﻿import { getCurrentUser } from "@/lib/server/currentUser"
 import { prisma } from "@/lib/server/prisma"
 
-function getShortSummary(text) {
+type CandidatesDashboardOptions = {
+  limit?: number | "all"
+}
+
+type CandidatesDashboardItem = {
+  candidateName: string
+  jobTitle: string
+  status: string
+  score: number | null
+  aiSummaryShort: string
+  aiSummaryFull: string | null
+  decision: string | null
+}
+
+function getShortSummary(text: string | null): string {
   if (!text) {
     return "-"
   }
@@ -14,7 +28,9 @@ function getShortSummary(text) {
   return `${words.slice(0, 20).join(" ")}...`
 }
 
-export async function getCandidatesDashboard(options = {}) {
+export async function getCandidatesDashboard(
+  options: CandidatesDashboardOptions = {}
+): Promise<CandidatesDashboardItem[]> {
   const user = getCurrentUser()
   const take = options.limit === "all" || options.limit === undefined ? undefined : options.limit
 
@@ -57,7 +73,7 @@ export async function getCandidatesDashboard(options = {}) {
     },
   })
 
-  return candidates.map((candidate) => {
+  return candidates.map((candidate): CandidatesDashboardItem => {
     const latestInterview = candidate.interviews[0] ?? null
     const latestAttempt = latestInterview?.attempts[0] ?? null
     const evaluation = latestAttempt?.evaluation ?? null

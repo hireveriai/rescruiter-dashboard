@@ -1,6 +1,6 @@
-import { getCandidatesDashboard } from "@/lib/server/services/dashboard.service"
+﻿import { getCandidatesDashboard } from "@/lib/server/services/dashboard.service"
 
-function parseLimit(value) {
+function parseLimit(value: string | null): number | "all" {
   if (!value || value === "all") {
     return value === "all" ? "all" : 5
   }
@@ -9,7 +9,7 @@ function parseLimit(value) {
   return Number.isNaN(parsed) ? 5 : parsed
 }
 
-export async function GET(request) {
+export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const data = await getCandidatesDashboard({
