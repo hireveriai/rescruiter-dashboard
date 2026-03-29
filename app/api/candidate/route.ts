@@ -15,6 +15,12 @@ function isPdfFile(file: File) {
   return file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")
 }
 
+type PdfParseResult = {
+  text?: string
+}
+
+type PdfParseFn = (input: Buffer) => Promise<PdfParseResult>
+
 async function extractResumeText(file: File) {
   const resumeBuffer = Buffer.from(await file.arrayBuffer())
 
@@ -24,7 +30,8 @@ async function extractResumeText(file: File) {
 
   try {
     const pdfParseModule = await import("pdf-parse")
-    const parsed = await pdfParseModule.default(resumeBuffer)
+    const pdfParse = (("default" in pdfParseModule ? pdfParseModule.default : pdfParseModule) as unknown) as PdfParseFn
+    const parsed = await pdfParse(resumeBuffer)
     const text = parsed.text?.trim()
 
     return text || null
