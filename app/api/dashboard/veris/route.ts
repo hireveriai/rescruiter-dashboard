@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client"
+﻿import { Prisma } from "@prisma/client"
 import { NextResponse } from "next/server"
 
 import { getCurrentUser } from "@/lib/server/currentUser"
@@ -34,24 +34,8 @@ export async function GET() {
     const user = getCurrentUser()
 
     const rows = await prisma.$queryRaw<VerisRow[]>(Prisma.sql`
-      select
-        s.attempt_id,
-        s.overall_score,
-        s.risk_level,
-        s.strengths,
-        s.weaknesses,
-        s.hire_recommendation,
-        s.created_at,
-        c.full_name as candidate_name,
-        jp.job_title
-      from public.interview_summaries s
-      inner join public.interview_attempts ia on ia.attempt_id = s.attempt_id
-      inner join public.interviews i on i.interview_id = ia.interview_id
-      inner join public.candidates c on c.candidate_id = i.candidate_id
-      inner join public.job_positions jp on jp.job_id = i.job_id
-      where i.organization_id = ${user.organizationId}::uuid
-      order by s.created_at desc
-      limit 6
+      select *
+      from public.fn_get_dashboard_veris(${user.organizationId}::uuid, 6)
     `)
 
     return NextResponse.json({

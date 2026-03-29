@@ -1,6 +1,7 @@
+﻿import { Prisma } from "@prisma/client"
 import { NextResponse } from "next/server"
 
-import { pgPool } from "@/lib/server/pg"
+import { prisma } from "@/lib/server/prisma"
 
 type ExperienceLevelRow = {
   experience_level_id: number
@@ -16,10 +17,9 @@ const fallbackLevels: ExperienceLevelRow[] = [
 
 export async function GET() {
   try {
-    const { rows } = await pgPool.query<ExperienceLevelRow>(`
-      select experience_level_id, label
-      from public.experience_level_pool
-      order by experience_level_id asc
+    const rows = await prisma.$queryRaw<ExperienceLevelRow[]>(Prisma.sql`
+      select *
+      from public.fn_get_experience_levels()
     `)
 
     return NextResponse.json(rows)

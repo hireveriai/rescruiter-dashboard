@@ -1,10 +1,11 @@
-import { Prisma } from "@prisma/client"
+﻿import { Prisma } from "@prisma/client"
 import { NextResponse } from "next/server"
 
 import { getCurrentUser } from "@/lib/server/currentUser"
 import { prisma } from "@/lib/server/prisma"
 
-type OrganizationRow = {
+type RecruiterProfileRow = {
+  recruiter_name: string
   organization_name: string
 }
 
@@ -12,15 +13,14 @@ export async function GET() {
   try {
     const user = getCurrentUser()
 
-    const dbUser = await prisma.user.findUnique({
-      where: { userId: user.userId },
-      select: {
-        fullName: true,
-        organizationId: true,
-      },
-    })
+    const rows = await prisma.$queryRaw<RecruiterProfileRow[]>(Prisma.sql`
+      select *
+      from public.fn_get_recruiter_profile(${user.userId}::uuid)
+    `)
 
-    if (!dbUser) {
+    const profile = rows[0]
+
+    if (!profile) {
       return NextResponse.json(
         {
           success: false,
@@ -30,18 +30,11 @@ export async function GET() {
       )
     }
 
-    const organizations = await prisma.$queryRaw<OrganizationRow[]>(Prisma.sql`
-      select organization_name
-      from public.organizations
-      where organization_id = ${dbUser.organizationId}::uuid
-      limit 1
-    `)
-
     return NextResponse.json({
       success: true,
       data: {
-        name: dbUser.fullName ?? "Unknown Recruiter",
-        organization: organizations[0]?.organization_name ?? "",
+        name: profile.recruiter_name,
+        organization: profile.organization_name,
       },
     })
   } catch (error) {

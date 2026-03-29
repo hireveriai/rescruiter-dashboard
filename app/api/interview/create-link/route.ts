@@ -1,6 +1,4 @@
-import { Prisma } from "@prisma/client"
-
-import { ApiError } from "@/lib/server/errors"
+﻿import { ApiError } from "@/lib/server/errors"
 import { getCurrentUser } from "@/lib/server/currentUser"
 import { prisma } from "@/lib/server/prisma"
 import { errorResponse, successResponse } from "@/lib/server/response"
@@ -16,19 +14,23 @@ export async function POST(request: Request) {
       throw new ApiError(400, "INVALID_JOB_ID", "jobId is required")
     }
 
-    const jobs = await prisma.$queryRaw<{ job_id: string }[]>(Prisma.sql`
-      select job_id
-      from public.job_positions
-      where job_id = ${jobId}::uuid
-        and organization_id = ${user.organizationId}::uuid
-      limit 1
-    `)
+    const job = await prisma.jobPosition.findFirst({
+      where: {
+        jobId,
+        organizationId: user.organizationId,
+      },
+      select: { jobId: true },
+    })
 
-    if (!jobs[0]) {
+    if (!job) {
       throw new ApiError(404, "JOB_NOT_FOUND", "Job not found for this organization")
     }
 
-    const result = await createInterviewLink(payload)
+    const result = await createInterviewLink({
+      ...payload,
+      organizationId: user.organizationId,
+    })
+
     return successResponse(result, 201)
   } catch (error) {
     return errorResponse(error)

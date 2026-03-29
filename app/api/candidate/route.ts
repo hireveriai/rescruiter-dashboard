@@ -1,22 +1,14 @@
-import { Prisma } from "@prisma/client"
+﻿import { Prisma } from "@prisma/client"
 import { NextResponse } from "next/server"
 
 import { getCurrentUser } from "@/lib/server/currentUser"
 import { prisma } from "@/lib/server/prisma"
+import { toFunctionApiError } from "@/lib/server/function-errors"
 import { parseResumeText } from "@/lib/server/resumeParser"
 import { uploadFileToS3 } from "@/lib/server/s3"
 
 function getStringValue(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : ""
-}
-
-function getNameParts(fullName: string) {
-  const parts = fullName.trim().split(/\s+/)
-
-  return {
-    firstName: parts[0] ?? null,
-    lastName: parts.length > 1 ? parts.slice(1).join(" ") : null,
-  }
 }
 
 function isPdfFile(file: File) {
@@ -42,23 +34,8 @@ async function extractResumeText(file: File) {
   }
 }
 
-type CandidateUserRow = {
-  userId?: string
-  organizationId?: string
-  user_id?: string
-  organization_id?: string
-}
-
-type CandidateRow = {
+type CandidateFunctionRow = {
   candidate_id: string
-  resume_url?: string | null
-  resume_text?: string | null
-  extracted_skills?: string[] | null
-  experience_years?: number | null
-}
-
-type ColumnRow = {
-  column_name: string
 }
 
 export async function POST(req: Request) {
@@ -117,204 +94,50 @@ export async function POST(req: Request) {
       }
     }
 
-    const { firstName, lastName } = getNameParts(fullName)
+    const rows = await prisma.$queryRaw<CandidateFunctionRow[]>(Prisma.sql`
+      select *
+      from public.fn_upsert_candidate(
+        ${user.organizationId}::uuid,
+        ${jobId}::uuid,
+        ${fullName},
+        ${email},
+        ${resumeUrl},
+        ${resumeText}
+      )
+    `)
 
-    const result = await prisma.$transaction(async (tx) => {
-      let candidateUser = await tx.user.findUnique({
-        where: { email },
-        select: {
-          userId: true,
-          organizationId: true,
-        },
-      }) as CandidateUserRow | null
+    const result = rows[0]
 
-      if (candidateUser && candidateUser.organizationId !== user.organizationId) {
-        throw new Error("User already exists under a different organization")
-      }
-
-      if (!candidateUser) {
-        const createdUsers = await tx.$queryRaw<CandidateUserRow[]>(Prisma.sql`
-          insert into public.users (
-            organization_id,
-            full_name,
-            email,
-            role,
-            is_active,
-            first_name,
-            last_name
-          )
-          values (
-            ${user.organizationId}::uuid,
-            ${fullName},
-            ${email},
-            'CANDIDATE',
-            true,
-            ${firstName},
-            ${lastName}
-          )
-          returning user_id, organization_id
-        `)
-
-        candidateUser = createdUsers[0] ?? null
-      }
-
-      const candidateColumns = await tx.$queryRaw<ColumnRow[]>(Prisma.sql`
-        select column_name
-        from information_schema.columns
-        where table_schema = 'public'
-          and table_name = 'candidates'
-      `)
-
-      const columnSet = new Set(candidateColumns.map((column) => column.column_name))
-      const hasResumeUrl = columnSet.has('resume_url')
-      const hasResumeText = columnSet.has('resume_text')
-      const hasExtractedSkills = columnSet.has('extracted_skills')
-      const hasExperienceYears = columnSet.has('experience_years')
-
-      const existingCandidates = await tx.$queryRaw<CandidateRow[]>(Prisma.sql`
-        select candidate_id
-        from public.candidates
-        where organization_id = ${user.organizationId}::uuid
-          and email = ${email}
-        order by created_at desc
-        limit 1
-      `)
-
-      const existingCandidate = existingCandidates[0]
-
-      if (existingCandidate) {
-        await tx.$executeRaw(Prisma.sql`
-          update public.candidates
-          set
-            full_name = ${fullName},
-            email = ${email}
-          where candidate_id = ${existingCandidate.candidate_id}::uuid
-        `)
-
-        if (hasResumeUrl) {
-          await tx.$executeRaw(Prisma.sql`
-            update public.candidates
-            set resume_url = ${resumeUrl}
-            where candidate_id = ${existingCandidate.candidate_id}::uuid
-          `)
-        }
-
-        if (hasResumeText) {
-          await tx.$executeRaw(Prisma.sql`
-            update public.candidates
-            set resume_text = ${resumeText}
-            where candidate_id = ${existingCandidate.candidate_id}::uuid
-          `)
-        }
-
-        if (hasExtractedSkills) {
-          await tx.$executeRaw(Prisma.sql`
-            update public.candidates
-            set extracted_skills = ${parsedResume?.skills ?? []}::text[]
-            where candidate_id = ${existingCandidate.candidate_id}::uuid
-          `)
-        }
-
-        if (hasExperienceYears) {
-          await tx.$executeRaw(Prisma.sql`
-            update public.candidates
-            set experience_years = ${parsedResume?.experienceYears ?? null}
-            where candidate_id = ${existingCandidate.candidate_id}::uuid
-          `)
-        }
-
-        return {
-          candidateId: existingCandidate.candidate_id,
-          resumeUrl,
-          resumeText,
-          extractedSkills: parsedResume?.skills ?? [],
-          experienceYears: parsedResume?.experienceYears ?? null,
-        }
-      }
-
-      const createdCandidates = await tx.$queryRaw<CandidateRow[]>(Prisma.sql`
-        insert into public.candidates (
-          organization_id,
-          full_name,
-          email
-        )
-        values (
-          ${user.organizationId}::uuid,
-          ${fullName},
-          ${email}
-        )
-        returning candidate_id
-      `)
-
-      const createdCandidate = createdCandidates[0]
-
-      if (!createdCandidate) {
-        throw new Error("Failed to create candidate")
-      }
-
-      if (hasResumeUrl) {
-        await tx.$executeRaw(Prisma.sql`
-          update public.candidates
-          set resume_url = ${resumeUrl}
-          where candidate_id = ${createdCandidate.candidate_id}::uuid
-        `)
-      }
-
-      if (hasResumeText) {
-        await tx.$executeRaw(Prisma.sql`
-          update public.candidates
-          set resume_text = ${resumeText}
-          where candidate_id = ${createdCandidate.candidate_id}::uuid
-        `)
-      }
-
-      if (hasExtractedSkills) {
-        await tx.$executeRaw(Prisma.sql`
-          update public.candidates
-          set extracted_skills = ${parsedResume?.skills ?? []}::text[]
-          where candidate_id = ${createdCandidate.candidate_id}::uuid
-        `)
-      }
-
-      if (hasExperienceYears) {
-        await tx.$executeRaw(Prisma.sql`
-          update public.candidates
-          set experience_years = ${parsedResume?.experienceYears ?? null}
-          where candidate_id = ${createdCandidate.candidate_id}::uuid
-        `)
-      }
-
-      return {
-        candidateId: createdCandidate.candidate_id,
-        resumeUrl,
-        resumeText,
-        extractedSkills: parsedResume?.skills ?? [],
-        experienceYears: parsedResume?.experienceYears ?? null,
-      }
-    })
+    if (!result?.candidate_id) {
+      throw new Error("Failed to create candidate")
+    }
 
     return NextResponse.json({
       success: true,
-      candidateId: result.candidateId,
-      resumeUrl: result.resumeUrl ?? null,
+      candidateId: result.candidate_id,
+      resumeUrl,
       parsedData: {
-        resumeText: result.resumeText ?? null,
-        extractedSkills: result.extractedSkills ?? [],
-        experienceYears: result.experienceYears ?? null,
+        resumeText,
+        extractedSkills: parsedResume?.skills ?? [],
+        experienceYears: parsedResume?.experienceYears ?? null,
         parsedResume,
       },
     })
   } catch (error) {
     console.error(error)
 
-    const message = error instanceof Error ? error.message : "Failed to create candidate"
+    const apiError = toFunctionApiError(error, {
+      statusCode: 500,
+      code: "CANDIDATE_CREATE_FAILED",
+      message: "Failed to create candidate",
+    })
 
     return NextResponse.json(
       {
         success: false,
-        message,
+        message: apiError.message,
       },
-      { status: 500 }
+      { status: apiError.statusCode }
     )
   }
 }
