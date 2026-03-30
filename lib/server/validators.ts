@@ -1,9 +1,9 @@
-import { z } from "zod"
+﻿import { z } from "zod"
 
 const uuidField = z.string().uuid()
 
 export const createJobSchema = z.object({
-  organization_id: uuidField,
+  organization_id: uuidField.optional(),
   job_title: z.string().trim().min(1),
   job_description: z.string().trim().optional().nullable(),
   experience_level_id: z.number().int().positive(),
