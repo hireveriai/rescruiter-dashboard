@@ -2,6 +2,9 @@
 
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
+import { useSearchParams } from "next/navigation"
+
+import { buildAuthUrl } from "@/lib/client/auth-query"
 
 import CreateJobModal from "./CreateJobModal"
 import SendInterviewModal from "./SendInterviewModal"
@@ -52,28 +55,42 @@ function getCardClasses(tone, disabled) {
 }
 
 export default function Sidebar() {
+  const searchParams = useSearchParams()
   const [user, setUser] = useState(null)
+  const [profileError, setProfileError] = useState("")
   const [openCreateJob, setOpenCreateJob] = useState(false)
   const [openSendInterview, setOpenSendInterview] = useState(false)
 
   useEffect(() => {
     let isMounted = true
 
-    fetch("/api/me")
+    fetch(buildAuthUrl("/api/me", searchParams))
       .then((res) => res.json())
       .then((data) => {
-        if (isMounted && data.success) {
-          setUser(data.data)
+        if (!isMounted) {
+          return
         }
+
+        if (data.success) {
+          setUser(data.data)
+          setProfileError("")
+          return
+        }
+
+        setUser(data.data ?? null)
+        setProfileError(data.error?.message || data.message || "Recruiter profile could not be loaded")
       })
       .catch((error) => {
         console.error("Failed to fetch recruiter profile", error)
+        if (isMounted) {
+          setProfileError("Recruiter profile could not be loaded")
+        }
       })
 
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [searchParams])
 
   const initials = useMemo(
     () =>
@@ -115,6 +132,12 @@ export default function Sidebar() {
           </div>
         </div>
 
+        {profileError ? (
+          <div className="mt-4 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+            {profileError}
+          </div>
+        ) : null}
+
         <div className="mt-7">
           <h3 className="text-xs font-medium uppercase tracking-[0.34em] text-slate-500">Quick Actions</h3>
 
@@ -148,7 +171,7 @@ export default function Sidebar() {
 
               if (action.href) {
                 return (
-                  <Link key={action.id} href={action.href} className={className}>
+                  <Link key={action.id} href={buildAuthUrl(action.href, searchParams)} className={className}>
                     {content}
                   </Link>
                 )

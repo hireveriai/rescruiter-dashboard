@@ -1,6 +1,9 @@
-"use client"
+﻿"use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useSearchParams } from "next/navigation"
+
+import { buildAuthUrl } from "@/lib/client/auth-query"
 
 function getExpiryLabel(expiresAt, nowTick) {
   if (!expiresAt) {
@@ -120,6 +123,7 @@ function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, nowTick }
 }
 
 export default function PendingInterviews() {
+  const searchParams = useSearchParams()
   const [interviews, setInterviews] = useState([])
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [nowTick, setNowTick] = useState(() => Date.now())
@@ -127,7 +131,7 @@ export default function PendingInterviews() {
   useEffect(() => {
     let isMounted = true
 
-    fetch("/api/dashboard/pipeline")
+    fetch(buildAuthUrl("/api/dashboard/pipeline", searchParams))
       .then((res) => res.json())
       .then((data) => {
         if (isMounted && data.success) {
@@ -141,7 +145,7 @@ export default function PendingInterviews() {
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [searchParams])
 
   useEffect(() => {
     const timer = setInterval(() => {

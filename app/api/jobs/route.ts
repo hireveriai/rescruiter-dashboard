@@ -1,15 +1,16 @@
 ﻿import { NextResponse } from "next/server"
 
-import { getCurrentUser } from "@/lib/server/currentUser"
+import { getRecruiterRequestContext } from "@/lib/server/auth-context"
+import { errorResponse } from "@/lib/server/response"
 import { prisma } from "@/lib/server/prisma"
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const user = getCurrentUser()
+    const auth = await getRecruiterRequestContext(request)
 
     const jobs = await prisma.jobPosition.findMany({
       where: {
-        organizationId: user.organizationId,
+        organizationId: auth.organizationId,
       },
       orderBy: {
         jobId: "desc",
@@ -34,14 +35,6 @@ export async function GET() {
       jobs,
     })
   } catch (error) {
-    console.error(error)
-
-    return NextResponse.json(
-      {
-        success: false,
-        message: "Failed to fetch jobs",
-      },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

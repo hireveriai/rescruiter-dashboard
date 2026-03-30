@@ -1,8 +1,10 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useState } from "react";
+
+import { buildAuthUrl } from "@/lib/client/auth-query";
 
 import CreateJobModal from "./CreateJobModal";
 
@@ -25,6 +27,7 @@ function isActivePath(pathname, href) {
 
 export default function Navbar({ onSendInterviewClick }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [openCreateJob, setOpenCreateJob] = useState(false);
 
   return (
@@ -32,7 +35,7 @@ export default function Navbar({ onSendInterviewClick }) {
       <header className="sticky top-0 z-40 border-b border-slate-800/80 bg-[#0c1424]/95 text-white backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-6 px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-6 lg:gap-10">
-            <Link href="/" className="shrink-0 text-[1.75rem] font-semibold tracking-tight text-slate-50">
+            <Link href={buildAuthUrl("/", searchParams)} className="shrink-0 text-[1.75rem] font-semibold tracking-tight text-slate-50">
               Hire<span className="text-blue-400">Veri</span>
             </Link>
 
@@ -56,7 +59,7 @@ export default function Navbar({ onSendInterviewClick }) {
                 return (
                   <Link
                     key={item.label}
-                    href={item.href}
+                    href={buildAuthUrl(item.href, searchParams)}
                     className={[
                       "rounded-xl px-4 py-2 text-[15px] font-medium transition",
                       active

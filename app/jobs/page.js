@@ -2,6 +2,9 @@
 
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
+import { useSearchParams } from "next/navigation"
+
+import { buildAuthUrl } from "@/lib/client/auth-query"
 
 import Navbar from "../../components/Navbar"
 import SendInterviewModal from "../../components/SendInterviewModal"
@@ -21,13 +24,14 @@ function getDifficultyTone(profile) {
 }
 
 export default function JobsPage() {
+  const searchParams = useSearchParams()
   const [jobs, setJobs] = useState([])
   const [openSendInterview, setOpenSendInterview] = useState(false)
 
   useEffect(() => {
     let isMounted = true
 
-    fetch("/api/jobs")
+    fetch(buildAuthUrl("/api/jobs", searchParams))
       .then((res) => res.json())
       .then((data) => {
         if (isMounted && data.success) {
@@ -41,7 +45,7 @@ export default function JobsPage() {
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [searchParams])
 
   const stats = useMemo(() => {
     const total = jobs.length
@@ -90,7 +94,7 @@ export default function JobsPage() {
               <p className="mt-1 text-sm text-slate-400">All jobs created under the current recruiter organization.</p>
             </div>
 
-            <Link href="/" className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white">
+            <Link href={buildAuthUrl("/", searchParams)} className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white">
               Back to Dashboard
             </Link>
           </div>

@@ -1,7 +1,8 @@
 ﻿import { Prisma } from "@prisma/client"
 import { NextResponse } from "next/server"
 
-import { getCurrentUser } from "@/lib/server/currentUser"
+import { getRecruiterRequestContext } from "@/lib/server/auth-context"
+import { errorResponse } from "@/lib/server/response"
 import { prisma } from "@/lib/server/prisma"
 
 type VerisRow = {
@@ -29,13 +30,13 @@ function shorten(text: string | null, words = 18) {
   return `${parts.slice(0, words).join(" ")}...`
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const user = getCurrentUser()
+    const auth = await getRecruiterRequestContext(request)
 
     const rows = await prisma.$queryRaw<VerisRow[]>(Prisma.sql`
       select *
-      from public.fn_get_dashboard_veris(${user.organizationId}::uuid, 6)
+      from public.fn_get_dashboard_veris(${auth.organizationId}::uuid, 6)
     `)
 
     return NextResponse.json({
@@ -55,14 +56,6 @@ export async function GET() {
       })),
     })
   } catch (error) {
-    console.error("Failed to fetch VERIS summaries", error)
-
-    return NextResponse.json(
-      {
-        success: false,
-        message: "Failed to fetch VERIS summaries",
-      },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

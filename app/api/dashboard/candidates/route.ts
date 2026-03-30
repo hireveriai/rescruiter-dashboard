@@ -1,4 +1,6 @@
-﻿import { getCandidatesDashboard } from "@/lib/server/services/dashboard.service"
+﻿import { getRecruiterRequestContext } from "@/lib/server/auth-context"
+import { getCandidatesDashboard } from "@/lib/server/services/dashboard.service"
+import { errorResponse } from "@/lib/server/response"
 
 function parseLimit(value: string | null): number | "all" {
   if (!value || value === "all") {
@@ -11,8 +13,10 @@ function parseLimit(value: string | null): number | "all" {
 
 export async function GET(request: Request) {
   try {
+    const auth = await getRecruiterRequestContext(request)
     const { searchParams } = new URL(request.url)
     const data = await getCandidatesDashboard({
+      organizationId: auth.organizationId,
       limit: parseLimit(searchParams.get("limit")),
     })
 
@@ -21,12 +25,6 @@ export async function GET(request: Request) {
       data,
     })
   } catch (err) {
-    return Response.json(
-      {
-        success: false,
-        message: err instanceof Error ? err.message : "Failed to fetch dashboard candidates",
-      },
-      { status: 500 }
-    )
+    return errorResponse(err)
   }
 }

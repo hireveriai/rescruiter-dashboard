@@ -1,7 +1,10 @@
-"use client"
+﻿"use client"
 
 import Link from "next/link"
 import { useEffect, useState } from "react"
+import { useSearchParams } from "next/navigation"
+
+import { buildAuthUrl } from "@/lib/client/auth-query"
 
 import CandidateInsightModal from "./CandidateInsightModal"
 
@@ -44,13 +47,14 @@ function formatScore(score) {
 }
 
 export default function CandidateList() {
+  const searchParams = useSearchParams()
   const [candidates, setCandidates] = useState([])
   const [selectedCandidate, setSelectedCandidate] = useState(null)
 
   useEffect(() => {
     let isMounted = true
 
-    fetch("/api/dashboard/candidates")
+    fetch(buildAuthUrl("/api/dashboard/candidates", searchParams))
       .then((res) => res.json())
       .then((data) => {
         if (isMounted && data.success) {
@@ -64,7 +68,7 @@ export default function CandidateList() {
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [searchParams])
 
   return (
     <>
@@ -74,7 +78,7 @@ export default function CandidateList() {
             Candidates
           </h2>
 
-          <Link href="/candidates" className="text-blue-400 text-sm">
+          <Link href={buildAuthUrl("/candidates", searchParams)} className="text-blue-400 text-sm">
             View More
           </Link>
         </div>

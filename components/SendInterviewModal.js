@@ -1,8 +1,12 @@
-"use client"
+﻿"use client"
 
 import { useEffect, useState } from "react"
+import { useSearchParams } from "next/navigation"
+
+import { buildAuthUrl } from "@/lib/client/auth-query"
 
 export default function SendInterviewModal({ isOpen, onClose }) {
+  const searchParams = useSearchParams()
   const [jobs, setJobs] = useState([])
   const [jobId, setJobId] = useState("")
   const [name, setName] = useState("")
@@ -18,11 +22,11 @@ export default function SendInterviewModal({ isOpen, onClose }) {
   useEffect(() => {
     if (!isOpen) return
 
-    fetch("/api/jobs")
+    fetch(buildAuthUrl("/api/jobs", searchParams))
       .then((res) => res.json())
       .then((data) => setJobs(data.jobs || data.data?.jobs || []))
       .catch(console.error)
-  }, [isOpen])
+  }, [isOpen, searchParams])
 
   const handleSubmit = async () => {
     setError("")
@@ -50,7 +54,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
         candidateFormData.append("resume", resumeFile)
       }
 
-      const candidateResponse = await fetch("/api/candidate", {
+      const candidateResponse = await fetch(buildAuthUrl("/api/candidate", searchParams), {
         method: "POST",
         body: candidateFormData,
       })
@@ -74,7 +78,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
         throw new Error("Candidate ID was not returned by the API")
       }
 
-      const interviewResponse = await fetch("/api/interview/create-link", {
+      const interviewResponse = await fetch(buildAuthUrl("/api/interview/create-link", searchParams), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

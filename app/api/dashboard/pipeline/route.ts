@@ -1,7 +1,8 @@
 ﻿import { Prisma } from "@prisma/client"
 import { NextResponse } from "next/server"
 
-import { getCurrentUser } from "@/lib/server/currentUser"
+import { getRecruiterRequestContext } from "@/lib/server/auth-context"
+import { errorResponse } from "@/lib/server/response"
 import { prisma } from "@/lib/server/prisma"
 
 type PipelineFunctionRow = {
@@ -17,14 +18,14 @@ type PipelineFunctionRow = {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const user = getCurrentUser()
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+    const auth = await getRecruiterRequestContext(request)
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin
 
     const rows = await prisma.$queryRaw<PipelineFunctionRow[]>(Prisma.sql`
       select public.fn_get_dashboard_pipeline(
-        ${user.organizationId}::uuid,
+        ${auth.organizationId}::uuid,
         ${appUrl}
       )
     `)
@@ -45,14 +46,6 @@ export async function GET() {
       },
     })
   } catch (error) {
-    console.error("Failed to fetch interview pipeline", error)
-
-    return NextResponse.json(
-      {
-        success: false,
-        message: "Failed to fetch interview pipeline",
-      },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

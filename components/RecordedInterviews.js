@@ -1,6 +1,9 @@
-"use client"
+﻿"use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useSearchParams } from "next/navigation"
+
+import { buildAuthUrl } from "@/lib/client/auth-query"
 
 function formatDate(dateValue) {
   if (!dateValue) {
@@ -88,13 +91,14 @@ function RecordedInterviewsModal({ isOpen, onClose, interviews }) {
 }
 
 export default function RecordedInterviews() {
+  const searchParams = useSearchParams()
   const [interviews, setInterviews] = useState([])
   const [isModalOpen, setIsModalOpen] = useState(false)
 
   useEffect(() => {
     let isMounted = true
 
-    fetch("/api/dashboard/pipeline")
+    fetch(buildAuthUrl("/api/dashboard/pipeline", searchParams))
       .then((res) => res.json())
       .then((data) => {
         if (isMounted && data.success) {
@@ -108,7 +112,7 @@ export default function RecordedInterviews() {
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [searchParams])
 
   const sortedInterviews = useMemo(
     () =>

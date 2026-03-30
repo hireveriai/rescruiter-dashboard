@@ -1,7 +1,10 @@
-"use client"
+﻿"use client"
 
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
+import { useSearchParams } from "next/navigation"
+
+import { buildAuthUrl } from "@/lib/client/auth-query"
 
 import Navbar from "../../components/Navbar"
 import SendInterviewModal from "../../components/SendInterviewModal"
@@ -34,20 +37,21 @@ function formatScore(score) {
 
 function getAccessLabel(item) {
   if (String(item.accessType ?? "FLEXIBLE").toUpperCase() === "SCHEDULED") {
-    return item.startTime ? `Scheduled � ${formatDateTime(item.startTime)}` : "Scheduled"
+    return item.startTime ? `Scheduled · ${formatDateTime(item.startTime)}` : "Scheduled"
   }
 
   return "Flexible"
 }
 
 export default function InterviewsPage() {
+  const searchParams = useSearchParams()
   const [interviews, setInterviews] = useState([])
   const [openSendInterview, setOpenSendInterview] = useState(false)
 
   useEffect(() => {
     let isMounted = true
 
-    fetch("/api/dashboard/interviews")
+    fetch(buildAuthUrl("/api/dashboard/interviews", searchParams))
       .then((res) => res.json())
       .then((data) => {
         if (isMounted && data.success) {
@@ -61,7 +65,7 @@ export default function InterviewsPage() {
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [searchParams])
 
   const stats = useMemo(() => {
     const total = interviews.length
@@ -110,7 +114,7 @@ export default function InterviewsPage() {
               <p className="mt-1 text-sm text-slate-400">All interviews under the current recruiter organization.</p>
             </div>
 
-            <Link href="/" className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white">
+            <Link href={buildAuthUrl("/", searchParams)} className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white">
               Back to Dashboard
             </Link>
           </div>

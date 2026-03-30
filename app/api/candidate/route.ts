@@ -1,7 +1,7 @@
 ﻿import { Prisma } from "@prisma/client"
 import { NextResponse } from "next/server"
 
-import { getCurrentUser } from "@/lib/server/currentUser"
+import { getRecruiterRequestContext } from "@/lib/server/auth-context"
 import { prisma } from "@/lib/server/prisma"
 import { toFunctionApiError } from "@/lib/server/function-errors"
 import { parseResumeText } from "@/lib/server/resumeParser"
@@ -47,7 +47,7 @@ type CandidateFunctionRow = {
 
 export async function POST(req: Request) {
   try {
-    const user = getCurrentUser()
+    const auth = await getRecruiterRequestContext(req)
     const formData = await req.formData()
 
     const fullName = getStringValue(formData.get("fullName"))
@@ -68,7 +68,7 @@ export async function POST(req: Request) {
     const job = await prisma.jobPosition.findFirst({
       where: {
         jobId,
-        organizationId: user.organizationId,
+        organizationId: auth.organizationId,
       },
       select: { organizationId: true },
     })
@@ -104,7 +104,7 @@ export async function POST(req: Request) {
     const rows = await prisma.$queryRaw<CandidateFunctionRow[]>(Prisma.sql`
       select *
       from public.fn_upsert_candidate(
-        ${user.organizationId}::uuid,
+        ${auth.organizationId}::uuid,
         ${jobId}::uuid,
         ${fullName},
         ${email},

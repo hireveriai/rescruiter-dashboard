@@ -1,12 +1,12 @@
 ﻿import { ApiError } from "@/lib/server/errors"
-import { getCurrentUser } from "@/lib/server/currentUser"
+import { getRecruiterRequestContext } from "@/lib/server/auth-context"
 import { prisma } from "@/lib/server/prisma"
 import { errorResponse, successResponse } from "@/lib/server/response"
 import { createInterviewLink } from "@/lib/server/services/interview.service"
 
 export async function POST(request: Request) {
   try {
-    const user = getCurrentUser()
+    const auth = await getRecruiterRequestContext(request)
     const payload = await request.json()
     const jobId = String(payload.jobId ?? payload.job_id ?? "").trim()
 
@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     const job = await prisma.jobPosition.findFirst({
       where: {
         jobId,
-        organizationId: user.organizationId,
+        organizationId: auth.organizationId,
       },
       select: { jobId: true },
     })
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
 
     const result = await createInterviewLink({
       ...payload,
-      organizationId: user.organizationId,
+      organizationId: auth.organizationId,
     })
 
     return successResponse(result, 201)

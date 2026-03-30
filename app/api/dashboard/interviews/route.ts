@@ -1,15 +1,16 @@
-import { NextResponse } from "next/server"
+﻿import { NextResponse } from "next/server"
 
-import { getCurrentUser } from "@/lib/server/currentUser"
+import { getRecruiterRequestContext } from "@/lib/server/auth-context"
+import { errorResponse } from "@/lib/server/response"
 import { prisma } from "@/lib/server/prisma"
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const user = getCurrentUser()
+    const auth = await getRecruiterRequestContext(request)
 
     const interviews = await prisma.interview.findMany({
       where: {
-        organizationId: user.organizationId,
+        organizationId: auth.organizationId,
       },
       orderBy: {
         createdAt: "desc",
@@ -73,14 +74,6 @@ export async function GET() {
       data,
     })
   } catch (error) {
-    console.error("Failed to fetch interviews page data", error)
-
-    return NextResponse.json(
-      {
-        success: false,
-        message: "Failed to fetch interviews",
-      },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

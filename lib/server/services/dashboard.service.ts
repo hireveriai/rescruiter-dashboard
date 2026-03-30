@@ -1,7 +1,7 @@
-﻿import { getCurrentUser } from "@/lib/server/currentUser"
-import { prisma } from "@/lib/server/prisma"
+﻿import { prisma } from "@/lib/server/prisma"
 
 type CandidatesDashboardOptions = {
+  organizationId: string
   limit?: number | "all"
 }
 
@@ -29,14 +29,13 @@ function getShortSummary(text: string | null): string {
 }
 
 export async function getCandidatesDashboard(
-  options: CandidatesDashboardOptions = {}
+  options: CandidatesDashboardOptions
 ): Promise<CandidatesDashboardItem[]> {
-  const user = getCurrentUser()
   const take = options.limit === "all" || options.limit === undefined ? undefined : options.limit
 
   const candidates = await prisma.candidate.findMany({
     where: {
-      organizationId: user.organizationId,
+      organizationId: options.organizationId,
     },
     orderBy: {
       createdAt: "desc",

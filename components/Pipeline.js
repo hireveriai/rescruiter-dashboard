@@ -1,6 +1,9 @@
-"use client"
+﻿"use client"
 
 import { useEffect, useState } from "react"
+import { useSearchParams } from "next/navigation"
+
+import { buildAuthUrl } from "@/lib/client/auth-query"
 
 const FALLBACK_PIPELINE = {
   pending: 0,
@@ -10,12 +13,13 @@ const FALLBACK_PIPELINE = {
 }
 
 export default function Pipeline() {
+  const searchParams = useSearchParams()
   const [pipeline, setPipeline] = useState(FALLBACK_PIPELINE)
 
   useEffect(() => {
     let isMounted = true
 
-    fetch("/api/dashboard/pipeline")
+    fetch(buildAuthUrl("/api/dashboard/pipeline", searchParams))
       .then((res) => res.json())
       .then((data) => {
         if (isMounted && data.success) {
@@ -29,7 +33,7 @@ export default function Pipeline() {
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [searchParams])
 
   const cards = [
     { title: "Pending", count: pipeline.pending, color: "bg-blue-500" },

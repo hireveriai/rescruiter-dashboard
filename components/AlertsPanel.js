@@ -1,28 +1,10 @@
-export default function AlertsPanel() {
-
-  const alerts = [
-    "Tab switch detected - Rahul Sharma",
-    "Verification delay - Neha Kapoor",
-    "Camera focus lost - Arjun Patel"
-  ]
-
+﻿export default function AlertsPanel() {
   return (
-    <div className="mt-10 bg-[#111a2e] p-5 rounded-lg">
-
-      <h2 className="text-xl font-semibold mb-4">
-        Risk Alerts
-      </h2>
-
-      <ul className="text-sm text-gray-300">
-
-        {alerts.map((alert, index) => (
-          <li key={index} className="mb-2">
-            ⚠ {alert}
-          </li>
-        ))}
-
-      </ul>
-
+    <div className="mt-10 rounded-[24px] border border-slate-800 bg-[#0f172a] p-5 shadow-[0_18px_60px_rgba(2,6,23,0.22)]">
+      <h2 className="text-xl font-semibold text-white">Risk Alerts</h2>
+      <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/30 px-4 py-5 text-sm text-slate-400">
+        Alerts are disabled for now and are not part of the authenticated recruiter landing flow.
+      </div>
     </div>
   )
 }

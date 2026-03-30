@@ -1,6 +1,9 @@
-"use client"
+﻿"use client"
 
 import { useEffect, useState } from "react"
+import { useSearchParams } from "next/navigation"
+
+import { buildAuthUrl } from "@/lib/client/auth-query"
 
 function getRecommendationColor(value) {
   const normalized = String(value ?? "").toUpperCase()
@@ -31,12 +34,13 @@ function getRiskColor(value) {
 }
 
 export default function VerisSummary() {
+  const searchParams = useSearchParams()
   const [summaries, setSummaries] = useState([])
 
   useEffect(() => {
     let isMounted = true
 
-    fetch("/api/dashboard/veris")
+    fetch(buildAuthUrl("/api/dashboard/veris", searchParams))
       .then((res) => res.json())
       .then((data) => {
         if (isMounted && data.success) {
@@ -50,7 +54,7 @@ export default function VerisSummary() {
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [searchParams])
 
   return (
     <div className="mt-10">

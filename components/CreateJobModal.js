@@ -1,9 +1,9 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
-const DEFAULT_ORGANIZATION_ID =
-  process.env.NEXT_PUBLIC_ORGANIZATION_ID || "11111111-0000-0000-0000-000000000001";
+import { buildAuthUrl } from "@/lib/client/auth-query";
 
 const FALLBACK_LEVELS = [
   { experience_level_id: 1, label: "Fresher / Student" },
@@ -13,6 +13,7 @@ const FALLBACK_LEVELS = [
 ];
 
 export default function CreateJobModal({ open, setOpen }) {
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [levels, setLevels] = useState([]);
 
@@ -29,7 +30,7 @@ export default function CreateJobModal({ open, setOpen }) {
       return;
     }
 
-    fetch("/api/experience-levels")
+    fetch(buildAuthUrl("/api/experience-levels", searchParams))
       .then(async (res) => {
         const data = await res.json();
 
@@ -44,7 +45,7 @@ export default function CreateJobModal({ open, setOpen }) {
         console.error("Failed to load levels", err);
         setLevels(FALLBACK_LEVELS);
       });
-  }, [open]);
+  }, [open, searchParams]);
 
   const handleChange = (key, value) => {
     setForm((prev) => ({
@@ -59,7 +60,6 @@ export default function CreateJobModal({ open, setOpen }) {
 
       const payload = {
         ...form,
-        organization_id: DEFAULT_ORGANIZATION_ID,
         experience_level_id: Number(form.experience_level_id),
         core_skills: form.core_skills
           .split(",")
@@ -68,7 +68,7 @@ export default function CreateJobModal({ open, setOpen }) {
         skill_baseline: [],
       };
 
-      const res = await fetch("/api/jobs/create", {
+      const res = await fetch(buildAuthUrl("/api/jobs/create", searchParams), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -83,8 +83,6 @@ export default function CreateJobModal({ open, setOpen }) {
         alert(data?.error?.message || "Failed to create job");
         return;
       }
-
-      console.log("Job Created:", data);
 
       setForm({
         job_title: "",
@@ -198,7 +196,7 @@ export default function CreateJobModal({ open, setOpen }) {
           </div>
 
           <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-300">
-            - Job config is created under the active organization
+            - Job config is created under the authenticated organization
             <br />- Skills are normalized from comma-separated input
             <br />- Evaluation defaults can be extended later without changing the UI
           </div>
