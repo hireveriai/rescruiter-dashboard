@@ -1,4 +1,4 @@
-﻿import { UserRole } from "@prisma/client"
+﻿import { Prisma } from "@prisma/client"
 
 import { ApiError } from "@/lib/server/errors"
 import { prisma } from "@/lib/server/prisma"
@@ -22,6 +22,10 @@ export type RecruiterRequestContext = {
   organizationId: string
   sessionCookiePresent: boolean
   sessionCookieMatched: boolean
+}
+
+type RecruiterLookupRow = {
+  user_id: string
 }
 
 function parseCookieHeader(cookieHeader: string | null): Record<string, string> {
@@ -134,18 +138,16 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
     throw new ApiError(401, "SESSION_ORGANIZATION_MISMATCH", "Session does not match the requested organization")
   }
 
-  const recruiter = await prisma.user.findFirst({
-    where: {
-      userId,
-      organizationId,
-      role: UserRole.RECRUITER,
-    },
-    select: {
-      userId: true,
-    },
-  })
+  const recruiterRows = await prisma.$queryRaw<RecruiterLookupRow[]>(Prisma.sql`
+    select u.user_id
+    from public.users u
+    where u.user_id = ${userId}::uuid
+      and u.organization_id = ${organizationId}::uuid
+      and u.role = 'RECRUITER'
+    limit 1
+  `)
 
-  if (!recruiter) {
+  if (!recruiterRows[0]?.user_id) {
     throw new ApiError(404, "RECRUITER_NOT_FOUND", "Recruiter not found for the authenticated organization")
   }
 
