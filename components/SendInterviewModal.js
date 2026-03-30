@@ -5,6 +5,48 @@ import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
 
+function CalendarIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-4 w-4 text-cyan-300/80"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M16 3v4" />
+      <path d="M8 3v4" />
+      <path d="M3 10h18" />
+    </svg>
+  )
+}
+
+function DateTimeField({ label, value, onChange }) {
+  return (
+    <div>
+      <label className="mb-2 block text-sm text-gray-400">{label}</label>
+      <div className="relative">
+        <div className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2">
+          <CalendarIcon />
+        </div>
+        <input
+          type="datetime-local"
+          className="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-11 py-3 text-white outline-none transition focus:border-cyan-400/60 focus:shadow-[0_0_0_3px_rgba(34,211,238,0.08)]"
+          value={value}
+          onChange={onChange}
+        />
+        <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[11px] font-medium uppercase tracking-[0.18em] text-cyan-200/70">
+          Pick
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function SendInterviewModal({ isOpen, onClose }) {
   const searchParams = useAuthSearchParams()
   const [jobs, setJobs] = useState([])
@@ -210,25 +252,22 @@ export default function SendInterviewModal({ isOpen, onClose }) {
         </div>
 
         {accessType === "SCHEDULED" && (
-          <div className="mb-5 grid gap-4 rounded-2xl border border-cyan-500/15 bg-slate-900/55 p-4 md:grid-cols-2">
-            <div>
-            <label className="text-sm text-gray-400">Start Time</label>
-            <input
-              type="datetime-local"
-              className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-white outline-none transition focus:border-cyan-400/60 focus:shadow-[0_0_0_3px_rgba(34,211,238,0.08)]"
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-            />
+          <div className="mb-5 rounded-2xl border border-cyan-500/15 bg-slate-900/55 p-4">
+            <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.28em] text-cyan-200/75">
+              <CalendarIcon />
+              <span>Schedule Window</span>
             </div>
-
-            <div>
-            <label className="text-sm text-gray-400">End Time</label>
-            <input
-              type="datetime-local"
-              className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-white outline-none transition focus:border-cyan-400/60 focus:shadow-[0_0_0_3px_rgba(34,211,238,0.08)]"
-              value={endTime}
-              onChange={(e) => setEndTime(e.target.value)}
-            />
+            <div className="grid gap-4 md:grid-cols-2">
+              <DateTimeField
+                label="Start Time"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+              />
+              <DateTimeField
+                label="End Time"
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
+              />
             </div>
           </div>
         )}
@@ -272,4 +311,3 @@ export default function SendInterviewModal({ isOpen, onClose }) {
     </div>
   )
 }
-
