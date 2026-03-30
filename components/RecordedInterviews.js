@@ -1,7 +1,7 @@
 ﻿"use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { useSearchParams } from "next/navigation"
+import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
 
@@ -91,7 +91,7 @@ function RecordedInterviewsModal({ isOpen, onClose, interviews }) {
 }
 
 export default function RecordedInterviews() {
-  const searchParams = useSearchParams()
+  const searchParams = useAuthSearchParams()
   const [interviews, setInterviews] = useState([])
   const [isModalOpen, setIsModalOpen] = useState(false)
 
@@ -195,3 +195,4 @@ export default function RecordedInterviews() {
     </>
   )
 }
+

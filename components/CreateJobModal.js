@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useAuthSearchParams } from "@/lib/client/use-auth-search-params";
 
 import { buildAuthUrl } from "@/lib/client/auth-query";
 
@@ -13,7 +13,7 @@ const FALLBACK_LEVELS = [
 ];
 
 export default function CreateJobModal({ open, setOpen }) {
-  const searchParams = useSearchParams();
+  const searchParams = useAuthSearchParams();
   const [loading, setLoading] = useState(false);
   const [levels, setLevels] = useState([]);
 
@@ -222,3 +222,4 @@ export default function CreateJobModal({ open, setOpen }) {
     </div>
   );
 }
+

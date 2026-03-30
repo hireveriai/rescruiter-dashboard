@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
-import { useSearchParams } from "next/navigation"
+import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
 
@@ -49,7 +49,7 @@ function formatScore(score) {
 }
 
 export default function CandidatesPage() {
-  const searchParams = useSearchParams()
+  const searchParams = useAuthSearchParams()
   const [candidates, setCandidates] = useState([])
   const [selectedCandidate, setSelectedCandidate] = useState(null)
   const [openSendInterview, setOpenSendInterview] = useState(false)
@@ -192,3 +192,4 @@ export default function CandidatesPage() {
     </>
   )
 }
+

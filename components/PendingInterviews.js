@@ -1,7 +1,7 @@
 ﻿"use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { useSearchParams } from "next/navigation"
+import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
 
@@ -123,7 +123,7 @@ function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, nowTick }
 }
 
 export default function PendingInterviews() {
-  const searchParams = useSearchParams()
+  const searchParams = useAuthSearchParams()
   const [interviews, setInterviews] = useState([])
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [nowTick, setNowTick] = useState(() => Date.now())
@@ -241,3 +241,4 @@ export default function PendingInterviews() {
     </>
   )
 }
+

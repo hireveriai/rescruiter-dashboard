@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
-import { useSearchParams } from "next/navigation"
+import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
 
@@ -55,7 +55,7 @@ function getCardClasses(tone, disabled) {
 }
 
 export default function Sidebar() {
-  const searchParams = useSearchParams()
+  const searchParams = useAuthSearchParams()
   const [user, setUser] = useState(null)
   const [profileError, setProfileError] = useState("")
   const [openCreateJob, setOpenCreateJob] = useState(false)
@@ -192,3 +192,4 @@ export default function Sidebar() {
     </>
   )
 }
+

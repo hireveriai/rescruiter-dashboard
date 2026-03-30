@@ -1,7 +1,7 @@
 ﻿"use client"
 
 import { useEffect, useState } from "react"
-import { useSearchParams } from "next/navigation"
+import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
 
@@ -34,7 +34,7 @@ function getRiskColor(value) {
 }
 
 export default function VerisSummary() {
-  const searchParams = useSearchParams()
+  const searchParams = useAuthSearchParams()
   const [summaries, setSummaries] = useState([])
 
   useEffect(() => {
@@ -110,3 +110,4 @@ export default function VerisSummary() {
     </div>
   )
 }
+

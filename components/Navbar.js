@@ -1,10 +1,11 @@
 ﻿"use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useState } from "react";
 
 import { buildAuthUrl } from "@/lib/client/auth-query";
+import { useAuthSearchParams } from "@/lib/client/use-auth-search-params";
 
 import CreateJobModal from "./CreateJobModal";
 
@@ -27,7 +28,7 @@ function isActivePath(pathname, href) {
 
 export default function Navbar({ onSendInterviewClick }) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
+  const searchParams = useAuthSearchParams();
   const [openCreateJob, setOpenCreateJob] = useState(false);
 
   return (

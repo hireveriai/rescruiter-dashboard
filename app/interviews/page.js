@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
-import { useSearchParams } from "next/navigation"
+import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
 
@@ -44,7 +44,7 @@ function getAccessLabel(item) {
 }
 
 export default function InterviewsPage() {
-  const searchParams = useSearchParams()
+  const searchParams = useAuthSearchParams()
   const [interviews, setInterviews] = useState([])
   const [openSendInterview, setOpenSendInterview] = useState(false)
 
@@ -164,3 +164,4 @@ export default function InterviewsPage() {
     </div>
   )
 }
+

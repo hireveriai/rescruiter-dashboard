@@ -1,12 +1,12 @@
 ﻿"use client"
 
 import { useEffect, useState } from "react"
-import { useSearchParams } from "next/navigation"
+import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
 
 export default function SendInterviewModal({ isOpen, onClose }) {
-  const searchParams = useSearchParams()
+  const searchParams = useAuthSearchParams()
   const [jobs, setJobs] = useState([])
   const [jobId, setJobId] = useState("")
   const [name, setName] = useState("")
@@ -272,3 +272,4 @@ export default function SendInterviewModal({ isOpen, onClose }) {
     </div>
   )
 }
+

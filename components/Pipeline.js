@@ -1,7 +1,7 @@
 ﻿"use client"
 
 import { useEffect, useState } from "react"
-import { useSearchParams } from "next/navigation"
+import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
 
@@ -13,7 +13,7 @@ const FALLBACK_PIPELINE = {
 }
 
 export default function Pipeline() {
-  const searchParams = useSearchParams()
+  const searchParams = useAuthSearchParams()
   const [pipeline, setPipeline] = useState(FALLBACK_PIPELINE)
 
   useEffect(() => {
@@ -71,3 +71,4 @@ export default function Pipeline() {
     </div>
   )
 }
+

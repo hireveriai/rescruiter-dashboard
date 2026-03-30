@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
-import { useSearchParams } from "next/navigation"
+import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
 
@@ -24,7 +24,7 @@ function getDifficultyTone(profile) {
 }
 
 export default function JobsPage() {
-  const searchParams = useSearchParams()
+  const searchParams = useAuthSearchParams()
   const [jobs, setJobs] = useState([])
   const [openSendInterview, setOpenSendInterview] = useState(false)
 
@@ -158,3 +158,4 @@ export default function JobsPage() {
     </div>
   )
 }
+
