@@ -1,8 +1,8 @@
-import { Resend } from "resend";
+﻿import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
+const DEFAULT_EMAIL_FROM = "HireVeri Recruiter <no-reply@mil.hireveri.com>";
 
-// ✅ Proper typing
 type SendEmailParams = {
   to: string;
   name: string;
@@ -11,30 +11,28 @@ type SendEmailParams = {
 
 export async function sendInterviewEmail({ to, name, link }: SendEmailParams) {
   await resend.emails.send({
-    from: process.env.EMAIL_FROM as string,
+    from: process.env.EMAIL_FROM || DEFAULT_EMAIL_FROM,
     to,
-    subject: "Your HireVeri Interview Link",
-
-    // ✅ MUST be inside backticks
+    subject: "Your HireVeri Interview Invitation",
     html: `
-      <div style="font-family: Arial; line-height: 1.6;">
-        <h2>You're invited to an interview</h2>
-        
+      <div style="font-family: Arial, Helvetica, sans-serif; line-height: 1.6; color: #0f172a;">
+        <h2 style="margin-bottom: 12px;">Your HireVeri interview is ready</h2>
+
         <p>Hi ${name},</p>
-        
-        <p>Please start your interview using the link below:</p>
-        
-        <a href="${link}" 
-           style="display:inline-block;padding:10px 16px;background:#000;color:#fff;text-decoration:none;border-radius:6px;">
+
+        <p>You have been invited to complete an interview on HireVeri. Use the secure link below to begin.</p>
+
+        <a href="${link}"
+           style="display:inline-block;padding:12px 18px;background:#0f172a;color:#fff;text-decoration:none;border-radius:10px;font-weight:600;">
            Start Interview
         </a>
 
         <p style="margin-top:20px;">
-          This link will expire in 48 hours.
+          Please use this link within the allowed access window configured for your interview.
         </p>
 
-        <p>— HireVeri</p>
+        <p style="margin-top:24px;">Regards,<br />HireVeri Recruiter Workspace</p>
       </div>
-    `
+    `,
   });
 }

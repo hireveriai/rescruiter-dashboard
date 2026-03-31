@@ -60,6 +60,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
   const [loading, setLoading] = useState(false)
   const [link, setLink] = useState("")
   const [error, setError] = useState("")
+  const [emailStatus, setEmailStatus] = useState(null)
 
   useEffect(() => {
     if (!isOpen) return
@@ -73,6 +74,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
   const handleSubmit = async () => {
     setError("")
     setLink("")
+    setEmailStatus(null)
 
     if (!jobId || !name || !email) {
       setError("Please fill all required fields")
@@ -143,7 +145,9 @@ export default function SendInterviewModal({ isOpen, onClose }) {
         )
       }
 
-      setLink(interviewData.link || interviewData.data?.link || "")
+      const responseData = interviewData.data || interviewData
+      setLink(responseData.link || "")
+      setEmailStatus(responseData.emailSent === true ? "sent" : "failed")
     } catch (err) {
       setError(err.message)
     } finally {
@@ -162,150 +166,157 @@ export default function SendInterviewModal({ isOpen, onClose }) {
       <div className="relative w-full max-w-2xl overflow-hidden rounded-[28px] border border-cyan-500/20 bg-[#06101f]/95 text-white shadow-[0_0_60px_rgba(37,99,235,0.18)]">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.14),transparent_30%)]" />
         <div className="relative max-h-[88vh] overflow-y-auto p-5 sm:p-6 md:p-8">
-        <div className="mb-6 flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.35em] text-cyan-300/80">
-              Interview Access
-            </p>
-            <h2 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">
-              Send Interview Link
-            </h2>
-            <p className="mt-2 max-w-lg text-sm text-slate-300">
-              Secure candidate access with one-time validation, optional resume intake,
-              and time-window controls.
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="rounded-full border border-slate-700/80 bg-slate-900/80 px-3 py-1 text-sm text-slate-300 transition hover:border-cyan-400/60 hover:text-white"
-          >
-            Close
-          </button>
-        </div>
-
-        <label className="text-sm text-gray-400">Select Job *</label>
-        <select
-          className="mb-4 w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition focus:border-cyan-400/60 focus:shadow-[0_0_0_3px_rgba(34,211,238,0.08)]"
-          value={jobId}
-          onChange={(e) => setJobId(e.target.value)}
-        >
-          <option value="">Select Job</option>
-          {jobs.map((job) => {
-            const optionId = job.jobId || job.job_id
-            const optionTitle = job.jobTitle || job.job_title
-
-            return (
-              <option key={optionId} value={optionId}>
-                {optionTitle}
-              </option>
-            )
-          })}
-        </select>
-
-        <label className="text-sm text-gray-400">Candidate Full Name *</label>
-        <input
-          className="mb-4 w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-400/60 focus:shadow-[0_0_0_3px_rgba(34,211,238,0.08)]"
-          placeholder="Enter candidate name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-
-        <label className="text-sm text-gray-400">Candidate Email *</label>
-        <input
-          className="mb-4 w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-400/60 focus:shadow-[0_0_0_3px_rgba(34,211,238,0.08)]"
-          placeholder="Enter email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-
-        <label className="text-sm text-gray-400">Resume</label>
-        <input
-          type="file"
-          className="mb-4 w-full rounded-2xl border border-dashed border-slate-600 bg-slate-900/70 px-4 py-3 text-sm text-slate-300 file:mr-4 file:rounded-full file:border-0 file:bg-cyan-500/15 file:px-4 file:py-2 file:text-sm file:font-medium file:text-cyan-200 hover:file:bg-cyan-500/25"
-          onChange={(e) => setResumeFile(e.target.files?.[0] || null)}
-        />
-
-        <div className="mb-5 rounded-2xl border border-slate-800 bg-slate-900/55 p-4">
-          <p className="mb-3 text-sm font-medium text-slate-300">Interview Access Type</p>
-
-          <label className="mb-2 flex items-center gap-3 rounded-xl border border-transparent px-3 py-2 text-sm text-slate-200 transition hover:border-cyan-500/20 hover:bg-slate-800/60">
-            <input
-              type="radio"
-              value="FLEXIBLE"
-              checked={accessType === "FLEXIBLE"}
-              onChange={() => setAccessType("FLEXIBLE")}
-              className="h-4 w-4 accent-cyan-400"
-            />
-            <span>Flexible (24h access)</span>
-          </label>
-
-          <label className="flex items-center gap-3 rounded-xl border border-transparent px-3 py-2 text-sm text-slate-200 transition hover:border-cyan-500/20 hover:bg-slate-800/60">
-            <input
-              type="radio"
-              value="SCHEDULED"
-              checked={accessType === "SCHEDULED"}
-              onChange={() => setAccessType("SCHEDULED")}
-              className="h-4 w-4 accent-cyan-400"
-            />
-            <span>Scheduled (specific time window)</span>
-          </label>
-        </div>
-
-        {accessType === "SCHEDULED" && (
-          <div className="mb-5 rounded-2xl border border-cyan-500/15 bg-slate-900/55 p-4">
-            <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.28em] text-cyan-200/75">
-              <CalendarIcon />
-              <span>Schedule Window</span>
+          <div className="mb-6 flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.35em] text-cyan-300/80">
+                Interview Access
+              </p>
+              <h2 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">
+                Send Interview Link
+              </h2>
+              <p className="mt-2 max-w-lg text-sm text-slate-300">
+                Secure candidate access with one-time validation, optional resume intake,
+                and time-window controls.
+              </p>
             </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <DateTimeField
-                label="Start Time"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-              />
-              <DateTimeField
-                label="End Time"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-              />
-            </div>
-          </div>
-        )}
-
-        <div className="mb-5 rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-300">
-          - Single-use access
-          <br />- Expires automatically
-          <br />- Monitored for integrity
-        </div>
-
-        {error && <p className="text-red-400 text-sm mb-2">{error}</p>}
-
-        <button
-          onClick={handleSubmit}
-          disabled={loading}
-          className="w-full rounded-2xl bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 px-4 py-3 text-base font-medium text-white shadow-[0_18px_30px_rgba(37,99,235,0.3)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {loading ? "Generating secure link..." : "Send Interview Link"}
-        </button>
-
-        {link && (
-          <div className="mt-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
-            <p className="mb-2 text-sm text-emerald-300">
-              Interview link sent successfully
-            </p>
-            <input
-              className="mb-3 w-full rounded-2xl border border-slate-700 bg-slate-950/80 p-3 text-sm text-white"
-              value={link}
-              readOnly
-            />
             <button
-              onClick={copy}
-              className="w-full rounded-2xl border border-slate-600 bg-slate-900/90 px-4 py-3 text-sm text-slate-100 transition hover:border-cyan-400/50 hover:bg-slate-800"
+              onClick={onClose}
+              className="rounded-full border border-slate-700/80 bg-slate-900/80 px-3 py-1 text-sm text-slate-300 transition hover:border-cyan-400/60 hover:text-white"
             >
-              Copy Link
+              Close
             </button>
           </div>
-        )}
+
+          <label className="text-sm text-gray-400">Select Job *</label>
+          <select
+            className="mb-4 w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition focus:border-cyan-400/60 focus:shadow-[0_0_0_3px_rgba(34,211,238,0.08)]"
+            value={jobId}
+            onChange={(e) => setJobId(e.target.value)}
+          >
+            <option value="">Select Job</option>
+            {jobs.map((job) => {
+              const optionId = job.jobId || job.job_id
+              const optionTitle = job.jobTitle || job.job_title
+
+              return (
+                <option key={optionId} value={optionId}>
+                  {optionTitle}
+                </option>
+              )
+            })}
+          </select>
+
+          <label className="text-sm text-gray-400">Candidate Full Name *</label>
+          <input
+            className="mb-4 w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-400/60 focus:shadow-[0_0_0_3px_rgba(34,211,238,0.08)]"
+            placeholder="Enter candidate name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+
+          <label className="text-sm text-gray-400">Candidate Email *</label>
+          <input
+            className="mb-4 w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-400/60 focus:shadow-[0_0_0_3px_rgba(34,211,238,0.08)]"
+            placeholder="Enter email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+
+          <label className="text-sm text-gray-400">Resume</label>
+          <input
+            type="file"
+            className="mb-4 w-full rounded-2xl border border-dashed border-slate-600 bg-slate-900/70 px-4 py-3 text-sm text-slate-300 file:mr-4 file:rounded-full file:border-0 file:bg-cyan-500/15 file:px-4 file:py-2 file:text-sm file:font-medium file:text-cyan-200 hover:file:bg-cyan-500/25"
+            onChange={(e) => setResumeFile(e.target.files?.[0] || null)}
+          />
+
+          <div className="mb-5 rounded-2xl border border-slate-800 bg-slate-900/55 p-4">
+            <p className="mb-3 text-sm font-medium text-slate-300">Interview Access Type</p>
+
+            <label className="mb-2 flex items-center gap-3 rounded-xl border border-transparent px-3 py-2 text-sm text-slate-200 transition hover:border-cyan-500/20 hover:bg-slate-800/60">
+              <input
+                type="radio"
+                value="FLEXIBLE"
+                checked={accessType === "FLEXIBLE"}
+                onChange={() => setAccessType("FLEXIBLE")}
+                className="h-4 w-4 accent-cyan-400"
+              />
+              <span>Flexible (24h access)</span>
+            </label>
+
+            <label className="flex items-center gap-3 rounded-xl border border-transparent px-3 py-2 text-sm text-slate-200 transition hover:border-cyan-500/20 hover:bg-slate-800/60">
+              <input
+                type="radio"
+                value="SCHEDULED"
+                checked={accessType === "SCHEDULED"}
+                onChange={() => setAccessType("SCHEDULED")}
+                className="h-4 w-4 accent-cyan-400"
+              />
+              <span>Scheduled (specific time window)</span>
+            </label>
+          </div>
+
+          {accessType === "SCHEDULED" && (
+            <div className="mb-5 rounded-2xl border border-cyan-500/15 bg-slate-900/55 p-4">
+              <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.28em] text-cyan-200/75">
+                <CalendarIcon />
+                <span>Schedule Window</span>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <DateTimeField
+                  label="Start Time"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                />
+                <DateTimeField
+                  label="End Time"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="mb-5 rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-300">
+            - Single-use access
+            <br />- Expires automatically
+            <br />- Monitored for integrity
+          </div>
+
+          {error && <p className="mb-2 text-sm text-red-400">{error}</p>}
+
+          <button
+            onClick={handleSubmit}
+            disabled={loading}
+            className="w-full rounded-2xl bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 px-4 py-3 text-base font-medium text-white shadow-[0_18px_30px_rgba(37,99,235,0.3)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {loading ? "Generating secure link..." : "Send Interview Link"}
+          </button>
+
+          {link && (
+            <div className="mt-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+              <p className="mb-2 text-sm text-emerald-300">
+                {emailStatus === "sent"
+                  ? "Link generated and email sent successfully"
+                  : "Link generated successfully. Email delivery needs attention."}
+              </p>
+              {emailStatus === "failed" ? (
+                <p className="mb-3 text-xs text-amber-200">
+                  The interview link is ready, but the email could not be delivered from the server. You can still copy and send it manually.
+                </p>
+              ) : null}
+              <input
+                className="mb-3 w-full rounded-2xl border border-slate-700 bg-slate-950/80 p-3 text-sm text-white"
+                value={link}
+                readOnly
+              />
+              <button
+                onClick={copy}
+                className="w-full rounded-2xl border border-slate-600 bg-slate-900/90 px-4 py-3 text-sm text-slate-100 transition hover:border-cyan-400/50 hover:bg-slate-800"
+              >
+                Copy Link
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -3,6 +3,12 @@ import { getRecruiterRequestContext } from "@/lib/server/auth-context"
 import { prisma } from "@/lib/server/prisma"
 import { errorResponse, successResponse } from "@/lib/server/response"
 import { createInterviewLink } from "@/lib/server/services/interview.service"
+import { sendInterviewEmail } from "@/lib/services/email.service"
+
+type CandidateEmailRow = {
+  full_name: string | null
+  email: string
+}
 
 export async function POST(request: Request) {
   try {
@@ -31,7 +37,42 @@ export async function POST(request: Request) {
       organizationId: auth.organizationId,
     })
 
-    return successResponse(result, 201)
+    let emailSent = false
+
+    try {
+      const candidateId = String(payload.candidateId ?? payload.candidate_id ?? "").trim()
+
+      if (candidateId) {
+        const candidates = await prisma.$queryRaw<CandidateEmailRow[]>`
+          select c.full_name, c.email
+          from public.candidates c
+          where c.candidate_id = ${candidateId}::uuid
+            and c.organization_id = ${auth.organizationId}::uuid
+          limit 1
+        `
+
+        const candidate = candidates[0]
+
+        if (candidate?.email) {
+          await sendInterviewEmail({
+            to: candidate.email,
+            name: candidate.full_name || "Candidate",
+            link: result.link,
+          })
+          emailSent = true
+        }
+      }
+    } catch (emailError) {
+      console.error("Failed to send interview email", emailError)
+    }
+
+    return successResponse(
+      {
+        ...result,
+        emailSent,
+      },
+      201
+    )
   } catch (error) {
     return errorResponse(error)
   }
