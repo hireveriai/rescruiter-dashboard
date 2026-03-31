@@ -1,7 +1,7 @@
 ﻿import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
-const DEFAULT_EMAIL_FROM = "HireVeri Recruiter <no-reply@mil.hireveri.com>";
+const DEFAULT_EMAIL_FROM = "HireVeri Recruiter <no-reply@mail.hireveri.com>";
 
 type SendEmailParams = {
   to: string;
