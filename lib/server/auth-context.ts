@@ -121,11 +121,6 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
 
   const cookieMap = parseCookieHeader(request.headers.get("cookie"))
   const sessionCookie = cookieMap.hireveri_session
-
-  if (!sessionCookie) {
-    throw new ApiError(401, "SESSION_COOKIE_MISSING", "hireveri_session cookie is required")
-  }
-
   const session = parseHireveriSession(sessionCookie)
   const sessionUserId = readSessionUserId(session)
   const sessionOrganizationId = readSessionOrganizationId(session)
@@ -154,7 +149,8 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
   return {
     userId,
     organizationId,
-    sessionCookiePresent: true,
+    sessionCookiePresent: Boolean(sessionCookie),
     sessionCookieMatched: Boolean(sessionUserId || sessionOrganizationId),
   }
 }
+
