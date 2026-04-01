@@ -1,6 +1,7 @@
 ﻿"use client"
 
-import { useEffect, useState } from "react"
+import Link from "next/link"
+import { useEffect, useMemo, useState } from "react"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
@@ -51,6 +52,7 @@ function DateTimeField({ label, value, onChange }) {
 export default function SendInterviewModal({ isOpen, onClose }) {
   const searchParams = useAuthSearchParams()
   const [jobs, setJobs] = useState([])
+  const [jobsLoading, setJobsLoading] = useState(false)
   const [jobId, setJobId] = useState("")
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
@@ -67,10 +69,21 @@ export default function SendInterviewModal({ isOpen, onClose }) {
   useEffect(() => {
     if (!isOpen) return
 
+    setJobsLoading(true)
     fetch(buildAuthUrl("/api/jobs", searchParams))
       .then((res) => res.json())
-      .then((data) => setJobs(data.jobs || data.data?.jobs || []))
-      .catch(console.error)
+      .then((data) => {
+        const nextJobs = data.jobs || data.data?.jobs || []
+        setJobs(nextJobs)
+        if (nextJobs.length === 0) {
+          setJobId("")
+        }
+      })
+      .catch((fetchError) => {
+        console.error(fetchError)
+        setJobs([])
+      })
+      .finally(() => setJobsLoading(false))
   }, [isOpen, searchParams])
 
   useEffect(() => {
@@ -82,11 +95,19 @@ export default function SendInterviewModal({ isOpen, onClose }) {
     return () => clearTimeout(timer)
   }, [copyStatus])
 
+  const hasJobs = jobs.length > 0
+  const emptyJobsState = useMemo(() => !jobsLoading && !hasJobs, [jobsLoading, hasJobs])
+
   const handleSubmit = async () => {
     setError("")
     setLink("")
     setEmailStatus(null)
     setCopyStatus("idle")
+
+    if (!hasJobs) {
+      setError("Create a job first to send your interview link")
+      return
+    }
 
     if (!jobId || !name || !email) {
       setError("Please fill all required fields")
@@ -200,140 +221,173 @@ export default function SendInterviewModal({ isOpen, onClose }) {
             </button>
           </div>
 
-          <label className="text-sm text-gray-400">Select Job *</label>
-          <select
-            className="mb-4 w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition focus:border-cyan-400/60 focus:shadow-[0_0_0_3px_rgba(34,211,238,0.08)]"
-            value={jobId}
-            onChange={(e) => setJobId(e.target.value)}
-          >
-            <option value="">Select Job</option>
-            {jobs.map((job) => {
-              const optionId = job.jobId || job.job_id
-              const optionTitle = job.jobTitle || job.job_title
-
-              return (
-                <option key={optionId} value={optionId}>
-                  {optionTitle}
-                </option>
-              )
-            })}
-          </select>
-
-          <label className="text-sm text-gray-400">Candidate Full Name *</label>
-          <input
-            className="mb-4 w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-400/60 focus:shadow-[0_0_0_3px_rgba(34,211,238,0.08)]"
-            placeholder="Enter candidate name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-
-          <label className="text-sm text-gray-400">Candidate Email *</label>
-          <input
-            className="mb-4 w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-400/60 focus:shadow-[0_0_0_3px_rgba(34,211,238,0.08)]"
-            placeholder="Enter email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-
-          <label className="text-sm text-gray-400">Resume</label>
-          <input
-            type="file"
-            className="mb-4 w-full rounded-2xl border border-dashed border-slate-600 bg-slate-900/70 px-4 py-3 text-sm text-slate-300 file:mr-4 file:rounded-full file:border-0 file:bg-cyan-500/15 file:px-4 file:py-2 file:text-sm file:font-medium file:text-cyan-200 hover:file:bg-cyan-500/25"
-            onChange={(e) => setResumeFile(e.target.files?.[0] || null)}
-          />
-
-          <div className="mb-5 rounded-2xl border border-slate-800 bg-slate-900/55 p-4">
-            <p className="mb-3 text-sm font-medium text-slate-300">Interview Access Type</p>
-
-            <label className="mb-2 flex items-center gap-3 rounded-xl border border-transparent px-3 py-2 text-sm text-slate-200 transition hover:border-cyan-500/20 hover:bg-slate-800/60">
-              <input
-                type="radio"
-                value="FLEXIBLE"
-                checked={accessType === "FLEXIBLE"}
-                onChange={() => setAccessType("FLEXIBLE")}
-                className="h-4 w-4 accent-cyan-400"
-              />
-              <span>Flexible (24h access)</span>
-            </label>
-
-            <label className="flex items-center gap-3 rounded-xl border border-transparent px-3 py-2 text-sm text-slate-200 transition hover:border-cyan-500/20 hover:bg-slate-800/60">
-              <input
-                type="radio"
-                value="SCHEDULED"
-                checked={accessType === "SCHEDULED"}
-                onChange={() => setAccessType("SCHEDULED")}
-                className="h-4 w-4 accent-cyan-400"
-              />
-              <span>Scheduled (specific time window)</span>
-            </label>
-          </div>
-
-          {accessType === "SCHEDULED" && (
-            <div className="mb-5 rounded-2xl border border-cyan-500/15 bg-slate-900/55 p-4">
-              <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.28em] text-cyan-200/75">
-                <CalendarIcon />
-                <span>Schedule Window</span>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <DateTimeField
-                  label="Start Time"
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                />
-                <DateTimeField
-                  label="End Time"
-                  value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
-                />
-              </div>
-            </div>
-          )}
-
-          <div className="mb-5 rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-300">
-            - Single-use access
-            <br />- Expires automatically
-            <br />- Monitored for integrity
-          </div>
-
-          {error && <p className="mb-2 text-sm text-red-400">{error}</p>}
-
-          <button
-            onClick={handleSubmit}
-            disabled={loading}
-            className="w-full rounded-2xl bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 px-4 py-3 text-base font-medium text-white shadow-[0_18px_30px_rgba(37,99,235,0.3)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {loading ? "Generating secure link..." : "Send Interview Link"}
-          </button>
-
-          {link && (
-            <div className="mt-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
-              <p className="mb-2 text-sm text-emerald-300">
-                {emailStatus === "sent"
-                  ? "Link generated and email sent successfully"
-                  : "Link generated successfully. Email delivery needs attention."}
+          {emptyJobsState ? (
+            <div className="rounded-3xl border border-amber-400/20 bg-amber-500/10 p-5">
+              <p className="text-xs font-medium uppercase tracking-[0.28em] text-amber-200/80">
+                Job Required
               </p>
-              {emailStatus === "failed" ? (
-                <p className="mb-3 text-xs text-amber-200">
-                  The interview link is ready, but the email could not be delivered from the server. You can still copy and send it manually.
-                </p>
-              ) : null}
-              {copyStatus === "failed" ? (
-                <p className="mb-3 text-xs text-rose-200">
-                  Copy failed on this browser session. Please select the link manually.
-                </p>
-              ) : null}
-              <input
-                className="mb-3 w-full rounded-2xl border border-slate-700 bg-slate-950/80 p-3 text-sm text-white"
-                value={link}
-                readOnly
-              />
-              <button
-                onClick={copy}
-                className="w-full rounded-2xl border border-slate-600 bg-slate-900/90 px-4 py-3 text-sm text-slate-100 transition hover:border-cyan-400/50 hover:bg-slate-800"
-              >
-                {copyStatus === "success" ? "Copied" : "Copy Link"}
-              </button>
+              <h3 className="mt-3 text-xl font-semibold text-white">
+                Create a job first to send your interview link
+              </h3>
+              <p className="mt-3 text-sm text-amber-100/85">
+                Interview links can only be generated against an existing job in your recruiter workspace.
+              </p>
+              <div className="mt-5 flex flex-wrap gap-3">
+                <Link
+                  href={buildAuthUrl("/jobs", searchParams)}
+                  className="rounded-2xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-100"
+                  onClick={onClose}
+                >
+                  Create Job First
+                </Link>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-2xl border border-slate-700 bg-slate-900/70 px-4 py-2.5 text-sm text-slate-200 transition hover:border-slate-500 hover:text-white"
+                >
+                  Close
+                </button>
+              </div>
             </div>
+          ) : (
+            <>
+              <label className="text-sm text-gray-400">Select Job *</label>
+              <select
+                className="mb-4 w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition focus:border-cyan-400/60 focus:shadow-[0_0_0_3px_rgba(34,211,238,0.08)]"
+                value={jobId}
+                onChange={(e) => setJobId(e.target.value)}
+                disabled={jobsLoading}
+              >
+                <option value="">{jobsLoading ? "Loading jobs..." : "Select Job"}</option>
+                {jobs.map((job) => {
+                  const optionId = job.jobId || job.job_id
+                  const optionTitle = job.jobTitle || job.job_title
+
+                  return (
+                    <option key={optionId} value={optionId}>
+                      {optionTitle}
+                    </option>
+                  )
+                })}
+              </select>
+
+              <label className="text-sm text-gray-400">Candidate Full Name *</label>
+              <input
+                className="mb-4 w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-400/60 focus:shadow-[0_0_0_3px_rgba(34,211,238,0.08)]"
+                placeholder="Enter candidate name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+
+              <label className="text-sm text-gray-400">Candidate Email *</label>
+              <input
+                className="mb-4 w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-400/60 focus:shadow-[0_0_0_3px_rgba(34,211,238,0.08)]"
+                placeholder="Enter email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+
+              <label className="text-sm text-gray-400">Resume</label>
+              <input
+                type="file"
+                className="mb-4 w-full rounded-2xl border border-dashed border-slate-600 bg-slate-900/70 px-4 py-3 text-sm text-slate-300 file:mr-4 file:rounded-full file:border-0 file:bg-cyan-500/15 file:px-4 file:py-2 file:text-sm file:font-medium file:text-cyan-200 hover:file:bg-cyan-500/25"
+                onChange={(e) => setResumeFile(e.target.files?.[0] || null)}
+              />
+
+              <div className="mb-5 rounded-2xl border border-slate-800 bg-slate-900/55 p-4">
+                <p className="mb-3 text-sm font-medium text-slate-300">Interview Access Type</p>
+
+                <label className="mb-2 flex items-center gap-3 rounded-xl border border-transparent px-3 py-2 text-sm text-slate-200 transition hover:border-cyan-500/20 hover:bg-slate-800/60">
+                  <input
+                    type="radio"
+                    value="FLEXIBLE"
+                    checked={accessType === "FLEXIBLE"}
+                    onChange={() => setAccessType("FLEXIBLE")}
+                    className="h-4 w-4 accent-cyan-400"
+                  />
+                  <span>Flexible (24h access)</span>
+                </label>
+
+                <label className="flex items-center gap-3 rounded-xl border border-transparent px-3 py-2 text-sm text-slate-200 transition hover:border-cyan-500/20 hover:bg-slate-800/60">
+                  <input
+                    type="radio"
+                    value="SCHEDULED"
+                    checked={accessType === "SCHEDULED"}
+                    onChange={() => setAccessType("SCHEDULED")}
+                    className="h-4 w-4 accent-cyan-400"
+                  />
+                  <span>Scheduled (specific time window)</span>
+                </label>
+              </div>
+
+              {accessType === "SCHEDULED" && (
+                <div className="mb-5 rounded-2xl border border-cyan-500/15 bg-slate-900/55 p-4">
+                  <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.28em] text-cyan-200/75">
+                    <CalendarIcon />
+                    <span>Schedule Window</span>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <DateTimeField
+                      label="Start Time"
+                      value={startTime}
+                      onChange={(e) => setStartTime(e.target.value)}
+                    />
+                    <DateTimeField
+                      label="End Time"
+                      value={endTime}
+                      onChange={(e) => setEndTime(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="mb-5 rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-300">
+                - Single-use access
+                <br />- Expires automatically
+                <br />- Monitored for integrity
+              </div>
+
+              {error && <p className="mb-2 text-sm text-red-400">{error}</p>}
+
+              <button
+                onClick={handleSubmit}
+                disabled={loading || jobsLoading}
+                className="w-full rounded-2xl bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 px-4 py-3 text-base font-medium text-white shadow-[0_18px_30px_rgba(37,99,235,0.3)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {loading ? "Generating secure link..." : "Send Interview Link"}
+              </button>
+
+              {link && (
+                <div className="mt-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+                  <p className="mb-2 text-sm text-emerald-300">
+                    {emailStatus === "sent"
+                      ? "Link generated and email sent successfully"
+                      : "Link generated successfully. Email delivery needs attention."}
+                  </p>
+                  {emailStatus === "failed" ? (
+                    <p className="mb-3 text-xs text-amber-200">
+                      The interview link is ready, but the email could not be delivered from the server. You can still copy and send it manually.
+                    </p>
+                  ) : null}
+                  {copyStatus === "failed" ? (
+                    <p className="mb-3 text-xs text-rose-200">
+                      Copy failed on this browser session. Please select the link manually.
+                    </p>
+                  ) : null}
+                  <input
+                    className="mb-3 w-full rounded-2xl border border-slate-700 bg-slate-950/80 p-3 text-sm text-white"
+                    value={link}
+                    readOnly
+                  />
+                  <button
+                    onClick={copy}
+                    className="w-full rounded-2xl border border-slate-600 bg-slate-900/90 px-4 py-3 text-sm text-slate-100 transition hover:border-cyan-400/50 hover:bg-slate-800"
+                  >
+                    {copyStatus === "success" ? "Copied" : "Copy Link"}
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

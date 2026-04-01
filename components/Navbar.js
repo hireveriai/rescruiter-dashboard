@@ -108,12 +108,18 @@ export default function Navbar({ onSendInterviewClick }) {
       }
     }
 
+    function handleOpenCreateJobEvent() {
+      setOpenCreateJob(true);
+    }
+
     document.addEventListener("mousedown", handleClickOutside);
     document.addEventListener("keydown", handleEscape);
+    window.addEventListener("hireveri:open-create-job", handleOpenCreateJobEvent);
 
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("keydown", handleEscape);
+      window.removeEventListener("hireveri:open-create-job", handleOpenCreateJobEvent);
     };
   }, []);
 
@@ -274,3 +280,4 @@ export default function Navbar({ onSendInterviewClick }) {
     </>
   );
 }
+
