@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
+import { copyText } from "@/lib/client/copy-to-clipboard"
 
 function CalendarIcon() {
   return (
@@ -61,6 +62,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
   const [link, setLink] = useState("")
   const [error, setError] = useState("")
   const [emailStatus, setEmailStatus] = useState(null)
+  const [copyStatus, setCopyStatus] = useState("idle")
 
   useEffect(() => {
     if (!isOpen) return
@@ -71,10 +73,20 @@ export default function SendInterviewModal({ isOpen, onClose }) {
       .catch(console.error)
   }, [isOpen, searchParams])
 
+  useEffect(() => {
+    if (copyStatus !== "success") {
+      return
+    }
+
+    const timer = setTimeout(() => setCopyStatus("idle"), 1800)
+    return () => clearTimeout(timer)
+  }, [copyStatus])
+
   const handleSubmit = async () => {
     setError("")
     setLink("")
     setEmailStatus(null)
+    setCopyStatus("idle")
 
     if (!jobId || !name || !email) {
       setError("Please fill all required fields")
@@ -155,8 +167,9 @@ export default function SendInterviewModal({ isOpen, onClose }) {
     }
   }
 
-  const copy = () => {
-    navigator.clipboard.writeText(link)
+  const copy = async () => {
+    const copied = await copyText(link)
+    setCopyStatus(copied ? "success" : "failed")
   }
 
   if (!isOpen) return null
@@ -304,6 +317,11 @@ export default function SendInterviewModal({ isOpen, onClose }) {
                   The interview link is ready, but the email could not be delivered from the server. You can still copy and send it manually.
                 </p>
               ) : null}
+              {copyStatus === "failed" ? (
+                <p className="mb-3 text-xs text-rose-200">
+                  Copy failed on this browser session. Please select the link manually.
+                </p>
+              ) : null}
               <input
                 className="mb-3 w-full rounded-2xl border border-slate-700 bg-slate-950/80 p-3 text-sm text-white"
                 value={link}
@@ -313,7 +331,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
                 onClick={copy}
                 className="w-full rounded-2xl border border-slate-600 bg-slate-900/90 px-4 py-3 text-sm text-slate-100 transition hover:border-cyan-400/50 hover:bg-slate-800"
               >
-                Copy Link
+                {copyStatus === "success" ? "Copied" : "Copy Link"}
               </button>
             </div>
           )}

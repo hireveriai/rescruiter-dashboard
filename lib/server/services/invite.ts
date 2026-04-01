@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/server/prisma"
 import { inviteInterviewSchema } from "@/lib/server/validators"
 import { toFunctionApiError } from "@/lib/server/function-errors"
+import { getInterviewAppUrl } from "@/lib/server/interview-url"
 
 type InviteInterviewInput = z.infer<typeof inviteInterviewSchema>
 
@@ -21,7 +22,7 @@ export async function createInterviewInvite(input: InviteInterviewInput) {
       from public.fn_create_interview_invite(
         ${input.interview_id}::uuid,
         ${input.candidate_id}::uuid,
-        ${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}
+        ${getInterviewAppUrl()}
       )
     `)
 

@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/server/prisma"
 import { ApiError } from "@/lib/server/errors"
 import { toFunctionApiError } from "@/lib/server/function-errors"
+import { getInterviewAppUrl } from "@/lib/server/interview-url"
 
 export type ValidateInterviewTokenInput = {
   token: string
@@ -68,7 +69,7 @@ export async function createInterviewLink(input: CreateInterviewLinkInput) {
         ${input.accessType ?? "FLEXIBLE"},
         ${input.startTime ?? input.start_time ?? null}::timestamptz,
         ${input.endTime ?? input.end_time ?? null}::timestamptz,
-        ${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}
+        ${getInterviewAppUrl()}
       )
     `)
 

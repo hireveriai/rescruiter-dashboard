@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
+import { copyText } from "@/lib/client/copy-to-clipboard"
 
 function getExpiryLabel(expiresAt, nowTick) {
   if (!expiresAt) {
@@ -50,7 +51,7 @@ function getInterviewTypeLabel(item) {
   return "Flexible"
 }
 
-function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, nowTick }) {
+function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, nowTick, copiedLink }) {
   if (!isOpen) {
     return null
   }
@@ -109,7 +110,7 @@ function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, nowTick }
                       onClick={() => onCopy(item.link)}
                       className="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1.5 text-cyan-100 transition hover:bg-cyan-400/20"
                     >
-                      Copy Link
+                      {copiedLink === item.link ? "Copied" : "Copy Link"}
                     </button>
                   </div>
                 </div>
@@ -127,6 +128,7 @@ export default function PendingInterviews() {
   const [interviews, setInterviews] = useState([])
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [nowTick, setNowTick] = useState(() => Date.now())
+  const [copiedLink, setCopiedLink] = useState("")
 
   useEffect(() => {
     let isMounted = true
@@ -157,6 +159,15 @@ export default function PendingInterviews() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!copiedLink) {
+      return
+    }
+
+    const timer = setTimeout(() => setCopiedLink(""), 1800)
+    return () => clearTimeout(timer)
+  }, [copiedLink])
+
   const sortedInterviews = useMemo(
     () =>
       [...interviews].sort(
@@ -168,46 +179,49 @@ export default function PendingInterviews() {
   const previewInterviews = sortedInterviews.slice(0, 3)
 
   async function handleCopy(link) {
-    try {
-      await navigator.clipboard.writeText(link)
-    } catch (error) {
-      console.error("Failed to copy interview link", error)
+    const copied = await copyText(link)
+
+    if (copied) {
+      setCopiedLink(link)
+      return
     }
+
+    console.error("Failed to copy interview link")
   }
 
   return (
     <>
       <div className="mt-10">
-        <div className="flex justify-between items-center mb-4">
+        <div className="mb-4 flex items-center justify-between">
           <h2 className="text-xl font-semibold">
             Pending Interviews
           </h2>
 
           <button
             type="button"
-            className="text-blue-400 text-sm"
+            className="text-sm text-blue-400"
             onClick={() => setIsModalOpen(true)}
           >
             View All
           </button>
         </div>
 
-        <div className="bg-[#111a2e] rounded-lg overflow-hidden">
+        <div className="overflow-hidden rounded-lg bg-[#111a2e]">
           <table className="w-full text-sm">
-            <thead className="text-gray-400 border-b border-gray-700">
+            <thead className="border-b border-gray-700 text-gray-400">
               <tr>
-                <th className="text-left p-4">Candidate</th>
-                <th className="text-left p-4">Job</th>
-                <th className="text-left p-4">Interview Type</th>
-                <th className="text-left p-4">Link Expiry</th>
-                <th className="text-left p-4">Action</th>
+                <th className="p-4 text-left">Candidate</th>
+                <th className="p-4 text-left">Job</th>
+                <th className="p-4 text-left">Interview Type</th>
+                <th className="p-4 text-left">Link Expiry</th>
+                <th className="p-4 text-left">Action</th>
               </tr>
             </thead>
 
             <tbody>
               {previewInterviews.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-4 text-gray-400 text-center">
+                  <td colSpan={5} className="p-4 text-center text-gray-400">
                     No pending interview invites
                   </td>
                 </tr>
@@ -220,7 +234,7 @@ export default function PendingInterviews() {
                     <td className="p-4 text-yellow-400">{getExpiryLabel(item.expiresAt, nowTick)}</td>
                     <td className="p-4">
                       <button className="text-blue-400" onClick={() => handleCopy(item.link)}>
-                        Copy Link
+                        {copiedLink === item.link ? "Copied" : "Copy Link"}
                       </button>
                     </td>
                   </tr>
@@ -237,8 +251,8 @@ export default function PendingInterviews() {
         interviews={sortedInterviews}
         onCopy={handleCopy}
         nowTick={nowTick}
+        copiedLink={copiedLink}
       />
     </>
   )
 }
-
