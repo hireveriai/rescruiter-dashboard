@@ -1,5 +1,6 @@
 ﻿"use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { buildAuthUrl } from "@/lib/client/auth-query";
@@ -101,9 +102,17 @@ export default function ManageTeamPage() {
     <main className="min-h-screen bg-[#081120] px-6 py-12 text-white sm:px-8 lg:px-10">
       <div className="mx-auto max-w-7xl">
         <div className="rounded-[28px] border border-slate-800 bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.12),transparent_28%),linear-gradient(180deg,#0f172a,#0b1324)] p-8 shadow-[0_24px_80px_rgba(2,6,23,0.35)]">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.35em] text-blue-300/80">
+              <Link
+                href={buildAuthUrl("/", searchParams)}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-950/35 px-4 py-2 text-sm text-slate-200 transition hover:border-blue-400/30 hover:bg-slate-900 hover:text-white"
+              >
+                <span aria-hidden="true">←</span>
+                <span>Go Back to Dashboard</span>
+              </Link>
+
+              <p className="mt-6 text-xs uppercase tracking-[0.35em] text-blue-300/80">
                 Recruiter Administration
               </p>
               <h1 className="mt-3 text-4xl font-semibold tracking-tight text-white">
