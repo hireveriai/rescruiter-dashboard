@@ -1,10 +1,11 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { buildAuthUrl } from "@/lib/client/auth-query";
+import { logoutRecruiter } from "@/lib/client/logout";
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params";
 
 import CreateJobModal from "./CreateJobModal";
@@ -24,24 +25,6 @@ function isActivePath(pathname, href) {
   }
 
   return pathname.startsWith(href);
-}
-
-function UserCircleIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 24 24"
-      className="h-4 w-4"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M20 21a8 8 0 0 0-16 0" />
-      <circle cx="12" cy="8" r="4" />
-    </svg>
-  );
 }
 
 function CogIcon() {
@@ -163,9 +146,8 @@ export default function Navbar({ onSendInterviewClick }) {
   }, [profile]);
 
   const handleLogout = () => {
-    document.cookie = "hireveri_session=; Max-Age=0; path=/";
     setProfileOpen(false);
-    window.location.href = "https://verihireai.work";
+    logoutRecruiter();
   };
 
   return (

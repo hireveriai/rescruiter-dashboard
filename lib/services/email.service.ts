@@ -10,7 +10,11 @@ type SendEmailParams = {
 };
 
 export async function sendInterviewEmail({ to, name, link }: SendEmailParams) {
-  await resend.emails.send({
+  if (!process.env.RESEND_API_KEY) {
+    throw new Error("RESEND_API_KEY is not configured");
+  }
+
+  const response = await resend.emails.send({
     from: process.env.EMAIL_FROM || DEFAULT_EMAIL_FROM,
     to,
     subject: "Your HireVeri Interview Invitation",
@@ -35,4 +39,10 @@ export async function sendInterviewEmail({ to, name, link }: SendEmailParams) {
       </div>
     `,
   });
+
+  if (response.error) {
+    throw new Error(response.error.message || "Resend failed to send email");
+  }
+
+  return response.data;
 }
