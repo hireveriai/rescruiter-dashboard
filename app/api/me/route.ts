@@ -18,6 +18,13 @@ export async function GET(request: Request) {
   try {
     const auth = await getRecruiterRequestContext(request)
 
+    await prisma.$queryRaw(Prisma.sql`
+      select public.fn_ensure_default_recruiter_profile(
+        ${auth.userId}::uuid,
+        ${auth.organizationId}::uuid
+      )
+    `)
+
     const rows = await prisma.$queryRaw<RecruiterBootstrapRow[]>(Prisma.sql`
       select
         u.full_name as recruiter_name,

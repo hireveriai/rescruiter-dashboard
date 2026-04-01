@@ -38,7 +38,7 @@ function getOrgRoleTone(code) {
 
   const normalized = code.toLowerCase();
 
-  if (normalized.includes("founder")) {
+  if (normalized.includes("founder") || normalized.includes("super")) {
     return "bg-violet-500/10 text-violet-200 border-violet-400/20";
   }
 
@@ -49,11 +49,159 @@ function getOrgRoleTone(code) {
   return "bg-emerald-500/10 text-emerald-200 border-emerald-400/20";
 }
 
+function AddUserModal({ isOpen, onClose, onSubmit, availableRoles, submitting, error }) {
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [recruiterRoleId, setRecruiterRoleId] = useState("");
+
+  useEffect(() => {
+    if (!isOpen) {
+      setFullName("");
+      setEmail("");
+      setRecruiterRoleId("");
+    }
+  }, [isOpen]);
+
+  const selectedRole = useMemo(
+    () => availableRoles.find((role) => String(role.recruiterRoleId) === recruiterRoleId),
+    [availableRoles, recruiterRoleId]
+  );
+
+  if (!isOpen) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-2xl rounded-[28px] border border-slate-800 bg-[linear-gradient(180deg,#0f172a,#0a1222)] p-6 shadow-[0_24px_80px_rgba(2,6,23,0.45)]">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.32em] text-blue-300/80">Team Provisioning</p>
+            <h2 className="mt-3 text-2xl font-semibold text-white">Add User</h2>
+            <p className="mt-2 text-sm text-slate-400">
+              Invite a recruiter into this organization and assign an organization role. Permissions are inherited automatically from that role.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-slate-700 bg-slate-900/70 px-3 py-1.5 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-2">
+          <div>
+            <label className="mb-2 block text-sm text-slate-400">Full Name</label>
+            <input
+              value={fullName}
+              onChange={(event) => setFullName(event.target.value)}
+              className="w-full rounded-2xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-white outline-none transition focus:border-blue-400/40"
+              placeholder="Enter full name"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm text-slate-400">Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              className="w-full rounded-2xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-white outline-none transition focus:border-blue-400/40"
+              placeholder="user@company.com"
+            />
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <label className="mb-2 block text-sm text-slate-400">Organization Role</label>
+          <select
+            value={recruiterRoleId}
+            onChange={(event) => setRecruiterRoleId(event.target.value)}
+            className="w-full rounded-2xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-white outline-none transition focus:border-blue-400/40"
+          >
+            <option value="">Select role</option>
+            {availableRoles.map((role) => (
+              <option key={role.recruiterRoleId} value={role.recruiterRoleId}>
+                {role.code || `Role ${role.recruiterRoleId}`}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/35 p-4">
+          <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Permissions Preview</p>
+          {!selectedRole ? (
+            <p className="mt-3 text-sm text-slate-400">Select a role to preview the permission set.</p>
+          ) : (
+            <>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] ${getOrgRoleTone(selectedRole.code)}`}>
+                  {selectedRole.code || `Role ${selectedRole.recruiterRoleId}`}
+                </span>
+              </div>
+              {selectedRole.description ? (
+                <p className="mt-3 text-sm text-slate-400">{selectedRole.description}</p>
+              ) : null}
+              <div className="mt-4 flex flex-wrap gap-2">
+                {selectedRole.permissions.length === 0 ? (
+                  <span className="text-sm text-slate-500">No permissions mapped</span>
+                ) : (
+                  selectedRole.permissions.map((permission) => (
+                    <div
+                      key={`${selectedRole.recruiterRoleId}-${permission.code}`}
+                      className="rounded-2xl border border-slate-700 bg-slate-900/75 px-3 py-2"
+                    >
+                      <p className="text-xs font-medium text-slate-100">{permission.code}</p>
+                      {permission.description ? (
+                        <p className="mt-1 text-[11px] text-slate-400">{permission.description}</p>
+                      ) : null}
+                    </div>
+                  ))
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        {error ? (
+          <div className="mt-4 rounded-2xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+            {error}
+          </div>
+        ) : null}
+
+        <div className="mt-6 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl border border-slate-700 px-4 py-2.5 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={() => onSubmit({ fullName, email, recruiterRoleId })}
+            className="rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {submitting ? "Saving..." : "Add User"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ManageTeamPage() {
   const searchParams = useAuthSearchParams();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -91,12 +239,53 @@ export default function ManageTeamPage() {
   }, [searchParams]);
 
   const team = useMemo(() => data?.team ?? [], [data]);
+  const availableRoles = useMemo(() => data?.availableRoles ?? [], [data]);
+  const canManageUsers = Boolean(data?.canManageUsers);
   const summary = data?.summary ?? {
     totalMembers: 0,
     activeMembers: 0,
     recruiters: 0,
     admins: 0,
   };
+
+  async function handleAddUser(form) {
+    setSubmitError("");
+    setNotice("");
+
+    if (!form.fullName?.trim() || !form.email?.trim() || !form.recruiterRoleId) {
+      setSubmitError("Full name, email, and organization role are required.");
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const response = await fetch(buildAuthUrl("/api/manage-team", searchParams), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          fullName: form.fullName,
+          email: form.email,
+          recruiterRoleId: Number(form.recruiterRoleId),
+        }),
+      });
+
+      const payload = await response.json();
+
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error?.message || payload.message || "Failed to add team member");
+      }
+
+      setData(payload.data);
+      setNotice(payload.createdUser?.createdNew ? "User created successfully." : "Existing user updated successfully.");
+      setIsModalOpen(false);
+    } catch (submitErr) {
+      setSubmitError(submitErr.message || "Failed to add team member");
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <main className="min-h-screen bg-[#081120] px-6 py-12 text-white sm:px-8 lg:px-10">
@@ -123,11 +312,25 @@ export default function ManageTeamPage() {
               </p>
             </div>
 
-            <div className="rounded-2xl border border-slate-800 bg-slate-950/35 px-5 py-4 text-right">
-              <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Organization</p>
-              <p className="mt-2 text-lg font-semibold text-white">
-                {data?.organization || "Loading workspace"}
-              </p>
+            <div className="flex flex-col items-end gap-3">
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/35 px-5 py-4 text-right">
+                <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Organization</p>
+                <p className="mt-2 text-lg font-semibold text-white">
+                  {data?.organization || "Loading workspace"}
+                </p>
+              </div>
+              {canManageUsers ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSubmitError("");
+                    setIsModalOpen(true);
+                  }}
+                  className="rounded-xl border border-blue-400/30 bg-blue-500/10 px-5 py-2.5 text-sm font-medium text-blue-100 transition hover:bg-blue-500/20"
+                >
+                  Add User
+                </button>
+              ) : null}
             </div>
           </div>
 
@@ -149,6 +352,12 @@ export default function ManageTeamPage() {
               <p className="mt-3 text-4xl font-semibold text-amber-300">{summary.admins}</p>
             </div>
           </div>
+
+          {notice ? (
+            <div className="mt-6 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-5 py-4 text-sm text-emerald-200">
+              {notice}
+            </div>
+          ) : null}
 
           {error ? (
             <div className="mt-8 rounded-2xl border border-rose-500/20 bg-rose-500/10 px-5 py-4 text-sm text-rose-200">
@@ -239,6 +448,15 @@ export default function ManageTeamPage() {
           </div>
         </div>
       </div>
+
+      <AddUserModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSubmit={handleAddUser}
+        availableRoles={availableRoles}
+        submitting={submitting}
+        error={submitError}
+      />
     </main>
   );
 }
