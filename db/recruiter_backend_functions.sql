@@ -886,18 +886,19 @@ returns smallint
 language plpgsql
 as $$
 declare
+  v_existing_profile boolean := false;
   v_existing_role_id smallint;
   v_profiles_in_org integer;
   v_company_name text;
   v_default_role_id smallint;
 begin
-  select rp.recruiter_role_id
-  into v_existing_role_id
+  select true, rp.recruiter_role_id
+  into v_existing_profile, v_existing_role_id
   from public.recruiter_profiles rp
   where rp.recruiter_id = p_user_id
   limit 1;
 
-  if v_existing_role_id is not null then
+  if coalesce(v_existing_role_id, 0) > 0 then
     return v_existing_role_id;
   end if;
 
@@ -906,7 +907,8 @@ begin
   from public.recruiter_profiles rp
   inner join public.users u
     on u.user_id = rp.recruiter_id
-  where u.organization_id = p_organization_id;
+  where u.organization_id = p_organization_id
+    and rp.recruiter_role_id is not null;
 
   if coalesce(v_profiles_in_org, 0) > 0 then
     return null;
@@ -920,23 +922,32 @@ begin
   where o.organization_id = p_organization_id
   limit 1;
 
-  insert into public.recruiter_profiles (
-    recruiter_id,
-    company_name,
-    recruiter_role_id,
-    organization_id
-  )
-  values (
-    p_user_id,
-    coalesce(v_company_name, 'Organization'),
-    v_default_role_id,
-    p_organization_id
-  )
-  on conflict (recruiter_id) do update
-  set
-    recruiter_role_id = excluded.recruiter_role_id,
-    company_name = excluded.company_name,
-    organization_id = excluded.organization_id;
+  if v_existing_profile then
+    update public.recruiter_profiles
+    set
+      recruiter_role_id = v_default_role_id,
+      company_name = coalesce(company_name, v_company_name, 'Organization'),
+      organization_id = p_organization_id
+    where recruiter_id = p_user_id;
+  else
+    insert into public.recruiter_profiles (
+      recruiter_id,
+      company_name,
+      recruiter_role_id,
+      organization_id
+    )
+    values (
+      p_user_id,
+      coalesce(v_company_name, 'Organization'),
+      v_default_role_id,
+      p_organization_id
+    )
+    on conflict (recruiter_id) do update
+    set
+      recruiter_role_id = excluded.recruiter_role_id,
+      company_name = excluded.company_name,
+      organization_id = excluded.organization_id;
+  end if;
 
   return v_default_role_id;
 exception
@@ -948,151 +959,6 @@ exception
       jsonb_build_object(
         'user_id', p_user_id,
         'organization_id', p_organization_id
-      )
-    );
-    raise;
-end;
-$$;
-
-create or replace function public.fn_upsert_team_member(
-  p_actor_user_id uuid,
-  p_organization_id uuid,
-  p_full_name text,
-  p_email text,
-  p_recruiter_role_id smallint,
-  p_platform_role text default 'RECRUITER',
-  p_is_active boolean default true
-)
-returns table (
-  user_id uuid,
-  recruiter_role_id smallint,
-  created_new boolean
-)
-language plpgsql
-as $$
-declare
-  v_actor_can_manage boolean;
-  v_existing_user_id uuid;
-  v_existing_user_org uuid;
-  v_existing_user_role text;
-  v_first_name text;
-  v_last_name text;
-  v_company_name text;
-  v_created_new boolean := false;
-begin
-  select exists (
-    select 1
-    from public.recruiter_profiles arp
-    inner join public.role_permissions perms
-      on perms.recruiter_role_id = arp.recruiter_role_id
-    where arp.recruiter_id = p_actor_user_id
-      and arp.organization_id = p_organization_id
-      and perms.permission = 'users.manage'
-  )
-  into v_actor_can_manage;
-
-  if not coalesce(v_actor_can_manage, false) then
-    raise exception 'INSUFFICIENT_PERMISSION: users.manage is required';
-  end if;
-
-  if not exists (
-    select 1
-    from public.recruiter_role_pool rrp
-    where rrp.recruiter_role_id = p_recruiter_role_id
-  ) then
-    raise exception 'INVALID_RECRUITER_ROLE: recruiter_role_id not found';
-  end if;
-
-  if upper(coalesce(p_platform_role, 'RECRUITER')) not in ('RECRUITER', 'ADMIN', 'ORG_OWNER') then
-    raise exception 'INVALID_PLATFORM_ROLE: unsupported platform role';
-  end if;
-
-  v_first_name := split_part(trim(coalesce(p_full_name, '')), ' ', 1);
-  v_last_name := nullif(trim(substring(trim(coalesce(p_full_name, '')) from char_length(v_first_name) + 1)), '');
-
-  select u.user_id, u.organization_id, u.role
-  into v_existing_user_id, v_existing_user_org, v_existing_user_role
-  from public.users u
-  where lower(u.email) = lower(p_email)
-  limit 1;
-
-  if v_existing_user_id is not null and v_existing_user_org <> p_organization_id then
-    raise exception 'USER_ORG_MISMATCH: user already exists under a different organization';
-  end if;
-
-  if v_existing_user_id is null then
-    insert into public.users (
-      organization_id,
-      full_name,
-      email,
-      role,
-      is_active,
-      first_name,
-      last_name,
-      is_email_verified
-    )
-    values (
-      p_organization_id,
-      nullif(trim(p_full_name), ''),
-      lower(p_email),
-      upper(coalesce(p_platform_role, 'RECRUITER')),
-      coalesce(p_is_active, true),
-      nullif(v_first_name, ''),
-      v_last_name,
-      false
-    )
-    returning users.user_id into v_existing_user_id;
-
-    v_created_new := true;
-  else
-    update public.users
-    set
-      full_name = coalesce(nullif(trim(p_full_name), ''), full_name),
-      role = upper(coalesce(p_platform_role, role)),
-      is_active = coalesce(p_is_active, is_active),
-      first_name = coalesce(nullif(v_first_name, ''), first_name),
-      last_name = coalesce(v_last_name, last_name)
-    where user_id = v_existing_user_id;
-  end if;
-
-  select o.organization_name
-  into v_company_name
-  from public.organizations o
-  where o.organization_id = p_organization_id
-  limit 1;
-
-  insert into public.recruiter_profiles (
-    recruiter_id,
-    company_name,
-    recruiter_role_id,
-    organization_id
-  )
-  values (
-    v_existing_user_id,
-    coalesce(v_company_name, 'Organization'),
-    p_recruiter_role_id,
-    p_organization_id
-  )
-  on conflict (recruiter_id) do update
-  set
-    recruiter_role_id = excluded.recruiter_role_id,
-    company_name = excluded.company_name,
-    organization_id = excluded.organization_id;
-
-  return query
-  select v_existing_user_id, p_recruiter_role_id, v_created_new;
-exception
-  when others then
-    perform public.log_backend_error(
-      'fn_upsert_team_member',
-      sqlerrm,
-      sqlstate,
-      jsonb_build_object(
-        'actor_user_id', p_actor_user_id,
-        'organization_id', p_organization_id,
-        'email', p_email,
-        'recruiter_role_id', p_recruiter_role_id,
-        'platform_role', p_platform_role
       )
     );
     raise;
@@ -1197,3 +1063,7 @@ exception
     raise;
 end;
 $$;
+
+
+
+

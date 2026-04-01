@@ -74,6 +74,12 @@ function getRecruiterAppUrl() {
 }
 
 async function getTeamWorkspace(auth: RecruiterAuth) {
+  await prisma.$queryRaw(Prisma.sql`
+    select public.fn_ensure_default_recruiter_profile(
+      ${auth.userId}::uuid,
+      ${auth.organizationId}::uuid
+    )
+  `)
   const summaryRows = await prisma.$queryRaw<TeamSummaryRow[]>(Prisma.sql`
     select
       o.organization_name,
@@ -377,4 +383,5 @@ export async function PATCH(request: Request) {
     return errorResponse(error)
   }
 }
+
 
