@@ -64,6 +64,10 @@ export default function Sidebar() {
   useEffect(() => {
     let isMounted = true
 
+    function handleOpenCreateJobEvent() {
+      setOpenCreateJob(true)
+    }
+
     fetch(buildAuthUrl("/api/me", searchParams))
       .then((res) => res.json())
       .then((data) => {
@@ -87,8 +91,11 @@ export default function Sidebar() {
         }
       })
 
+    window.addEventListener("hireveri:open-create-job", handleOpenCreateJobEvent)
+
     return () => {
       isMounted = false
+      window.removeEventListener("hireveri:open-create-job", handleOpenCreateJobEvent)
     }
   }, [searchParams])
 
@@ -192,4 +199,5 @@ export default function Sidebar() {
     </>
   )
 }
+
 
