@@ -86,11 +86,27 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
       count(u.user_id)::int as total_members,
       count(*) filter (where u.is_active = true)::int as active_members,
       count(*) filter (where u.role = 'RECRUITER')::int as recruiters,
-      count(*) filter (where u.role in ('ADMIN', 'ORG_OWNER'))::int as admins
+      count(*) filter (
+        where rp.recruiter_role_id is not null
+          and (
+            lower(coalesce(rrp.code, '')) like '%founder%'
+            or lower(coalesce(rrp.code, '')) like '%super%'
+            or exists (
+              select 1
+              from public.role_permissions perms_admin
+              where perms_admin.recruiter_role_id = rp.recruiter_role_id
+                and perms_admin.permission in ('users.manage', 'organization.settings')
+            )
+          )
+      )::int as admins
     from public.organizations o
     left join public.users u
       on u.organization_id = o.organization_id
      and u.role in ('RECRUITER', 'ADMIN', 'ORG_OWNER')
+    left join public.recruiter_profiles rp
+      on rp.recruiter_id = u.user_id
+    left join public.recruiter_role_pool rrp
+      on rrp.recruiter_role_id = rp.recruiter_role_id
     where o.organization_id = ${auth.organizationId}::uuid
     group by o.organization_name
     limit 1
@@ -383,5 +399,6 @@ export async function PATCH(request: Request) {
     return errorResponse(error)
   }
 }
+
 
 
