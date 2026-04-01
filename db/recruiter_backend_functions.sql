@@ -1098,3 +1098,102 @@ exception
     raise;
 end;
 $$;
+
+create or replace function public.fn_manage_team_member(
+  p_actor_user_id uuid,
+  p_organization_id uuid,
+  p_target_user_id uuid,
+  p_recruiter_role_id smallint default null,
+  p_is_active boolean default null
+)
+returns table (
+  user_id uuid,
+  recruiter_role_id smallint,
+  is_active boolean
+)
+language plpgsql
+as $$
+declare
+  v_actor_can_manage boolean;
+  v_target_exists boolean;
+  v_target_role_id smallint;
+  v_target_active boolean;
+begin
+  select exists (
+    select 1
+    from public.recruiter_profiles arp
+    inner join public.role_permissions perms
+      on perms.recruiter_role_id = arp.recruiter_role_id
+    where arp.recruiter_id = p_actor_user_id
+      and arp.organization_id = p_organization_id
+      and perms.permission = 'users.manage'
+  )
+  into v_actor_can_manage;
+
+  if not coalesce(v_actor_can_manage, false) then
+    raise exception 'INSUFFICIENT_PERMISSION: users.manage is required';
+  end if;
+
+  select exists (
+    select 1
+    from public.users u
+    where u.user_id = p_target_user_id
+      and u.organization_id = p_organization_id
+      and u.role in ('RECRUITER', 'ADMIN', 'ORG_OWNER')
+  )
+  into v_target_exists;
+
+  if not coalesce(v_target_exists, false) then
+    raise exception 'TEAM_MEMBER_NOT_FOUND: target user not found in organization';
+  end if;
+
+  if p_recruiter_role_id is not null then
+    if not exists (
+      select 1
+      from public.recruiter_role_pool rrp
+      where rrp.recruiter_role_id = p_recruiter_role_id
+    ) then
+      raise exception 'INVALID_RECRUITER_ROLE: recruiter_role_id not found';
+    end if;
+
+    update public.recruiter_profiles
+    set recruiter_role_id = p_recruiter_role_id
+    where recruiter_id = p_target_user_id
+      and organization_id = p_organization_id;
+  end if;
+
+  if p_is_active is not null then
+    update public.users
+    set is_active = p_is_active
+    where user_id = p_target_user_id
+      and organization_id = p_organization_id;
+  end if;
+
+  select rp.recruiter_role_id, u.is_active
+  into v_target_role_id, v_target_active
+  from public.users u
+  left join public.recruiter_profiles rp
+    on rp.recruiter_id = u.user_id
+  where u.user_id = p_target_user_id
+    and u.organization_id = p_organization_id
+  limit 1;
+
+  return query
+  select p_target_user_id, v_target_role_id, v_target_active;
+exception
+  when others then
+    perform public.log_backend_error(
+      'fn_manage_team_member',
+      sqlerrm,
+      sqlstate,
+      jsonb_build_object(
+        'actor_user_id', p_actor_user_id,
+        'organization_id', p_organization_id,
+        'target_user_id', p_target_user_id,
+        'recruiter_role_id', p_recruiter_role_id,
+        'is_active', p_is_active
+      )
+    );
+    raise;
+end;
+$$;

@@ -193,14 +193,165 @@ function AddUserModal({ isOpen, onClose, onSubmit, availableRoles, submitting, e
   );
 }
 
+function EditUserModal({ isOpen, member, availableRoles, saving, error, onClose, onSubmit }) {
+  const [recruiterRoleId, setRecruiterRoleId] = useState("");
+  const [isActive, setIsActive] = useState(true);
+
+  useEffect(() => {
+    if (isOpen && member) {
+      setRecruiterRoleId(member.recruiterRoleId ? String(member.recruiterRoleId) : "");
+      setIsActive(Boolean(member.isActive));
+    }
+  }, [isOpen, member]);
+
+  const selectedRole = useMemo(
+    () => availableRoles.find((role) => String(role.recruiterRoleId) === recruiterRoleId),
+    [availableRoles, recruiterRoleId]
+  );
+
+  if (!isOpen || !member) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-2xl rounded-[28px] border border-slate-800 bg-[linear-gradient(180deg,#0f172a,#0a1222)] p-6 shadow-[0_24px_80px_rgba(2,6,23,0.45)]">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.32em] text-blue-300/80">Team Access</p>
+            <h2 className="mt-3 text-2xl font-semibold text-white">Edit Team Member</h2>
+            <p className="mt-2 text-sm text-slate-400">
+              Update the organization role and access state for this recruiter workspace member.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-slate-700 bg-slate-900/70 px-3 py-1.5 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-950/35 p-4">
+          <p className="text-lg font-semibold text-white">{member.name}</p>
+          <p className="mt-1 text-sm text-slate-400">{member.email}</p>
+        </div>
+
+        <div className="mt-4">
+          <label className="mb-2 block text-sm text-slate-400">Organization Role</label>
+          <select
+            value={recruiterRoleId}
+            onChange={(event) => setRecruiterRoleId(event.target.value)}
+            className="w-full rounded-2xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-white outline-none transition focus:border-blue-400/40"
+          >
+            <option value="">Select role</option>
+            {availableRoles.map((role) => (
+              <option key={role.recruiterRoleId} value={role.recruiterRoleId}>
+                {role.code || `Role ${role.recruiterRoleId}`}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/35 p-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium text-white">Workspace Status</p>
+              <p className="mt-1 text-sm text-slate-400">
+                Toggle whether this recruiter can actively access the workspace.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsActive((value) => !value)}
+              className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+                isActive
+                  ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
+                  : "border-slate-700 bg-slate-900/70 text-slate-300"
+              }`}
+            >
+              {isActive ? "Active" : "Inactive"}
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/35 p-4">
+          <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Permissions Preview</p>
+          {!selectedRole ? (
+            <p className="mt-3 text-sm text-slate-400">Select a role to preview the permission set.</p>
+          ) : (
+            <>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] ${getOrgRoleTone(selectedRole.code)}`}>
+                  {selectedRole.code || `Role ${selectedRole.recruiterRoleId}`}
+                </span>
+              </div>
+              {selectedRole.description ? (
+                <p className="mt-3 text-sm text-slate-400">{selectedRole.description}</p>
+              ) : null}
+              <div className="mt-4 flex flex-wrap gap-2">
+                {selectedRole.permissions.length === 0 ? (
+                  <span className="text-sm text-slate-500">No permissions mapped</span>
+                ) : (
+                  selectedRole.permissions.map((permission) => (
+                    <div
+                      key={`${selectedRole.recruiterRoleId}-${permission.code}`}
+                      className="rounded-2xl border border-slate-700 bg-slate-900/75 px-3 py-2"
+                    >
+                      <p className="text-xs font-medium text-slate-100">{permission.code}</p>
+                      {permission.description ? (
+                        <p className="mt-1 text-[11px] text-slate-400">{permission.description}</p>
+                      ) : null}
+                    </div>
+                  ))
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        {error ? (
+          <div className="mt-4 rounded-2xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+            {error}
+          </div>
+        ) : null}
+
+        <div className="mt-6 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl border border-slate-700 px-4 py-2.5 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => onSubmit({ userId: member.userId, recruiterRoleId, isActive })}
+            className="rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {saving ? "Saving..." : "Save Changes"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ManageTeamPage() {
   const searchParams = useAuthSearchParams();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [selectedMember, setSelectedMember] = useState(null);
   const [submitError, setSubmitError] = useState("");
+  const [editError, setEditError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [rowActionUserId, setRowActionUserId] = useState("");
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
@@ -287,6 +438,84 @@ export default function ManageTeamPage() {
     }
   }
 
+  async function handleSaveMemberEdit(form) {
+    setEditError("");
+    setNotice("");
+
+    if (!form.userId || !form.recruiterRoleId) {
+      setEditError("Organization role is required.");
+      return;
+    }
+
+    try {
+      setSavingEdit(true);
+      const response = await fetch(buildAuthUrl("/api/manage-team", searchParams), {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "update-member",
+          userId: form.userId,
+          recruiterRoleId: Number(form.recruiterRoleId),
+          isActive: Boolean(form.isActive),
+        }),
+      });
+
+      const payload = await response.json();
+
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error?.message || payload.message || "Failed to update team member");
+      }
+
+      setData(payload.data);
+      setNotice("Team member access updated successfully.");
+      setIsEditModalOpen(false);
+      setSelectedMember(null);
+    } catch (saveErr) {
+      setEditError(saveErr.message || "Failed to update team member");
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  async function handleResendInvite(member) {
+    setNotice("");
+    setError("");
+    setRowActionUserId(member.userId);
+
+    try {
+      const response = await fetch(buildAuthUrl("/api/manage-team", searchParams), {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "resend-invite",
+          userId: member.userId,
+        }),
+      });
+
+      const payload = await response.json();
+
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error?.message || payload.message || "Failed to resend access email");
+      }
+
+      setNotice(`Access email sent to ${member.email}.`);
+    } catch (resendErr) {
+      setError(resendErr.message || "Failed to resend access email");
+    } finally {
+      setRowActionUserId("");
+    }
+  }
+
+  function openEditModal(member) {
+    setEditError("");
+    setSelectedMember(member);
+    setIsEditModalOpen(true);
+  }
+
   return (
     <main className="min-h-screen bg-[#081120] px-6 py-12 text-white sm:px-8 lg:px-10">
       <div className="mx-auto max-w-7xl">
@@ -366,12 +595,13 @@ export default function ManageTeamPage() {
           ) : null}
 
           <div className="mt-8 overflow-hidden rounded-[24px] border border-slate-800 bg-slate-950/30">
-            <div className="grid grid-cols-[1.2fr_1fr_0.8fr_1fr_1.8fr] gap-4 border-b border-slate-800 px-6 py-4 text-xs uppercase tracking-[0.28em] text-slate-500">
+            <div className="grid grid-cols-[1.1fr_0.95fr_0.6fr_0.75fr_1.4fr_1fr] gap-4 border-b border-slate-800 px-6 py-4 text-xs uppercase tracking-[0.28em] text-slate-500">
               <div>Team Member</div>
               <div>Organization Role</div>
               <div>Status</div>
               <div>Joined</div>
               <div>Permissions</div>
+              <div>Actions</div>
             </div>
 
             {loading ? (
@@ -382,7 +612,7 @@ export default function ManageTeamPage() {
               team.map((member) => (
                 <div
                   key={member.userId}
-                  className="grid grid-cols-[1.2fr_1fr_0.8fr_1fr_1.8fr] gap-4 border-b border-slate-900 px-6 py-5 last:border-b-0"
+                  className="grid grid-cols-[1.1fr_0.95fr_0.6fr_0.75fr_1.4fr_1fr] gap-4 border-b border-slate-900 px-6 py-5 last:border-b-0"
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
@@ -442,6 +672,30 @@ export default function ManageTeamPage() {
                       ))
                     )}
                   </div>
+
+                  <div className="flex flex-col gap-2">
+                    {canManageUsers && !member.isCurrentUser ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(member)}
+                          className="rounded-xl border border-slate-700 px-3 py-2 text-sm text-slate-200 transition hover:border-blue-400/30 hover:text-white"
+                        >
+                          Edit Access
+                        </button>
+                        <button
+                          type="button"
+                          disabled={rowActionUserId === member.userId}
+                          onClick={() => handleResendInvite(member)}
+                          className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100 transition hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {rowActionUserId === member.userId ? "Sending..." : "Resend Access"}
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-sm text-slate-500">No actions</span>
+                    )}
+                  </div>
                 </div>
               ))
             )}
@@ -456,6 +710,19 @@ export default function ManageTeamPage() {
         availableRoles={availableRoles}
         submitting={submitting}
         error={submitError}
+      />
+
+      <EditUserModal
+        isOpen={isEditModalOpen}
+        member={selectedMember}
+        availableRoles={availableRoles}
+        saving={savingEdit}
+        error={editError}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setSelectedMember(null);
+        }}
+        onSubmit={handleSaveMemberEdit}
       />
     </main>
   );

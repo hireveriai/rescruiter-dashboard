@@ -2,8 +2,10 @@
 import { NextResponse } from "next/server"
 
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
-import { errorResponse } from "@/lib/server/response"
+import { ApiError } from "@/lib/server/errors"
 import { prisma } from "@/lib/server/prisma"
+import { errorResponse } from "@/lib/server/response"
+import { sendRecruiterAccessEmail } from "@/lib/services/email.service"
 
 type PermissionDetail = {
   code: string
@@ -44,7 +46,34 @@ type CreateTeamMemberRow = {
   created_new: boolean
 }
 
-async function getTeamWorkspace(auth: { userId: string; organizationId: string }) {
+type TeamMemberLookupRow = {
+  user_id: string
+  full_name: string | null
+  email: string
+  organization_name: string | null
+}
+
+type ManageTeamMemberRow = {
+  user_id: string
+  recruiter_role_id: number | null
+  is_active: boolean
+}
+
+type RecruiterAuth = {
+  userId: string
+  organizationId: string
+}
+
+function getRecruiterAppUrl() {
+  return (
+    process.env.RECRUITER_APP_URL ||
+    process.env.NEXT_PUBLIC_RECRUITER_APP_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    "https://recruiter.verihireai.work"
+  )
+}
+
+async function getTeamWorkspace(auth: RecruiterAuth) {
   const summaryRows = await prisma.$queryRaw<TeamSummaryRow[]>(Prisma.sql`
     select
       o.organization_name,
@@ -153,7 +182,8 @@ async function getTeamWorkspace(auth: { userId: string; organizationId: string }
   }))
 
   const currentMember = team.find((member) => member.isCurrentUser)
-  const canManageUsers = currentMember?.permissions?.some((permission) => permission.code === 'users.manage') ?? false
+  const canManageUsers =
+    currentMember?.permissions?.some((permission) => permission.code === "users.manage") ?? false
 
   return {
     organization: summary.organization_name ?? "",
@@ -172,6 +202,25 @@ async function getTeamWorkspace(auth: { userId: string; organizationId: string }
       permissions: role.permission_details ?? [],
     })),
   }
+}
+
+async function getTeamMemberForAccessEmail(auth: RecruiterAuth, targetUserId: string) {
+  const rows = await prisma.$queryRaw<TeamMemberLookupRow[]>(Prisma.sql`
+    select
+      u.user_id,
+      u.full_name,
+      u.email,
+      o.organization_name
+    from public.users u
+    inner join public.organizations o
+      on o.organization_id = u.organization_id
+    where u.user_id = ${targetUserId}::uuid
+      and u.organization_id = ${auth.organizationId}::uuid
+      and u.role in ('RECRUITER', 'ADMIN', 'ORG_OWNER')
+    limit 1
+  `)
+
+  return rows[0] ?? null
 }
 
 export async function GET(request: Request) {
@@ -242,3 +291,90 @@ export async function POST(request: Request) {
     return errorResponse(error)
   }
 }
+
+export async function PATCH(request: Request) {
+  try {
+    const auth = await getRecruiterRequestContext(request)
+    const body = await request.json()
+    const action = String(body.action ?? "").trim()
+    const targetUserId = String(body.userId ?? body.user_id ?? "").trim()
+
+    if (!action || !targetUserId) {
+      throw new ApiError(400, "INVALID_INPUT", "action and userId are required")
+    }
+
+    if (action === "resend-invite") {
+      const teamMember = await getTeamMemberForAccessEmail(auth, targetUserId)
+
+      if (!teamMember) {
+        throw new ApiError(404, "TEAM_MEMBER_NOT_FOUND", "Team member not found in this organization")
+      }
+
+      const workspaceLink = `${getRecruiterAppUrl().replace(/\/$/, "")}/?userId=${auth.userId}&organizationId=${auth.organizationId}`
+
+      await sendRecruiterAccessEmail({
+        to: teamMember.email,
+        name: teamMember.full_name ?? teamMember.email,
+        organization: teamMember.organization_name ?? "HireVeri",
+        link: workspaceLink,
+      })
+
+      return NextResponse.json({
+        success: true,
+        message: "Access email sent successfully",
+      })
+    }
+
+    if (action !== "update-member") {
+      throw new ApiError(400, "INVALID_ACTION", "Unsupported team action")
+    }
+
+    const recruiterRoleId =
+      body.recruiterRoleId === null || body.recruiterRoleId === undefined || body.recruiterRoleId === ""
+        ? null
+        : Number(body.recruiterRoleId)
+    const isActive =
+      typeof body.isActive === "boolean"
+        ? body.isActive
+        : body.is_active === true || body.is_active === false
+          ? Boolean(body.is_active)
+          : null
+
+    if (recruiterRoleId === null && isActive === null) {
+      throw new ApiError(400, "INVALID_INPUT", "Provide recruiterRoleId and/or isActive")
+    }
+
+    if (recruiterRoleId !== null && !Number.isInteger(recruiterRoleId)) {
+      throw new ApiError(400, "INVALID_INPUT", "recruiterRoleId must be a valid integer")
+    }
+
+    const recruiterRoleFragment = recruiterRoleId === null ? Prisma.sql`null` : Prisma.sql`${recruiterRoleId}::smallint`
+    const isActiveFragment = isActive === null ? Prisma.sql`null` : Prisma.sql`${isActive}`
+
+    await prisma.$queryRaw<ManageTeamMemberRow[]>(Prisma.sql`
+      select *
+      from public.fn_manage_team_member(
+        ${auth.userId}::uuid,
+        ${auth.organizationId}::uuid,
+        ${targetUserId}::uuid,
+        ${recruiterRoleFragment},
+        ${isActiveFragment}
+      )
+    `)
+
+    const data = await getTeamWorkspace(auth)
+
+    return NextResponse.json({
+      success: true,
+      data,
+      updatedUser: {
+        userId: targetUserId,
+        recruiterRoleId,
+        isActive,
+      },
+    })
+  } catch (error) {
+    return errorResponse(error)
+  }
+}
+
