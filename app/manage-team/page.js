@@ -144,7 +144,7 @@ function AddUserModal({ isOpen, onClose, onSubmit, availableRoles, submitting, e
               {selectedRole.description ? (
                 <p className="mt-3 text-sm text-slate-400">{selectedRole.description}</p>
               ) : null}
-              <div className="mt-4 flex flex-wrap gap-2">
+              <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {selectedRole.permissions.length === 0 ? (
                   <span className="text-sm text-slate-500">No permissions mapped</span>
                 ) : (
@@ -153,7 +153,7 @@ function AddUserModal({ isOpen, onClose, onSubmit, availableRoles, submitting, e
                       key={`${selectedRole.recruiterRoleId}-${permission.code}`}
                       className="rounded-2xl border border-slate-700 bg-slate-900/75 px-3 py-2"
                     >
-                      <p className="text-xs font-medium text-slate-100">{permission.code}</p>
+                      <p className="truncate text-xs font-medium text-slate-100">{permission.code}</p>
                       {permission.description ? (
                         <p className="mt-1 text-[11px] text-slate-400">{permission.description}</p>
                       ) : null}
@@ -290,7 +290,7 @@ function EditUserModal({ isOpen, member, availableRoles, saving, error, onClose,
               {selectedRole.description ? (
                 <p className="mt-3 text-sm text-slate-400">{selectedRole.description}</p>
               ) : null}
-              <div className="mt-4 flex flex-wrap gap-2">
+              <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {selectedRole.permissions.length === 0 ? (
                   <span className="text-sm text-slate-500">No permissions mapped</span>
                 ) : (
@@ -299,7 +299,7 @@ function EditUserModal({ isOpen, member, availableRoles, saving, error, onClose,
                       key={`${selectedRole.recruiterRoleId}-${permission.code}`}
                       className="rounded-2xl border border-slate-700 bg-slate-900/75 px-3 py-2"
                     >
-                      <p className="text-xs font-medium text-slate-100">{permission.code}</p>
+                      <p className="truncate text-xs font-medium text-slate-100">{permission.code}</p>
                       {permission.description ? (
                         <p className="mt-1 text-[11px] text-slate-400">{permission.description}</p>
                       ) : null}
@@ -595,7 +595,7 @@ export default function ManageTeamPage() {
           ) : null}
 
           <div className="mt-8 overflow-hidden rounded-[24px] border border-slate-800 bg-slate-950/30">
-            <div className="grid grid-cols-[1.1fr_0.95fr_0.6fr_0.75fr_1.4fr_1fr] gap-4 border-b border-slate-800 px-6 py-4 text-xs uppercase tracking-[0.28em] text-slate-500">
+            <div className="grid grid-cols-[1.05fr_0.9fr_0.55fr_0.7fr_1.7fr_0.9fr] gap-4 border-b border-slate-800 px-6 py-4 text-xs uppercase tracking-[0.28em] text-slate-500">
               <div>Team Member</div>
               <div>Organization Role</div>
               <div>Status</div>
@@ -612,7 +612,7 @@ export default function ManageTeamPage() {
               team.map((member) => (
                 <div
                   key={member.userId}
-                  className="grid grid-cols-[1.1fr_0.95fr_0.6fr_0.75fr_1.4fr_1fr] gap-4 border-b border-slate-900 px-6 py-5 last:border-b-0"
+                  className="grid grid-cols-[1.05fr_0.9fr_0.55fr_0.7fr_1.7fr_0.9fr] gap-4 border-b border-slate-900 px-6 py-5 last:border-b-0"
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
@@ -655,7 +655,7 @@ export default function ManageTeamPage() {
 
                   <div className="text-slate-300">{formatDate(member.joinedAt)}</div>
 
-                  <div className="flex flex-wrap gap-2">
+                  <div className="grid grid-cols-3 gap-2 content-start">
                     {member.permissions.length === 0 ? (
                       <span className="text-sm text-slate-500">No permissions mapped</span>
                     ) : (
@@ -664,9 +664,9 @@ export default function ManageTeamPage() {
                           key={`${member.userId}-${permission.code}`}
                           className="rounded-2xl border border-slate-700 bg-slate-900/75 px-3 py-2"
                         >
-                          <p className="text-xs font-medium text-slate-100">{permission.code}</p>
+                          <p className="truncate text-xs font-medium text-slate-100">{permission.code}</p>
                           {permission.description ? (
-                            <p className="mt-1 text-[11px] text-slate-400">{permission.description}</p>
+                            <p className="mt-1 line-clamp-2 text-[11px] text-slate-400">{permission.description}</p>
                           ) : null}
                         </div>
                       ))
@@ -727,3 +727,4 @@ export default function ManageTeamPage() {
     </main>
   );
 }
+
