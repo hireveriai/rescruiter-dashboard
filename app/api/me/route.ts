@@ -1,9 +1,9 @@
-import { Prisma } from "@prisma/client"
 import { NextResponse } from "next/server"
 
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
+import { ApiError } from "@/lib/server/errors"
+import { pgPool } from "@/lib/server/pg"
 import { errorResponse } from "@/lib/server/response"
-import { prisma } from "@/lib/server/prisma"
 
 type RecruiterBaseRow = {
   recruiter_name: string | null
@@ -21,21 +21,31 @@ export async function GET(request: Request) {
   try {
     const auth = await getRecruiterRequestContext(request)
 
-    const baseRows = await prisma.$queryRaw<RecruiterBaseRow[]>(Prisma.sql`
-      select
-        u.full_name as recruiter_name,
-        u.email as recruiter_email,
-        o.organization_name
-      from public.users u
-      left join public.organizations o
-        on o.organization_id = u.organization_id
-      where u.user_id = ${auth.userId}::uuid
-        and u.organization_id = ${auth.organizationId}::uuid
-        and u.role = 'RECRUITER'
-      limit 1
-    `)
+    let recruiter: RecruiterBaseRow | undefined
 
-    const recruiter = baseRows[0]
+    try {
+      const baseRows = await pgPool.query<RecruiterBaseRow>(
+        `
+          select
+            u.full_name as recruiter_name,
+            u.email as recruiter_email,
+            o.organization_name
+          from public.users u
+          left join public.organizations o
+            on o.organization_id = u.organization_id
+          where u.user_id = $1::uuid
+            and u.organization_id = $2::uuid
+            and u.role = 'RECRUITER'
+          limit 1
+        `,
+        [auth.userId, auth.organizationId]
+      )
+
+      recruiter = baseRows.rows[0]
+    } catch (error) {
+      console.error("Recruiter base profile lookup failed", error)
+      throw new ApiError(500, "RECRUITER_BASE_LOOKUP_FAILED", "Could not load recruiter workspace context")
+    }
 
     if (!recruiter) {
       return NextResponse.json(
@@ -50,33 +60,39 @@ export async function GET(request: Request) {
       )
     }
 
-    let profileCompanyName = null
-    let recruiterRoleId = null
+    let profileCompanyName: string | null = null
+    let recruiterRoleId: number | null = null
     let recruiterProfileExists = false
 
     try {
-      await prisma.$queryRaw(Prisma.sql`
-        select public.fn_ensure_default_recruiter_profile(
-          ${auth.userId}::uuid,
-          ${auth.organizationId}::uuid
-        )
-      `)
+      await pgPool.query(
+        `
+          select public.fn_ensure_default_recruiter_profile(
+            $1::uuid,
+            $2::uuid
+          )
+        `,
+        [auth.userId, auth.organizationId]
+      )
     } catch (healingError) {
       console.warn("Recruiter profile auto-heal skipped during /api/me bootstrap", healingError)
     }
 
     try {
-      const profileRows = await prisma.$queryRaw<RecruiterProfileRow[]>(Prisma.sql`
-        select
-          rp.company_name as profile_company_name,
-          rp.recruiter_role_id,
-          (rp.recruiter_id is not null) as recruiter_profile_exists
-        from public.recruiter_profiles rp
-        where rp.recruiter_id = ${auth.userId}::uuid
-        limit 1
-      `)
+      const profileRows = await pgPool.query<RecruiterProfileRow>(
+        `
+          select
+            rp.company_name as profile_company_name,
+            rp.recruiter_role_id,
+            (rp.recruiter_id is not null) as recruiter_profile_exists
+          from public.recruiter_profiles rp
+          where rp.recruiter_id = $1::uuid
+          limit 1
+        `,
+        [auth.userId]
+      )
 
-      const profile = profileRows[0]
+      const profile = profileRows.rows[0]
 
       if (profile) {
         profileCompanyName = profile.profile_company_name
