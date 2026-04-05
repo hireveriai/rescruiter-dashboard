@@ -1,5 +1,7 @@
+import { Prisma } from "@prisma/client"
+
 import { ApiError } from "@/lib/server/errors"
-import { pgPool } from "@/lib/server/pg"
+import { prisma } from "@/lib/server/prisma"
 
 export type RecruiterRequestContext = {
   userId: string
@@ -72,25 +74,22 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
   let sessionRows
 
   try {
-    sessionRows = await pgPool.query<AuthSessionRow>(
-      `
-        select
-          s.session_id::text as session_id,
-          s.identity_id::text as identity_id
-        from public.auth_sessions s
-        where s.session_id::text = $1
-          and s.is_active = true
-          and s.expires_at > now()
-        limit 1
-      `,
-      [sessionId]
-    )
+    sessionRows = await prisma.$queryRaw<AuthSessionRow[]>(Prisma.sql`
+      select
+        s.session_id::text as session_id,
+        s.identity_id::text as identity_id
+      from public.auth_sessions s
+      where s.session_id::text = ${sessionId}
+        and s.is_active = true
+        and s.expires_at > now()
+      limit 1
+    `)
   } catch (error) {
     console.error("Recruiter auth session lookup failed", error)
     throw new ApiError(500, "AUTH_SESSION_LOOKUP_FAILED", "Could not validate recruiter session")
   }
 
-  const session = sessionRows.rows[0]
+  const session = sessionRows[0]
 
   if (!session?.identity_id) {
     throw new ApiError(401, "INVALID_SESSION", "Authenticated recruiter session is invalid or expired")
@@ -99,25 +98,22 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
   let recruiterRows
 
   try {
-    recruiterRows = await pgPool.query<RecruiterLookupRow>(
-      `
-        select u.user_id::text as user_id
-        from public.users u
-        where u.user_id::text = $1
-          and u.organization_id::text = $2
-          and u.identity_id::text = $3
-          and u.role = 'RECRUITER'
-          and u.is_active = true
-        limit 1
-      `,
-      [hintedUserId, hintedOrganizationId, session.identity_id]
-    )
+    recruiterRows = await prisma.$queryRaw<RecruiterLookupRow[]>(Prisma.sql`
+      select u.user_id::text as user_id
+      from public.users u
+      where u.user_id::text = ${hintedUserId}
+        and u.organization_id::text = ${hintedOrganizationId}
+        and u.identity_id::text = ${session.identity_id}
+        and u.role = 'RECRUITER'
+        and u.is_active = true
+      limit 1
+    `)
   } catch (error) {
     console.error("Recruiter user lookup failed", error)
     throw new ApiError(500, "RECRUITER_LOOKUP_FAILED", "Could not validate recruiter access")
   }
 
-  if (!recruiterRows.rows[0]?.user_id) {
+  if (!recruiterRows[0]?.user_id) {
     throw new ApiError(401, "RECRUITER_NOT_FOUND", "Recruiter not found for the authenticated session")
   }
 
