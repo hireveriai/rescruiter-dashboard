@@ -1,4 +1,4 @@
-﻿import { Prisma } from "@prisma/client"
+import { Prisma } from "@prisma/client"
 import { NextResponse } from "next/server"
 
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
@@ -18,12 +18,16 @@ export async function GET(request: Request) {
   try {
     const auth = await getRecruiterRequestContext(request)
 
-    await prisma.$queryRaw(Prisma.sql`
-      select public.fn_ensure_default_recruiter_profile(
-        ${auth.userId}::uuid,
-        ${auth.organizationId}::uuid
-      )
-    `)
+    try {
+      await prisma.$queryRaw(Prisma.sql`
+        select public.fn_ensure_default_recruiter_profile(
+          ${auth.userId}::uuid,
+          ${auth.organizationId}::uuid
+        )
+      `)
+    } catch (healingError) {
+      console.warn("Recruiter profile auto-heal skipped during /api/me bootstrap", healingError)
+    }
 
     const rows = await prisma.$queryRaw<RecruiterBootstrapRow[]>(Prisma.sql`
       select
@@ -73,6 +77,7 @@ export async function GET(request: Request) {
             userId: auth.userId,
             organizationId: auth.organizationId,
             recruiterProfileExists: false,
+            sessionValidatedVia: auth.sessionValidatedVia,
           },
         },
         { status: 409 }
@@ -90,6 +95,7 @@ export async function GET(request: Request) {
         recruiterRoleId: recruiter.recruiter_role_id,
         recruiterProfileExists: true,
         sessionCookieMatched: auth.sessionCookieMatched,
+        sessionValidatedVia: auth.sessionValidatedVia,
       },
     })
   } catch (error) {
