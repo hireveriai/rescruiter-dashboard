@@ -5,10 +5,13 @@ import { getRecruiterRequestContext } from "@/lib/server/auth-context"
 import { errorResponse } from "@/lib/server/response"
 import { prisma } from "@/lib/server/prisma"
 
-type RecruiterBootstrapRow = {
+type RecruiterBaseRow = {
   recruiter_name: string | null
   recruiter_email: string
   organization_name: string | null
+}
+
+type RecruiterProfileRow = {
   profile_company_name: string | null
   recruiter_role_id: number | null
   recruiter_profile_exists: boolean
@@ -18,28 +21,12 @@ export async function GET(request: Request) {
   try {
     const auth = await getRecruiterRequestContext(request)
 
-    try {
-      await prisma.$queryRaw(Prisma.sql`
-        select public.fn_ensure_default_recruiter_profile(
-          ${auth.userId}::uuid,
-          ${auth.organizationId}::uuid
-        )
-      `)
-    } catch (healingError) {
-      console.warn("Recruiter profile auto-heal skipped during /api/me bootstrap", healingError)
-    }
-
-    const rows = await prisma.$queryRaw<RecruiterBootstrapRow[]>(Prisma.sql`
+    const baseRows = await prisma.$queryRaw<RecruiterBaseRow[]>(Prisma.sql`
       select
         u.full_name as recruiter_name,
         u.email as recruiter_email,
-        o.organization_name,
-        rp.company_name as profile_company_name,
-        rp.recruiter_role_id,
-        (rp.recruiter_id is not null) as recruiter_profile_exists
+        o.organization_name
       from public.users u
-      left join public.recruiter_profiles rp
-        on rp.recruiter_id = u.user_id
       left join public.organizations o
         on o.organization_id = u.organization_id
       where u.user_id = ${auth.userId}::uuid
@@ -48,7 +35,7 @@ export async function GET(request: Request) {
       limit 1
     `)
 
-    const recruiter = rows[0]
+    const recruiter = baseRows[0]
 
     if (!recruiter) {
       return NextResponse.json(
@@ -63,25 +50,41 @@ export async function GET(request: Request) {
       )
     }
 
-    if (!recruiter.recruiter_profile_exists) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: "RECRUITER_PROFILE_MISSING",
-            message: "Recruiter exists, but recruiter_profiles is missing for this account",
-          },
-          data: {
-            name: recruiter.recruiter_name ?? recruiter.recruiter_email,
-            organization: recruiter.organization_name ?? "",
-            userId: auth.userId,
-            organizationId: auth.organizationId,
-            recruiterProfileExists: false,
-            sessionValidatedVia: auth.sessionValidatedVia,
-          },
-        },
-        { status: 409 }
-      )
+    let profileCompanyName = null
+    let recruiterRoleId = null
+    let recruiterProfileExists = false
+
+    try {
+      await prisma.$queryRaw(Prisma.sql`
+        select public.fn_ensure_default_recruiter_profile(
+          ${auth.userId}::uuid,
+          ${auth.organizationId}::uuid
+        )
+      `)
+    } catch (healingError) {
+      console.warn("Recruiter profile auto-heal skipped during /api/me bootstrap", healingError)
+    }
+
+    try {
+      const profileRows = await prisma.$queryRaw<RecruiterProfileRow[]>(Prisma.sql`
+        select
+          rp.company_name as profile_company_name,
+          rp.recruiter_role_id,
+          (rp.recruiter_id is not null) as recruiter_profile_exists
+        from public.recruiter_profiles rp
+        where rp.recruiter_id = ${auth.userId}::uuid
+        limit 1
+      `)
+
+      const profile = profileRows[0]
+
+      if (profile) {
+        profileCompanyName = profile.profile_company_name
+        recruiterRoleId = profile.recruiter_role_id
+        recruiterProfileExists = Boolean(profile.recruiter_profile_exists)
+      }
+    } catch (profileError) {
+      console.warn("Recruiter profile lookup skipped during /api/me bootstrap", profileError)
     }
 
     return NextResponse.json({
@@ -89,11 +92,11 @@ export async function GET(request: Request) {
       data: {
         name: recruiter.recruiter_name ?? recruiter.recruiter_email,
         email: recruiter.recruiter_email,
-        organization: recruiter.organization_name ?? recruiter.profile_company_name ?? "",
+        organization: recruiter.organization_name ?? profileCompanyName ?? "",
         userId: auth.userId,
         organizationId: auth.organizationId,
-        recruiterRoleId: recruiter.recruiter_role_id,
-        recruiterProfileExists: true,
+        recruiterRoleId,
+        recruiterProfileExists,
         sessionCookieMatched: auth.sessionCookieMatched,
         sessionValidatedVia: auth.sessionValidatedVia,
       },
