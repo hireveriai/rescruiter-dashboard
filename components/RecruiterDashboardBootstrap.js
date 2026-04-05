@@ -6,15 +6,9 @@ import { buildAuthUrl, hasAuthQuery } from "@/lib/client/auth-query"
 import { getRecruiterLoginUrl } from "@/lib/client/auth-session"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
-type BootstrapState = {
-  status: "loading" | "ready" | "error"
-  profile: Record<string, unknown> | null
-  message: string
-}
-
 export default function RecruiterDashboardBootstrap({ children }) {
   const searchParams = useAuthSearchParams()
-  const [state, setState] = useState<BootstrapState>({
+  const [state, setState] = useState({
     status: "loading",
     profile: null,
     message: "Establishing recruiter session...",
