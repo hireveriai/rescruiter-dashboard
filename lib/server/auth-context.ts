@@ -54,6 +54,14 @@ function toUuidOrNull(value: string | null | undefined): string | null {
   return UUID_REGEX.test(trimmed) ? trimmed : null
 }
 
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+
+  return "Unknown database error"
+}
+
 export async function getRecruiterRequestContext(request: Request): Promise<RecruiterRequestContext> {
   const url = new URL(request.url)
   const hintedUserId = toUuidOrNull(String(url.searchParams.get("userId") ?? "").trim())
@@ -86,7 +94,7 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
     `)
   } catch (error) {
     console.error("Recruiter auth session lookup failed", error)
-    throw new ApiError(500, "AUTH_SESSION_LOOKUP_FAILED", "Could not validate recruiter session")
+    throw new ApiError(500, "AUTH_SESSION_LOOKUP_FAILED", `Could not validate recruiter session: ${getErrorMessage(error)}`)
   }
 
   const session = sessionRows[0]
@@ -110,7 +118,7 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
     `)
   } catch (error) {
     console.error("Recruiter user lookup failed", error)
-    throw new ApiError(500, "RECRUITER_LOOKUP_FAILED", "Could not validate recruiter access")
+    throw new ApiError(500, "RECRUITER_LOOKUP_FAILED", `Could not validate recruiter access: ${getErrorMessage(error)}`)
   }
 
   if (!recruiterRows[0]?.user_id) {
