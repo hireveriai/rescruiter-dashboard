@@ -1,10 +1,10 @@
-﻿"use client"
+"use client"
 
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
-import { buildAuthUrl } from "@/lib/client/auth-query"
+import { buildAuthUrl, hasAuthQuery } from "@/lib/client/auth-query"
 import { copyText } from "@/lib/client/copy-to-clipboard"
 
 function CalendarIcon() {
@@ -70,7 +70,10 @@ export default function SendInterviewModal({ isOpen, onClose }) {
     if (!isOpen) return
 
     setJobsLoading(true)
-    fetch(buildAuthUrl("/api/jobs", searchParams))
+    fetch(buildAuthUrl("/api/jobs", searchParams), {
+      credentials: "include",
+      cache: "no-store",
+    })
       .then((res) => res.json())
       .then((data) => {
         const nextJobs = data.jobs || data.data?.jobs || []
@@ -409,4 +412,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
     </div>
   )
 }
+
+
+
 

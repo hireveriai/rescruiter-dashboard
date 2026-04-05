@@ -1,9 +1,9 @@
-﻿"use client"
+"use client"
 
 import { useEffect, useMemo, useState } from "react"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
-import { buildAuthUrl } from "@/lib/client/auth-query"
+import { buildAuthUrl, hasAuthQuery } from "@/lib/client/auth-query"
 import { copyText } from "@/lib/client/copy-to-clipboard"
 
 function getExpiryLabel(expiresAt, nowTick) {
@@ -131,9 +131,16 @@ export default function PendingInterviews() {
   const [copiedLink, setCopiedLink] = useState("")
 
   useEffect(() => {
+    if (!hasAuthQuery(searchParams)) {
+      return
+    }
+
     let isMounted = true
 
-    fetch(buildAuthUrl("/api/dashboard/pipeline", searchParams))
+    fetch(buildAuthUrl("/api/dashboard/pipeline", searchParams), {
+      credentials: "include",
+      cache: "no-store",
+    })
       .then((res) => res.json())
       .then((data) => {
         if (isMounted && data.success) {
@@ -256,3 +263,6 @@ export default function PendingInterviews() {
     </>
   )
 }
+
+
+

@@ -1,10 +1,10 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { buildAuthUrl } from "@/lib/client/auth-query";
+import { buildAuthUrl, hasAuthQuery } from "@/lib/client/auth-query";
 import { logoutRecruiter } from "@/lib/client/logout";
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params";
 
@@ -66,18 +66,25 @@ function LogoutIcon() {
   );
 }
 
-export default function Navbar({ onSendInterviewClick }) {
+export default function Navbar({ onSendInterviewClick, initialProfile = null }) {
   const pathname = usePathname();
   const searchParams = useAuthSearchParams();
   const menuRef = useRef(null);
   const [openCreateJob, setOpenCreateJob] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [profile, setProfile] = useState(null);
+  const [profile, setProfile] = useState(initialProfile);
 
   useEffect(() => {
+    if (initialProfile || !hasAuthQuery(searchParams)) {
+      return;
+    }
+
     let active = true;
 
-    fetch(buildAuthUrl("/api/me", searchParams))
+    fetch(buildAuthUrl("/api/me", searchParams), {
+      credentials: "include",
+      cache: "no-store",
+    })
       .then((res) => res.json())
       .then((data) => {
         if (!active) {
@@ -93,7 +100,7 @@ export default function Navbar({ onSendInterviewClick }) {
     return () => {
       active = false;
     };
-  }, [searchParams]);
+  }, [initialProfile, searchParams]);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -145,10 +152,7 @@ export default function Navbar({ onSendInterviewClick }) {
       <header className="sticky top-0 z-40 border-b border-slate-800/80 bg-[#0c1424]/95 text-white backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-5 lg:gap-9">
-            <Link
-              href={buildAuthUrl("/", searchParams)}
-              className="shrink-0 text-[1.75rem] font-semibold tracking-tight text-slate-50"
-            >
+            <Link href={buildAuthUrl("/", searchParams)} className="shrink-0 text-[1.75rem] font-semibold tracking-tight text-slate-50">
               Hire<span className="text-blue-400">Veri</span>
             </Link>
 
@@ -156,12 +160,7 @@ export default function Navbar({ onSendInterviewClick }) {
               {navItems.map((item) => {
                 if (item.disabled) {
                   return (
-                    <span
-                      key={item.label}
-                      className="rounded-xl border border-transparent px-4 py-2 text-[15px] text-slate-500"
-                      aria-disabled="true"
-                      title="Coming soon"
-                    >
+                    <span key={item.label} className="rounded-xl border border-transparent px-4 py-2 text-[15px] text-slate-500" aria-disabled="true" title="Coming soon">
                       {item.label}
                     </span>
                   );
@@ -188,10 +187,7 @@ export default function Navbar({ onSendInterviewClick }) {
           </div>
 
           <div className="flex shrink-0 items-center gap-3">
-            <button
-              onClick={() => setOpenCreateJob(true)}
-              className="rounded-xl border border-slate-700 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-100"
-            >
+            <button onClick={() => setOpenCreateJob(true)} className="rounded-xl border border-slate-700 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-100">
               Create Job
             </button>
 
@@ -212,59 +208,35 @@ export default function Navbar({ onSendInterviewClick }) {
                   {initials}
                 </div>
                 <div className="hidden min-w-0 text-left xl:block">
-                  <div className="max-w-[140px] truncate text-sm font-semibold text-white">
-                    {profile?.name || "Recruiter"}
-                  </div>
-                  <div className="max-w-[140px] truncate text-xs text-slate-400">
-                    {profile?.organization || "Workspace"}
-                  </div>
+                  <div className="max-w-[140px] truncate text-sm font-semibold text-white">{profile?.name || "Recruiter"}</div>
+                  <div className="max-w-[140px] truncate text-xs text-slate-400">{profile?.organization || "Workspace"}</div>
                 </div>
               </button>
 
               {profileOpen ? (
                 <div className="absolute right-0 top-[calc(100%+12px)] w-[260px] overflow-hidden rounded-2xl border border-slate-800 bg-[#10192c]/98 p-2 shadow-[0_20px_60px_rgba(2,6,23,0.45)]">
                   <div className="rounded-2xl border border-slate-800 bg-slate-950/35 px-4 py-3">
-                    <div className="text-sm font-semibold text-white">
-                      {profile?.name || "Recruiter"}
-                    </div>
-                    <div className="mt-1 text-xs text-slate-400">
-                      {profile?.organization || "Authenticated workspace"}
-                    </div>
+                    <div className="text-sm font-semibold text-white">{profile?.name || "Recruiter"}</div>
+                    <div className="mt-1 text-xs text-slate-400">{profile?.organization || "Authenticated workspace"}</div>
                   </div>
 
                   <div className="mt-2 grid gap-1">
-                    <Link
-                      href={buildAuthUrl("/manage-team", searchParams)}
-                      className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-200 transition hover:bg-slate-800/70 hover:text-white"
-                      onClick={() => setProfileOpen(false)}
-                    >
+                    <Link href={buildAuthUrl("/manage-team", searchParams)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-200 transition hover:bg-slate-800/70 hover:text-white" onClick={() => setProfileOpen(false)}>
                       <TeamIcon />
                       <span>Manage Team</span>
                     </Link>
 
-                    <Link
-                      href={buildAuthUrl("/settings", searchParams)}
-                      className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-200 transition hover:bg-slate-800/70 hover:text-white"
-                      onClick={() => setProfileOpen(false)}
-                    >
+                    <Link href={buildAuthUrl("/settings", searchParams)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-200 transition hover:bg-slate-800/70 hover:text-white" onClick={() => setProfileOpen(false)}>
                       <CogIcon />
                       <span>Settings</span>
                     </Link>
 
-                    <Link
-                      href={buildAuthUrl("/contact-us", searchParams)}
-                      className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-200 transition hover:bg-slate-800/70 hover:text-white"
-                      onClick={() => setProfileOpen(false)}
-                    >
+                    <Link href={buildAuthUrl("/contact-us", searchParams)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-200 transition hover:bg-slate-800/70 hover:text-white" onClick={() => setProfileOpen(false)}>
                       <MailIcon />
                       <span>Contact Us</span>
                     </Link>
 
-                    <button
-                      type="button"
-                      onClick={handleLogout}
-                      className="flex items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-rose-200 transition hover:bg-rose-500/10 hover:text-rose-100"
-                    >
+                    <button type="button" onClick={handleLogout} className="flex items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-rose-200 transition hover:bg-rose-500/10 hover:text-rose-100">
                       <LogoutIcon />
                       <span>Logout</span>
                     </button>
@@ -280,4 +252,3 @@ export default function Navbar({ onSendInterviewClick }) {
     </>
   );
 }
-

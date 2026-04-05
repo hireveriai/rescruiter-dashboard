@@ -1,9 +1,9 @@
-﻿"use client"
+"use client"
 
 import { useEffect, useState } from "react"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
-import { buildAuthUrl } from "@/lib/client/auth-query"
+import { buildAuthUrl, hasAuthQuery } from "@/lib/client/auth-query"
 
 function getRecommendationColor(value) {
   const normalized = String(value ?? "").toUpperCase()
@@ -38,9 +38,16 @@ export default function VerisSummary() {
   const [summaries, setSummaries] = useState([])
 
   useEffect(() => {
+    if (!hasAuthQuery(searchParams)) {
+      return
+    }
+
     let isMounted = true
 
-    fetch(buildAuthUrl("/api/dashboard/veris", searchParams))
+    fetch(buildAuthUrl("/api/dashboard/veris", searchParams), {
+      credentials: "include",
+      cache: "no-store",
+    })
       .then((res) => res.json())
       .then((data) => {
         if (isMounted && data.success) {
@@ -110,4 +117,7 @@ export default function VerisSummary() {
     </div>
   )
 }
+
+
+
 

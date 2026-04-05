@@ -1,9 +1,9 @@
-﻿"use client"
+"use client"
 
 import { useEffect, useState } from "react"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
-import { buildAuthUrl } from "@/lib/client/auth-query"
+import { buildAuthUrl, hasAuthQuery } from "@/lib/client/auth-query"
 
 const FALLBACK_PIPELINE = {
   pending: 0,
@@ -17,9 +17,16 @@ export default function Pipeline() {
   const [pipeline, setPipeline] = useState(FALLBACK_PIPELINE)
 
   useEffect(() => {
+    if (!hasAuthQuery(searchParams)) {
+      return
+    }
+
     let isMounted = true
 
-    fetch(buildAuthUrl("/api/dashboard/pipeline", searchParams))
+    fetch(buildAuthUrl("/api/dashboard/pipeline", searchParams), {
+      credentials: "include",
+      cache: "no-store",
+    })
       .then((res) => res.json())
       .then((data) => {
         if (isMounted && data.success) {
@@ -71,4 +78,7 @@ export default function Pipeline() {
     </div>
   )
 }
+
+
+
 
