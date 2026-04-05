@@ -150,17 +150,17 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null }) 
   return (
     <>
       <header className="sticky top-0 z-40 border-b border-slate-800/80 bg-[#0c1424]/95 text-white backdrop-blur-xl">
-        <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex min-w-0 items-center gap-5 lg:gap-9">
-            <Link href={buildAuthUrl("/", searchParams)} className="shrink-0 text-[1.75rem] font-semibold tracking-tight text-slate-50">
+        <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-3 px-4 py-4 sm:px-6 lg:px-8">
+          <div className="flex min-w-0 flex-1 items-center gap-4 lg:gap-7">
+            <Link href={buildAuthUrl("/", searchParams)} className="shrink-0 text-[1.65rem] font-semibold tracking-tight text-slate-50 lg:text-[1.75rem]">
               Hire<span className="text-blue-400">Veri</span>
             </Link>
 
-            <nav className="hidden items-center gap-1 md:flex">
+            <nav className="hidden min-w-0 items-center gap-0.5 md:flex lg:gap-1">
               {navItems.map((item) => {
                 if (item.disabled) {
                   return (
-                    <span key={item.label} className="rounded-xl border border-transparent px-4 py-2 text-[15px] text-slate-500" aria-disabled="true" title="Coming soon">
+                    <span key={item.label} className="rounded-xl border border-transparent px-3 py-2 text-sm text-slate-500 lg:px-4 lg:text-[15px]" aria-disabled="true" title="Coming soon">
                       {item.label}
                     </span>
                   );
@@ -173,7 +173,7 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null }) 
                     key={item.label}
                     href={buildAuthUrl(item.href, searchParams)}
                     className={[
-                      "rounded-xl px-4 py-2 text-[15px] font-medium transition",
+                      "rounded-xl px-3 py-2 text-sm font-medium transition lg:px-4 lg:text-[15px]",
                       active
                         ? "border border-slate-700 bg-slate-800/90 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
                         : "border border-transparent text-slate-300 hover:border-slate-800 hover:bg-slate-900/60 hover:text-white",
@@ -186,14 +186,14 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null }) 
             </nav>
           </div>
 
-          <div className="flex shrink-0 items-center gap-3">
-            <button onClick={() => setOpenCreateJob(true)} className="rounded-xl border border-slate-700 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-100">
+          <div className="flex shrink-0 items-center gap-2 lg:gap-3">
+            <button onClick={() => setOpenCreateJob(true)} className="rounded-xl border border-slate-700 bg-white px-3 py-2 text-xs font-semibold text-slate-900 transition hover:bg-slate-100 lg:px-4 lg:py-2.5 lg:text-sm">
               Create Job
             </button>
 
             <button
               onClick={() => onSendInterviewClick?.()}
-              className="rounded-xl border border-blue-400/40 bg-transparent px-4 py-2.5 text-sm font-medium text-blue-300 transition hover:border-blue-300 hover:bg-blue-500/10 hover:text-white"
+              className="rounded-xl border border-blue-400/40 bg-transparent px-3 py-2 text-xs font-medium text-blue-300 transition hover:border-blue-300 hover:bg-blue-500/10 hover:text-white lg:px-4 lg:py-2.5 lg:text-sm"
             >
               Send Interview Link
             </button>
@@ -202,13 +202,13 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null }) 
               <button
                 type="button"
                 onClick={() => setProfileOpen((value) => !value)}
-                className="flex items-center gap-3 rounded-2xl border border-slate-700/80 bg-slate-900/85 px-3 py-2 transition hover:border-blue-400/40 hover:bg-slate-900"
+                className="flex items-center gap-2 rounded-2xl border border-slate-700/80 bg-slate-900/85 px-2.5 py-2 transition hover:border-blue-400/40 hover:bg-slate-900 lg:gap-3 lg:px-3"
               >
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/15 text-sm font-semibold text-blue-300">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-500/15 text-sm font-semibold text-blue-300 lg:h-10 lg:w-10">
                   {initials}
                 </div>
-                <div className="hidden min-w-0 text-left xl:block">
-                  <div className="max-w-[140px] truncate text-sm font-semibold text-white">{profile?.name || "Recruiter"}</div>
+                <div className="hidden min-w-0 text-left 2xl:block">
+                  <div className="max-w-[120px] truncate text-sm font-semibold text-white">{profile?.name || "Recruiter"}</div>
                   <div className="max-w-[140px] truncate text-xs text-slate-400">{profile?.organization || "Workspace"}</div>
                 </div>
               </button>
