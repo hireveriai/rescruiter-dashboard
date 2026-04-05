@@ -4,7 +4,7 @@ import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
-import { buildAuthUrl, hasAuthQuery } from "@/lib/client/auth-query"
+import { buildAuthUrl } from "@/lib/client/auth-query"
 import { copyText } from "@/lib/client/copy-to-clipboard"
 
 function CalendarIcon() {
@@ -64,6 +64,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
   const [link, setLink] = useState("")
   const [error, setError] = useState("")
   const [emailStatus, setEmailStatus] = useState(null)
+  const [emailError, setEmailError] = useState("")
   const [copyStatus, setCopyStatus] = useState("idle")
 
   useEffect(() => {
@@ -105,6 +106,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
     setError("")
     setLink("")
     setEmailStatus(null)
+    setEmailError("")
     setCopyStatus("idle")
 
     if (!hasJobs) {
@@ -141,11 +143,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
 
       const candidateData = await candidateResponse.json()
       if (!candidateResponse.ok) {
-        throw new Error(
-          candidateData.message ||
-            candidateData.error?.message ||
-            "Failed to create candidate"
-        )
+        throw new Error(candidateData.message || candidateData.error?.message || "Failed to create candidate")
       }
 
       const candidateId =
@@ -174,16 +172,13 @@ export default function SendInterviewModal({ isOpen, onClose }) {
 
       const interviewData = await interviewResponse.json()
       if (!interviewResponse.ok) {
-        throw new Error(
-          interviewData.message ||
-            interviewData.error?.message ||
-            "Failed to generate link"
-        )
+        throw new Error(interviewData.message || interviewData.error?.message || "Failed to generate link")
       }
 
       const responseData = interviewData.data || interviewData
       setLink(responseData.link || "")
       setEmailStatus(responseData.emailSent === true ? "sent" : "failed")
+      setEmailError(responseData.emailError || "")
     } catch (err) {
       setError(err.message)
     } finally {
@@ -213,12 +208,8 @@ export default function SendInterviewModal({ isOpen, onClose }) {
         <div className="relative max-h-[88vh] overflow-y-auto p-5 sm:p-6 md:p-8">
           <div className="mb-6 flex items-start justify-between gap-4">
             <div>
-              <p className="text-xs uppercase tracking-[0.35em] text-cyan-300/80">
-                Interview Access
-              </p>
-              <h2 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">
-                Send Interview Link
-              </h2>
+              <p className="text-xs uppercase tracking-[0.35em] text-cyan-300/80">Interview Access</p>
+              <h2 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">Send Interview Link</h2>
               <p className="mt-2 max-w-lg text-sm text-slate-300">
                 Secure candidate access with one-time validation, optional resume intake,
                 and time-window controls.
@@ -234,12 +225,8 @@ export default function SendInterviewModal({ isOpen, onClose }) {
 
           {emptyJobsState ? (
             <div className="rounded-3xl border border-amber-400/20 bg-amber-500/10 p-5">
-              <p className="text-xs font-medium uppercase tracking-[0.28em] text-amber-200/80">
-                Job Required
-              </p>
-              <h3 className="mt-3 text-xl font-semibold text-white">
-                Create a job first to send your interview link
-              </h3>
+              <p className="text-xs font-medium uppercase tracking-[0.28em] text-amber-200/80">Job Required</p>
+              <h3 className="mt-3 text-xl font-semibold text-white">Create a job first to send your interview link</h3>
               <p className="mt-3 text-sm text-amber-100/85">
                 Interview links can only be generated against an existing job in your recruiter workspace.
               </p>
@@ -345,16 +332,8 @@ export default function SendInterviewModal({ isOpen, onClose }) {
                     <span>Schedule Window</span>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
-                    <DateTimeField
-                      label="Start Time"
-                      value={startTime}
-                      onChange={(e) => setStartTime(e.target.value)}
-                    />
-                    <DateTimeField
-                      label="End Time"
-                      value={endTime}
-                      onChange={(e) => setEndTime(e.target.value)}
-                    />
+                    <DateTimeField label="Start Time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+                    <DateTimeField label="End Time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
                   </div>
                 </div>
               )}
@@ -385,6 +364,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
                   {emailStatus === "failed" ? (
                     <p className="mb-3 text-xs text-amber-200">
                       The interview link is ready, but the email could not be delivered from the server. You can still copy and send it manually.
+                      {emailError ? <><br />Reason: {emailError}</> : null}
                     </p>
                   ) : null}
                   {copyStatus === "failed" ? (
@@ -412,7 +392,3 @@ export default function SendInterviewModal({ isOpen, onClose }) {
     </div>
   )
 }
-
-
-
-

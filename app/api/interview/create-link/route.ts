@@ -1,4 +1,4 @@
-﻿import { ApiError } from "@/lib/server/errors"
+import { ApiError } from "@/lib/server/errors"
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
 import { prisma } from "@/lib/server/prisma"
 import { errorResponse, successResponse } from "@/lib/server/response"
@@ -38,11 +38,14 @@ export async function POST(request: Request) {
     })
 
     let emailSent = false
+    let emailError: string | null = null
 
     try {
       const candidateId = String(payload.candidateId ?? payload.candidate_id ?? "").trim()
 
-      if (candidateId) {
+      if (!candidateId) {
+        emailError = "Candidate ID missing for email delivery"
+      } else {
         const candidates = await prisma.$queryRaw<CandidateEmailRow[]>`
           select c.full_name, c.email
           from public.candidates c
@@ -53,7 +56,9 @@ export async function POST(request: Request) {
 
         const candidate = candidates[0]
 
-        if (candidate?.email) {
+        if (!candidate?.email) {
+          emailError = "Candidate email not found"
+        } else {
           await sendInterviewEmail({
             to: candidate.email,
             name: candidate.full_name || "Candidate",
@@ -62,14 +67,16 @@ export async function POST(request: Request) {
           emailSent = true
         }
       }
-    } catch (emailError) {
-      console.error("Failed to send interview email", emailError)
+    } catch (emailFailure) {
+      console.error("Failed to send interview email", emailFailure)
+      emailError = emailFailure instanceof Error ? emailFailure.message : "Unknown email delivery error"
     }
 
     return successResponse(
       {
         ...result,
         emailSent,
+        emailError,
       },
       201
     )
