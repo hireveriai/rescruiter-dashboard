@@ -33,8 +33,8 @@ export async function GET(request: Request) {
           from public.users u
           left join public.organizations o
             on o.organization_id = u.organization_id
-          where u.user_id = $1::uuid
-            and u.organization_id = $2::uuid
+          where u.user_id::text = $1
+            and u.organization_id::text = $2
             and u.role = 'RECRUITER'
           limit 1
         `,
@@ -86,7 +86,7 @@ export async function GET(request: Request) {
             rp.recruiter_role_id,
             (rp.recruiter_id is not null) as recruiter_profile_exists
           from public.recruiter_profiles rp
-          where rp.recruiter_id = $1::uuid
+          where rp.recruiter_id::text = $1
           limit 1
         `,
         [auth.userId]

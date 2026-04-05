@@ -75,10 +75,10 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
     sessionRows = await pgPool.query<AuthSessionRow>(
       `
         select
-          s.session_id,
-          s.identity_id
+          s.session_id::text as session_id,
+          s.identity_id::text as identity_id
         from public.auth_sessions s
-        where s.session_id = $1::uuid
+        where s.session_id::text = $1
           and s.is_active = true
           and s.expires_at > now()
         limit 1
@@ -101,11 +101,11 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
   try {
     recruiterRows = await pgPool.query<RecruiterLookupRow>(
       `
-        select u.user_id
+        select u.user_id::text as user_id
         from public.users u
-        where u.user_id = $1::uuid
-          and u.organization_id = $2::uuid
-          and u.identity_id = $3::uuid
+        where u.user_id::text = $1
+          and u.organization_id::text = $2
+          and u.identity_id::text = $3
           and u.role = 'RECRUITER'
           and u.is_active = true
         limit 1
