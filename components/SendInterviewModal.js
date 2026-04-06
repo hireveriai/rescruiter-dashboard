@@ -323,7 +323,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
                         <p className="truncate text-sm font-medium text-white">{resumeFile.name}</p>
                         <p className="mt-1 text-xs text-slate-400">
                           {resumeFile.type || "Selected file"}
-                          {resumeFile.size ? ` • ${formatFileSize(resumeFile.size)}` : ""}
+                          {resumeFile.size ? ` - ${formatFileSize(resumeFile.size)}` : ""}
                         </p>
                       </div>
 
