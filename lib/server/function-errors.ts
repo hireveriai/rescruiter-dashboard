@@ -1,4 +1,4 @@
-﻿import { ApiError, isApiError } from "@/lib/server/errors"
+import { ApiError, isApiError } from "@/lib/server/errors"
 
 type FunctionFallback = {
   statusCode: number
@@ -11,10 +11,16 @@ const functionErrorMap: Record<string, { statusCode: number; message: string }> 
   INVALID_EXPECTED_LEVEL: { statusCode: 400, message: "expected_level must be between 1 and 4" },
   JOB_NOT_FOUND: { statusCode: 404, message: "Job not found for this organization" },
   CANDIDATE_NOT_FOUND: { statusCode: 404, message: "candidate not found" },
+  INTERVIEW_INVITE_NOT_FOUND: { statusCode: 404, message: "Interview invite not found" },
+  INTERVIEW_INVITE_LOCKED: { statusCode: 409, message: "Interview invite can no longer be changed" },
+  INTERVIEW_INVITE_INACTIVE: { statusCode: 409, message: "Interview invite is no longer active" },
   USER_ORG_MISMATCH: { statusCode: 400, message: "User already exists under a different organization" },
   ORGANIZATION_MISMATCH: { statusCode: 400, message: "candidate and job must belong to the same organization" },
   TEMPLATE_NOT_FOUND: { statusCode: 404, message: "No active evaluation template found" },
   INVALID_TIME: { statusCode: 400, message: "Invalid interview time window" },
+  INVALID_ACCESS_TYPE: { statusCode: 400, message: "Invalid interview access type" },
+  REVOKE_REASON_REQUIRED: { statusCode: 400, message: "Revoke reason is required" },
+  INSUFFICIENT_PERMISSION: { statusCode: 403, message: "You do not have permission for this action" },
 }
 
 export function toFunctionApiError(error: unknown, fallback: FunctionFallback) {

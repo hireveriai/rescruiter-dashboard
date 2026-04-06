@@ -1,4 +1,4 @@
-﻿import { z } from "zod"
+import { z } from "zod"
 
 const uuidField = z.string().uuid()
 
@@ -52,4 +52,24 @@ export const inviteInterviewSchema = z.object({
 
 export const validateInterviewTokenSchema = z.object({
   token: z.string().trim().min(1),
+})
+
+export const updateInterviewInviteSchema = z.object({
+  accessType: z.enum(["FLEXIBLE", "SCHEDULED"]),
+  startTime: z.string().datetime().optional().nullable(),
+  endTime: z.string().datetime().optional().nullable(),
+})
+.refine((value) => {
+  if (value.accessType !== "SCHEDULED") {
+    return true
+  }
+
+  return Boolean(value.startTime && value.endTime)
+}, {
+  message: "startTime and endTime are required for scheduled interviews",
+  path: ["startTime"],
+})
+
+export const revokeInterviewInviteSchema = z.object({
+  reason: z.string().trim().min(1).max(500).optional().nullable(),
 })

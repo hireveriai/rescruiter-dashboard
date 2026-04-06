@@ -51,7 +51,108 @@ function getInterviewTypeLabel(item) {
   return "Flexible"
 }
 
-function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, nowTick, copiedLink }) {
+function DateTimeField({ label, value, onChange }) {
+  return (
+    <div>
+      <label className="mb-2 block text-sm text-gray-400">{label}</label>
+      <input
+        type="datetime-local"
+        className="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-white outline-none transition focus:border-cyan-400/60"
+        value={value}
+        onChange={onChange}
+      />
+    </div>
+  )
+}
+
+function EditInterviewModal({ isOpen, item, form, onChange, onClose, onSave, saving }) {
+  if (!isOpen || !item) {
+    return null
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/80 px-4 backdrop-blur-md">
+      <div className="w-full max-w-2xl rounded-[28px] border border-cyan-400/20 bg-[linear-gradient(180deg,rgba(15,23,42,0.98),rgba(9,14,28,0.98))] p-6 shadow-[0_0_80px_rgba(34,211,238,0.12)]">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.28em] text-cyan-300/70">Invite Controls</p>
+            <h3 className="mt-2 text-2xl font-semibold text-white">Edit Interview Invite</h3>
+            <p className="mt-2 text-sm text-slate-400">
+              Update access type or reschedule the current pending interview link.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-cyan-400/25 bg-cyan-400/10 px-4 py-2 text-sm text-cyan-100 transition hover:bg-cyan-400/20"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="mt-6 grid gap-5">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-300">
+            <p className="font-medium text-white">{item.candidateName}</p>
+            <p className="mt-1 text-slate-400">{item.jobTitle}</p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/55 p-4">
+            <p className="mb-3 text-sm font-medium text-slate-300">Interview Access Type</p>
+
+            <label className="mb-2 flex items-center gap-3 rounded-xl border border-transparent px-3 py-2 text-sm text-slate-200 transition hover:border-cyan-500/20 hover:bg-slate-800/60">
+              <input
+                type="radio"
+                value="FLEXIBLE"
+                checked={form.accessType === "FLEXIBLE"}
+                onChange={() => onChange({ accessType: "FLEXIBLE" })}
+                className="h-4 w-4 accent-cyan-400"
+              />
+              <span>Flexible (24h access)</span>
+            </label>
+
+            <label className="flex items-center gap-3 rounded-xl border border-transparent px-3 py-2 text-sm text-slate-200 transition hover:border-cyan-500/20 hover:bg-slate-800/60">
+              <input
+                type="radio"
+                value="SCHEDULED"
+                checked={form.accessType === "SCHEDULED"}
+                onChange={() => onChange({ accessType: "SCHEDULED" })}
+                className="h-4 w-4 accent-cyan-400"
+              />
+              <span>Scheduled (specific time window)</span>
+            </label>
+          </div>
+
+          {form.accessType === "SCHEDULED" ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              <DateTimeField label="Start Time" value={form.startTime} onChange={(e) => onChange({ startTime: e.target.value })} />
+              <DateTimeField label="End Time" value={form.endTime} onChange={(e) => onChange({ endTime: e.target.value })} />
+            </div>
+          ) : null}
+
+          <div className="flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-2xl border border-slate-700 bg-slate-900/70 px-4 py-2.5 text-sm text-slate-200 transition hover:border-slate-500 hover:text-white"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={saving}
+              className="rounded-2xl bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 px-5 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {saving ? "Saving..." : "Save Changes"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, onEdit, onDelete, nowTick, copiedLink, busyInviteId }) {
   if (!isOpen) {
     return null
   }
@@ -79,7 +180,7 @@ function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, nowTick, 
         </div>
 
         <div className="max-h-[75vh] overflow-auto px-8 py-6">
-          <div className="grid grid-cols-[1.1fr_1fr_1.3fr_1fr_0.9fr_0.8fr] gap-4 border-b border-white/10 pb-3 text-xs uppercase tracking-[0.24em] text-slate-500">
+          <div className="grid grid-cols-[1.1fr_1fr_1.25fr_1fr_0.9fr_1.25fr] gap-4 border-b border-white/10 pb-3 text-xs uppercase tracking-[0.24em] text-slate-500">
             <div>Candidate</div>
             <div>Job</div>
             <div>Interview Type</div>
@@ -97,20 +198,22 @@ function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, nowTick, 
               interviews.map((item) => (
                 <div
                   key={item.inviteId}
-                  className="grid grid-cols-[1.1fr_1fr_1.3fr_1fr_0.9fr_0.8fr] gap-4 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-4 text-sm text-slate-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+                  className="grid grid-cols-[1.1fr_1fr_1.25fr_1fr_0.9fr_1.25fr] gap-4 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-4 text-sm text-slate-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
                 >
                   <div className="font-medium text-white">{item.candidateName}</div>
                   <div className="text-slate-300">{item.jobTitle}</div>
                   <div className="text-cyan-200">{getInterviewTypeLabel(item)}</div>
                   <div className="text-slate-400">{formatDate(item.createdAt)}</div>
                   <div className="text-amber-300">{getExpiryLabel(item.expiresAt, nowTick)}</div>
-                  <div>
-                    <button
-                      type="button"
-                      onClick={() => onCopy(item.link)}
-                      className="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1.5 text-cyan-100 transition hover:bg-cyan-400/20"
-                    >
-                      {copiedLink === item.link ? "Copied" : "Copy Link"}
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => onCopy(item.link)} className="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1.5 text-cyan-100 transition hover:bg-cyan-400/20">
+                      {copiedLink === item.link ? "Copied" : "Copy"}
+                    </button>
+                    <button type="button" onClick={() => onEdit(item)} className="rounded-full border border-indigo-400/30 bg-indigo-400/10 px-3 py-1.5 text-indigo-100 transition hover:bg-indigo-400/20">
+                      Edit
+                    </button>
+                    <button type="button" disabled={busyInviteId === item.inviteId} onClick={() => onDelete(item)} className="rounded-full border border-rose-400/30 bg-rose-500/10 px-3 py-1.5 text-rose-100 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60">
+                      {busyInviteId === item.inviteId ? "Deleting..." : "Delete"}
                     </button>
                   </div>
                 </div>
@@ -127,29 +230,40 @@ export default function PendingInterviews() {
   const searchParams = useAuthSearchParams()
   const [interviews, setInterviews] = useState([])
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [editItem, setEditItem] = useState(null)
+  const [editForm, setEditForm] = useState({ accessType: "FLEXIBLE", startTime: "", endTime: "" })
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [busyInviteId, setBusyInviteId] = useState("")
   const [nowTick, setNowTick] = useState(() => Date.now())
   const [copiedLink, setCopiedLink] = useState("")
 
-  useEffect(() => {
+  async function loadPendingInterviews() {
     if (!hasAuthQuery(searchParams)) {
       return
     }
 
-    let isMounted = true
-
-    fetch(buildAuthUrl("/api/dashboard/pipeline", searchParams), {
+    const response = await fetch(buildAuthUrl("/api/dashboard/pipeline", searchParams), {
       credentials: "include",
       cache: "no-store",
     })
-      .then((res) => res.json())
-      .then((data) => {
-        if (isMounted && data.success) {
-          setInterviews(data.data?.pendingInterviews ?? [])
-        }
-      })
-      .catch((error) => {
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data?.error?.message || data?.message || "Failed to fetch pending interviews")
+    }
+
+    setInterviews(data.data?.pendingInterviews ?? [])
+  }
+
+  useEffect(() => {
+    let isMounted = true
+
+    loadPendingInterviews().catch((error) => {
+      if (isMounted) {
         console.error("Failed to fetch pending interviews", error)
-      })
+      }
+    })
 
     return () => {
       isMounted = false
@@ -196,6 +310,99 @@ export default function PendingInterviews() {
     console.error("Failed to copy interview link")
   }
 
+  function handleEditOpen(item) {
+    setEditItem(item)
+    setEditForm({
+      accessType: String(item.accessType ?? "FLEXIBLE").toUpperCase(),
+      startTime: item.startTime ? new Date(item.startTime).toISOString().slice(0, 16) : "",
+      endTime: item.endTime ? new Date(item.endTime).toISOString().slice(0, 16) : "",
+    })
+  }
+
+  async function handleEditSave() {
+    if (!editItem) {
+      return
+    }
+
+    if (editForm.accessType === "SCHEDULED" && (!editForm.startTime || !editForm.endTime)) {
+      window.alert("Start time and end time are required for scheduled interviews.")
+      return
+    }
+
+    try {
+      setSavingEdit(true)
+
+      const response = await fetch(buildAuthUrl(`/api/interview/manage/${editItem.inviteId}`, searchParams), {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          accessType: editForm.accessType,
+          startTime: editForm.accessType === "SCHEDULED" ? new Date(editForm.startTime).toISOString() : null,
+          endTime: editForm.accessType === "SCHEDULED" ? new Date(editForm.endTime).toISOString() : null,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data?.error?.message || data?.message || "Failed to update interview invite")
+      }
+
+      setEditItem(null)
+      await loadPendingInterviews()
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Failed to update interview invite")
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
+  async function handleDelete(item) {
+    const reason = typeof window !== "undefined"
+      ? window.prompt("Optional reason for cancelling this interview invite", "Candidate not available")
+      : ""
+
+    if (reason === null) {
+      return
+    }
+
+    const confirmed = typeof window !== "undefined"
+      ? window.confirm("Delete this interview invite? The link will be revoked and can no longer be used.")
+      : true
+
+    if (!confirmed) {
+      return
+    }
+
+    try {
+      setBusyInviteId(item.inviteId)
+
+      const response = await fetch(buildAuthUrl(`/api/interview/manage/${item.inviteId}`, searchParams), {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({ reason: reason || null }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data?.error?.message || data?.message || "Failed to delete interview invite")
+      }
+
+      await loadPendingInterviews()
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Failed to delete interview invite")
+    } finally {
+      setBusyInviteId("")
+    }
+  }
+
   return (
     <>
       <div className="mt-10">
@@ -240,9 +447,17 @@ export default function PendingInterviews() {
                     <td className="p-4 text-cyan-200">{getInterviewTypeLabel(item)}</td>
                     <td className="p-4 text-yellow-400">{getExpiryLabel(item.expiresAt, nowTick)}</td>
                     <td className="p-4">
-                      <button className="text-blue-400" onClick={() => handleCopy(item.link)}>
-                        {copiedLink === item.link ? "Copied" : "Copy Link"}
-                      </button>
+                      <div className="flex flex-wrap gap-3 text-xs sm:text-sm">
+                        <button className="text-blue-400" onClick={() => handleCopy(item.link)}>
+                          {copiedLink === item.link ? "Copied" : "Copy"}
+                        </button>
+                        <button className="text-indigo-300" onClick={() => handleEditOpen(item)}>
+                          Edit
+                        </button>
+                        <button className="text-rose-300" onClick={() => handleDelete(item)}>
+                          {busyInviteId === item.inviteId ? "Deleting..." : "Delete"}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -257,12 +472,22 @@ export default function PendingInterviews() {
         onClose={() => setIsModalOpen(false)}
         interviews={sortedInterviews}
         onCopy={handleCopy}
+        onEdit={handleEditOpen}
+        onDelete={handleDelete}
         nowTick={nowTick}
         copiedLink={copiedLink}
+        busyInviteId={busyInviteId}
+      />
+
+      <EditInterviewModal
+        isOpen={Boolean(editItem)}
+        item={editItem}
+        form={editForm}
+        onChange={(patch) => setEditForm((current) => ({ ...current, ...patch }))}
+        onClose={() => setEditItem(null)}
+        onSave={handleEditSave}
+        saving={savingEdit}
       />
     </>
   )
 }
-
-
-

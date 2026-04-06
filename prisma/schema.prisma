@@ -178,23 +178,28 @@ model InterviewEvaluation {
   @@map("interview_evaluations")
 }
 model InterviewInvite {
-  inviteId     String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("invite_id")
-  interviewId  String?     @db.Uuid @map("interview_id")
-  token        String      @unique
-  usedAt       DateTime?   @db.Timestamptz(6) @map("used_at")
-  createdAt    DateTime    @default(now()) @db.Timestamptz(6) @map("created_at")
-  expiresAt    DateTime?   @db.Timestamptz(6) @map("expires_at")
-  maxAttempts  Int?        @default(1) @map("max_attempts")
-  attemptsUsed Int?        @default(0) @map("attempts_used")
-  status       String?     @default("ACTIVE")
-  issuedBy     String?     @db.Uuid @map("issued_by")
-  accessType   String?     @default("FLEXIBLE") @map("access_type")
-  startTime    DateTime?   @db.Timestamptz(6) @map("start_time")
-  endTime      DateTime?   @db.Timestamptz(6) @map("end_time")
-  interview    Interview?  @relation(fields: [interviewId], references: [interviewId])
+  inviteId      String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("invite_id")
+  interviewId   String?    @db.Uuid @map("interview_id")
+  token         String     @unique
+  usedAt        DateTime?  @db.Timestamptz(6) @map("used_at")
+  createdAt     DateTime   @default(now()) @db.Timestamptz(6) @map("created_at")
+  expiresAt     DateTime?  @db.Timestamptz(6) @map("expires_at")
+  maxAttempts   Int?       @default(1) @map("max_attempts")
+  attemptsUsed  Int?       @default(0) @map("attempts_used")
+  status        String?    @default("ACTIVE")
+  issuedBy      String?    @db.Uuid @map("issued_by")
+  accessType    String?    @default("FLEXIBLE") @map("access_type")
+  startTime     DateTime?  @db.Timestamptz(6) @map("start_time")
+  endTime       DateTime?  @db.Timestamptz(6) @map("end_time")
+  updatedAt     DateTime   @default(now()) @db.Timestamptz(6) @map("updated_at")
+  revokedAt     DateTime?  @db.Timestamptz(6) @map("revoked_at")
+  revokedReason String?    @map("revoked_reason")
+  interview     Interview? @relation(fields: [interviewId], references: [interviewId])
 
   @@map("interview_invites")
 }
+
+
 
 
 

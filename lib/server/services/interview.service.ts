@@ -1,4 +1,4 @@
-﻿import { Prisma } from "@prisma/client"
+import { Prisma } from "@prisma/client"
 
 import { prisma } from "@/lib/server/prisma"
 import { ApiError } from "@/lib/server/errors"
@@ -29,6 +29,20 @@ export type CreateInterviewLinkInput = {
   end_time?: string
 }
 
+export type UpdateInterviewInviteInput = {
+  inviteId: string
+  organizationId: string
+  accessType: "FLEXIBLE" | "SCHEDULED"
+  startTime?: string | null
+  endTime?: string | null
+}
+
+export type RevokeInterviewInviteInput = {
+  inviteId: string
+  organizationId: string
+  reason?: string | null
+}
+
 type CreateInterviewLinkRow = {
   interview_id: string
   token: string
@@ -40,6 +54,24 @@ type ValidateInterviewTokenRow = {
   reason: ValidateInterviewTokenResult["reason"] | null
   interview_id: string | null
   candidate_id: string | null
+}
+
+type UpdateInterviewInviteRow = {
+  invite_id: string
+  interview_id: string
+  access_type: string
+  start_time: string | null
+  end_time: string | null
+  expires_at: string | null
+  status: string
+}
+
+type RevokeInterviewInviteRow = {
+  invite_id: string
+  interview_id: string
+  status: string
+  revoked_at: string | null
+  revoked_reason: string | null
 }
 
 export async function createInterviewLink(input: CreateInterviewLinkInput) {
@@ -89,6 +121,76 @@ export async function createInterviewLink(input: CreateInterviewLinkInput) {
       statusCode: 500,
       code: "INTERVIEW_LINK_CREATE_FAILED",
       message: "Failed to create interview link",
+    })
+  }
+}
+
+export async function updateInterviewInvite(input: UpdateInterviewInviteInput) {
+  try {
+    const rows = await prisma.$queryRaw<UpdateInterviewInviteRow[]>(Prisma.sql`
+      select *
+      from public.fn_update_interview_invite(
+        ${input.organizationId}::uuid,
+        ${input.inviteId}::uuid,
+        ${input.accessType},
+        ${input.startTime ?? null}::timestamptz,
+        ${input.endTime ?? null}::timestamptz
+      )
+    `)
+
+    const result = rows[0]
+
+    if (!result?.invite_id) {
+      throw new ApiError(500, "INTERVIEW_INVITE_UPDATE_FAILED", "Failed to update interview invite")
+    }
+
+    return {
+      inviteId: result.invite_id,
+      interviewId: result.interview_id,
+      accessType: result.access_type,
+      startTime: result.start_time,
+      endTime: result.end_time,
+      expiresAt: result.expires_at,
+      status: result.status,
+    }
+  } catch (error) {
+    throw toFunctionApiError(error, {
+      statusCode: 500,
+      code: "INTERVIEW_INVITE_UPDATE_FAILED",
+      message: "Failed to update interview invite",
+    })
+  }
+}
+
+export async function revokeInterviewInvite(input: RevokeInterviewInviteInput) {
+  try {
+    const rows = await prisma.$queryRaw<RevokeInterviewInviteRow[]>(Prisma.sql`
+      select *
+      from public.fn_revoke_interview_invite(
+        ${input.organizationId}::uuid,
+        ${input.inviteId}::uuid,
+        ${input.reason ?? null}
+      )
+    `)
+
+    const result = rows[0]
+
+    if (!result?.invite_id) {
+      throw new ApiError(500, "INTERVIEW_INVITE_REVOKE_FAILED", "Failed to revoke interview invite")
+    }
+
+    return {
+      inviteId: result.invite_id,
+      interviewId: result.interview_id,
+      status: result.status,
+      revokedAt: result.revoked_at,
+      revokedReason: result.revoked_reason,
+    }
+  } catch (error) {
+    throw toFunctionApiError(error, {
+      statusCode: 500,
+      code: "INTERVIEW_INVITE_REVOKE_FAILED",
+      message: "Failed to revoke interview invite",
     })
   }
 }
