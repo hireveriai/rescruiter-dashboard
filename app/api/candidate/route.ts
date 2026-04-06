@@ -1,7 +1,8 @@
-﻿import { Prisma } from "@prisma/client"
+import { Prisma } from "@prisma/client"
 import { NextResponse } from "next/server"
 
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
+import { ApiError } from "@/lib/server/errors"
 import { prisma } from "@/lib/server/prisma"
 import { toFunctionApiError } from "@/lib/server/function-errors"
 import { parseResumeText } from "@/lib/server/resumeParser"
@@ -88,8 +89,13 @@ export async function POST(req: Request) {
     let parsedResume: ReturnType<typeof parseResumeText> | null = null
 
     if (resumeEntry instanceof File && resumeEntry.size > 0) {
-      resumeText = await extractResumeText(resumeEntry)
-      resumeUrl = await uploadFileToS3(resumeEntry)
+      try {
+        resumeText = await extractResumeText(resumeEntry)
+        resumeUrl = await uploadFileToS3(resumeEntry)
+      } catch (error) {
+        console.error("Failed to upload resume", error)
+        throw new ApiError(500, "RESUME_UPLOAD_FAILED", error instanceof Error ? error.message : "Could not upload resume")
+      }
 
       if (resumeText) {
         try {

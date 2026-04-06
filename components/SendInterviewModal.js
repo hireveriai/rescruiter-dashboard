@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
@@ -63,6 +63,8 @@ function formatFileSize(size) {
 
 export default function SendInterviewModal({ isOpen, onClose }) {
   const searchParams = useAuthSearchParams()
+  const primaryFileInputRef = useRef(null)
+  const changeFileInputRef = useRef(null)
   const [jobs, setJobs] = useState([])
   const [jobsLoading, setJobsLoading] = useState(false)
   const [jobId, setJobId] = useState("")
@@ -113,6 +115,25 @@ export default function SendInterviewModal({ isOpen, onClose }) {
 
   const hasJobs = jobs.length > 0
   const emptyJobsState = useMemo(() => !jobsLoading && !hasJobs, [jobsLoading, hasJobs])
+
+  const resetFileInputs = () => {
+    if (primaryFileInputRef.current) {
+      primaryFileInputRef.current.value = ""
+    }
+
+    if (changeFileInputRef.current) {
+      changeFileInputRef.current.value = ""
+    }
+  }
+
+  const handleResumeSelect = (event) => {
+    const nextFile = event.target.files?.[0] || null
+    setResumeFile(nextFile)
+
+    if (!nextFile && event.target) {
+      event.target.value = ""
+    }
+  }
 
   const handleSubmit = async () => {
     setError("")
@@ -192,7 +213,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
       setEmailStatus(responseData.emailSent === true ? "sent" : "failed")
       setEmailError(responseData.emailError || "")
     } catch (err) {
-      setError(err.message)
+      setError(err instanceof Error ? err.message : "Failed to send interview link")
     } finally {
       setLoading(false)
     }
@@ -205,6 +226,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
 
   const clearResumeFile = () => {
     setResumeFile(null)
+    resetFileInputs()
   }
 
   const openCreateJobFlow = () => {
@@ -311,9 +333,10 @@ export default function SendInterviewModal({ isOpen, onClose }) {
               <label className="text-sm text-gray-400">Resume</label>
               <div className="mb-4 rounded-2xl border border-dashed border-slate-600 bg-slate-900/70 p-4">
                 <input
+                  ref={primaryFileInputRef}
                   type="file"
                   className="w-full text-sm text-slate-300 file:mr-4 file:rounded-full file:border-0 file:bg-cyan-500/15 file:px-4 file:py-2 file:text-sm file:font-medium file:text-cyan-200 hover:file:bg-cyan-500/25"
-                  onChange={(e) => setResumeFile(e.target.files?.[0] || null)}
+                  onChange={handleResumeSelect}
                 />
 
                 {resumeFile ? (
@@ -331,9 +354,10 @@ export default function SendInterviewModal({ isOpen, onClose }) {
                         <label className="cursor-pointer rounded-xl border border-slate-700 bg-slate-900/80 px-3 py-2 text-xs font-medium text-slate-200 transition hover:border-cyan-400/50 hover:text-white">
                           Change
                           <input
+                            ref={changeFileInputRef}
                             type="file"
                             className="hidden"
-                            onChange={(e) => setResumeFile(e.target.files?.[0] || null)}
+                            onChange={handleResumeSelect}
                           />
                         </label>
                         <button
@@ -442,4 +466,3 @@ export default function SendInterviewModal({ isOpen, onClose }) {
     </div>
   )
 }
-
