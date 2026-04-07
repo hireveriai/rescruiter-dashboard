@@ -1,4 +1,4 @@
-import { z } from "zod"
+﻿import { z } from "zod"
 
 const uuidField = z.string().uuid()
 
@@ -9,6 +9,7 @@ export const createJobSchema = z.object({
   experience_level_id: z.number().int().positive(),
   core_skills: z.array(z.string().trim().min(1)).default([]),
   difficulty_profile: z.enum(["JUNIOR", "MID", "SENIOR"]).default("MID"),
+  interview_duration_minutes: z.union([z.literal(30), z.literal(45), z.literal(60)]).default(30),
   coding_required: z.enum(["NO", "YES", "AUTO"]).default("AUTO"),
   coding_assessment_type: z
     .enum(["LIVE_CODING", "DEBUGGING", "SQL", "BACKEND_LOGIC", "DSA"])

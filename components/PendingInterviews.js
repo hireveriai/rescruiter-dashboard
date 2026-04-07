@@ -51,6 +51,56 @@ function getInterviewTypeLabel(item) {
   return "Flexible"
 }
 
+function BaseModalShell({ title, subtitle, children, onClose, width = "max-w-2xl" }) {
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/80 px-4 backdrop-blur-md">
+      <div className={`w-full ${width} rounded-[28px] border border-cyan-400/20 bg-[linear-gradient(180deg,rgba(15,23,42,0.98),rgba(9,14,28,0.98))] p-6 shadow-[0_0_80px_rgba(34,211,238,0.12)]`}>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-2xl font-semibold text-white">{title}</h3>
+            {subtitle ? <p className="mt-2 text-sm text-slate-400">{subtitle}</p> : null}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-cyan-400/25 bg-cyan-400/10 px-4 py-2 text-sm text-cyan-100 transition hover:bg-cyan-400/20"
+          >
+            Close
+          </button>
+        </div>
+        <div className="mt-6">{children}</div>
+      </div>
+    </div>
+  )
+}
+
+function NoticeModal({ open, title, message, onClose, tone = "error" }) {
+  if (!open) {
+    return null
+  }
+
+  const toneClass = tone === "success"
+    ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-100"
+    : "border-rose-400/25 bg-rose-500/10 text-rose-100"
+
+  return (
+    <BaseModalShell title={title} subtitle={null} onClose={onClose} width="max-w-xl">
+      <div className={`rounded-2xl border p-4 text-sm ${toneClass}`}>
+        {message}
+      </div>
+      <div className="mt-5 flex justify-end">
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-2xl bg-white px-5 py-2.5 text-sm font-medium text-slate-900 transition hover:bg-slate-100"
+        >
+          OK
+        </button>
+      </div>
+    </BaseModalShell>
+  )
+}
+
 function DateTimeField({ label, value, onChange }) {
   return (
     <div>
@@ -71,84 +121,122 @@ function EditInterviewModal({ isOpen, item, form, onChange, onClose, onSave, sav
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/80 px-4 backdrop-blur-md">
-      <div className="w-full max-w-2xl rounded-[28px] border border-cyan-400/20 bg-[linear-gradient(180deg,rgba(15,23,42,0.98),rgba(9,14,28,0.98))] p-6 shadow-[0_0_80px_rgba(34,211,238,0.12)]">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.28em] text-cyan-300/70">Invite Controls</p>
-            <h3 className="mt-2 text-2xl font-semibold text-white">Edit Interview Invite</h3>
-            <p className="mt-2 text-sm text-slate-400">
-              Update access type or reschedule the current pending interview link.
-            </p>
+    <BaseModalShell
+      title="Edit Interview Invite"
+      subtitle="Update access type or reschedule the current pending interview link."
+      onClose={onClose}
+    >
+      <div className="grid gap-5">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-300">
+          <p className="font-medium text-white">{item.candidateName}</p>
+          <p className="mt-1 text-slate-400">{item.jobTitle}</p>
+        </div>
+
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/55 p-4">
+          <p className="mb-3 text-sm font-medium text-slate-300">Interview Access Type</p>
+
+          <label className="mb-2 flex items-center gap-3 rounded-xl border border-transparent px-3 py-2 text-sm text-slate-200 transition hover:border-cyan-500/20 hover:bg-slate-800/60">
+            <input
+              type="radio"
+              value="FLEXIBLE"
+              checked={form.accessType === "FLEXIBLE"}
+              onChange={() => onChange({ accessType: "FLEXIBLE" })}
+              className="h-4 w-4 accent-cyan-400"
+            />
+            <span>Flexible (24h access)</span>
+          </label>
+
+          <label className="flex items-center gap-3 rounded-xl border border-transparent px-3 py-2 text-sm text-slate-200 transition hover:border-cyan-500/20 hover:bg-slate-800/60">
+            <input
+              type="radio"
+              value="SCHEDULED"
+              checked={form.accessType === "SCHEDULED"}
+              onChange={() => onChange({ accessType: "SCHEDULED" })}
+              className="h-4 w-4 accent-cyan-400"
+            />
+            <span>Scheduled (specific time window)</span>
+          </label>
+        </div>
+
+        {form.accessType === "SCHEDULED" ? (
+          <div className="grid gap-4 md:grid-cols-2">
+            <DateTimeField label="Start Time" value={form.startTime} onChange={(e) => onChange({ startTime: e.target.value })} />
+            <DateTimeField label="End Time" value={form.endTime} onChange={(e) => onChange({ endTime: e.target.value })} />
           </div>
+        ) : null}
+
+        <div className="flex justify-end gap-3">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full border border-cyan-400/25 bg-cyan-400/10 px-4 py-2 text-sm text-cyan-100 transition hover:bg-cyan-400/20"
+            className="rounded-2xl border border-slate-700 bg-slate-900/70 px-4 py-2.5 text-sm text-slate-200 transition hover:border-slate-500 hover:text-white"
           >
-            Close
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={saving}
+            className="rounded-2xl bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 px-5 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {saving ? "Saving..." : "Save Changes"}
           </button>
         </div>
+      </div>
+    </BaseModalShell>
+  )
+}
 
-        <div className="mt-6 grid gap-5">
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-300">
-            <p className="font-medium text-white">{item.candidateName}</p>
-            <p className="mt-1 text-slate-400">{item.jobTitle}</p>
-          </div>
+function DeleteInterviewModal({ isOpen, item, reason, onReasonChange, onClose, onConfirm, deleting }) {
+  if (!isOpen || !item) {
+    return null
+  }
 
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/55 p-4">
-            <p className="mb-3 text-sm font-medium text-slate-300">Interview Access Type</p>
+  return (
+    <BaseModalShell
+      title="Delete Interview Invite"
+      subtitle="This will revoke the interview link so it can no longer be used by the candidate."
+      onClose={onClose}
+    >
+      <div className="grid gap-5">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-300">
+          <p className="font-medium text-white">{item.candidateName}</p>
+          <p className="mt-1 text-slate-400">{item.jobTitle}</p>
+          <p className="mt-2 text-xs uppercase tracking-[0.18em] text-amber-300/80">
+            {getInterviewTypeLabel(item)}
+          </p>
+        </div>
 
-            <label className="mb-2 flex items-center gap-3 rounded-xl border border-transparent px-3 py-2 text-sm text-slate-200 transition hover:border-cyan-500/20 hover:bg-slate-800/60">
-              <input
-                type="radio"
-                value="FLEXIBLE"
-                checked={form.accessType === "FLEXIBLE"}
-                onChange={() => onChange({ accessType: "FLEXIBLE" })}
-                className="h-4 w-4 accent-cyan-400"
-              />
-              <span>Flexible (24h access)</span>
-            </label>
+        <div>
+          <label className="mb-2 block text-sm text-slate-300">Reason for cancellation</label>
+          <textarea
+            value={reason}
+            onChange={(e) => onReasonChange(e.target.value)}
+            rows={4}
+            placeholder="Candidate not available"
+            className="w-full rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-rose-400/60"
+          />
+        </div>
 
-            <label className="flex items-center gap-3 rounded-xl border border-transparent px-3 py-2 text-sm text-slate-200 transition hover:border-cyan-500/20 hover:bg-slate-800/60">
-              <input
-                type="radio"
-                value="SCHEDULED"
-                checked={form.accessType === "SCHEDULED"}
-                onChange={() => onChange({ accessType: "SCHEDULED" })}
-                className="h-4 w-4 accent-cyan-400"
-              />
-              <span>Scheduled (specific time window)</span>
-            </label>
-          </div>
-
-          {form.accessType === "SCHEDULED" ? (
-            <div className="grid gap-4 md:grid-cols-2">
-              <DateTimeField label="Start Time" value={form.startTime} onChange={(e) => onChange({ startTime: e.target.value })} />
-              <DateTimeField label="End Time" value={form.endTime} onChange={(e) => onChange({ endTime: e.target.value })} />
-            </div>
-          ) : null}
-
-          <div className="flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-2xl border border-slate-700 bg-slate-900/70 px-4 py-2.5 text-sm text-slate-200 transition hover:border-slate-500 hover:text-white"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={onSave}
-              disabled={saving}
-              className="rounded-2xl bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 px-5 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {saving ? "Saving..." : "Save Changes"}
-            </button>
-          </div>
+        <div className="flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-2xl border border-slate-700 bg-slate-900/70 px-4 py-2.5 text-sm text-slate-200 transition hover:border-slate-500 hover:text-white"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={deleting}
+            className="rounded-2xl border border-rose-400/30 bg-rose-500/10 px-5 py-2.5 text-sm font-medium text-rose-100 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {deleting ? "Deleting..." : "Delete Invite"}
+          </button>
         </div>
       </div>
-    </div>
+    </BaseModalShell>
   )
 }
 
@@ -233,7 +321,10 @@ export default function PendingInterviews() {
   const [editItem, setEditItem] = useState(null)
   const [editForm, setEditForm] = useState({ accessType: "FLEXIBLE", startTime: "", endTime: "" })
   const [savingEdit, setSavingEdit] = useState(false)
+  const [deleteItem, setDeleteItem] = useState(null)
+  const [deleteReason, setDeleteReason] = useState("Candidate not available")
   const [busyInviteId, setBusyInviteId] = useState("")
+  const [notice, setNotice] = useState({ open: false, title: "", message: "", tone: "error" })
   const [nowTick, setNowTick] = useState(() => Date.now())
   const [copiedLink, setCopiedLink] = useState("")
 
@@ -319,13 +410,23 @@ export default function PendingInterviews() {
     })
   }
 
+  function handleDeleteOpen(item) {
+    setDeleteItem(item)
+    setDeleteReason("Candidate not available")
+  }
+
   async function handleEditSave() {
     if (!editItem) {
       return
     }
 
     if (editForm.accessType === "SCHEDULED" && (!editForm.startTime || !editForm.endTime)) {
-      window.alert("Start time and end time are required for scheduled interviews.")
+      setNotice({
+        open: true,
+        title: "Update Required",
+        message: "Start time and end time are required for scheduled interviews.",
+        tone: "error",
+      })
       return
     }
 
@@ -354,50 +455,56 @@ export default function PendingInterviews() {
       setEditItem(null)
       await loadPendingInterviews()
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : "Failed to update interview invite")
+      setNotice({
+        open: true,
+        title: "Unable to update invite",
+        message: error instanceof Error ? error.message : "Failed to update interview invite",
+        tone: "error",
+      })
     } finally {
       setSavingEdit(false)
     }
   }
 
-  async function handleDelete(item) {
-    const reason = typeof window !== "undefined"
-      ? window.prompt("Optional reason for cancelling this interview invite", "Candidate not available")
-      : ""
-
-    if (reason === null) {
-      return
-    }
-
-    const confirmed = typeof window !== "undefined"
-      ? window.confirm("Delete this interview invite? The link will be revoked and can no longer be used.")
-      : true
-
-    if (!confirmed) {
+  async function handleDeleteConfirm() {
+    if (!deleteItem) {
       return
     }
 
     try {
-      setBusyInviteId(item.inviteId)
+      setBusyInviteId(deleteItem.inviteId)
 
-      const response = await fetch(buildAuthUrl(`/api/interview/manage/${item.inviteId}`, searchParams), {
+      const response = await fetch(buildAuthUrl(`/api/interview/manage/${deleteItem.inviteId}`, searchParams), {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
         },
         credentials: "include",
-        body: JSON.stringify({ reason: reason || null }),
+        body: JSON.stringify({ reason: deleteReason.trim() || null }),
       })
 
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data?.error?.message || data?.message || "Failed to delete interview invite")
+        throw new Error(data?.error?.message || data?.message || "Failed to revoke interview invite")
       }
 
+      setDeleteItem(null)
+      setDeleteReason("Candidate not available")
       await loadPendingInterviews()
+      setNotice({
+        open: true,
+        title: "Interview invite deleted",
+        message: "The interview link was revoked successfully.",
+        tone: "success",
+      })
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : "Failed to delete interview invite")
+      setNotice({
+        open: true,
+        title: "Unable to delete invite",
+        message: error instanceof Error ? error.message : "Failed to revoke interview invite",
+        tone: "error",
+      })
     } finally {
       setBusyInviteId("")
     }
@@ -454,7 +561,7 @@ export default function PendingInterviews() {
                         <button className="text-indigo-300" onClick={() => handleEditOpen(item)}>
                           Edit
                         </button>
-                        <button className="text-rose-300" onClick={() => handleDelete(item)}>
+                        <button className="text-rose-300" onClick={() => handleDeleteOpen(item)}>
                           {busyInviteId === item.inviteId ? "Deleting..." : "Delete"}
                         </button>
                       </div>
@@ -473,7 +580,7 @@ export default function PendingInterviews() {
         interviews={sortedInterviews}
         onCopy={handleCopy}
         onEdit={handleEditOpen}
-        onDelete={handleDelete}
+        onDelete={handleDeleteOpen}
         nowTick={nowTick}
         copiedLink={copiedLink}
         busyInviteId={busyInviteId}
@@ -487,6 +594,24 @@ export default function PendingInterviews() {
         onClose={() => setEditItem(null)}
         onSave={handleEditSave}
         saving={savingEdit}
+      />
+
+      <DeleteInterviewModal
+        isOpen={Boolean(deleteItem)}
+        item={deleteItem}
+        reason={deleteReason}
+        onReasonChange={setDeleteReason}
+        onClose={() => setDeleteItem(null)}
+        onConfirm={handleDeleteConfirm}
+        deleting={Boolean(deleteItem) && busyInviteId === deleteItem?.inviteId}
+      />
+
+      <NoticeModal
+        open={notice.open}
+        title={notice.title}
+        message={notice.message}
+        tone={notice.tone}
+        onClose={() => setNotice((current) => ({ ...current, open: false }))}
       />
     </>
   )

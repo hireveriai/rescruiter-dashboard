@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params";
@@ -21,6 +21,8 @@ const CODING_ASSESSMENT_OPTIONS = [
   { value: "DSA", label: "DSA" },
 ];
 
+const INTERVIEW_DURATION_OPTIONS = [30, 45, 60];
+
 export default function CreateJobModal({ open, setOpen }) {
   const searchParams = useAuthSearchParams();
   const [loading, setLoading] = useState(false);
@@ -32,6 +34,7 @@ export default function CreateJobModal({ open, setOpen }) {
     experience_level_id: "",
     difficulty_profile: "MID",
     core_skills: "",
+    interview_duration_minutes: 30,
     coding_required: "AUTO",
     coding_assessment_type: "",
     coding_difficulty: "MEDIUM",
@@ -75,6 +78,7 @@ export default function CreateJobModal({ open, setOpen }) {
       experience_level_id: "",
       difficulty_profile: "MID",
       core_skills: "",
+      interview_duration_minutes: 30,
       coding_required: "AUTO",
       coding_assessment_type: "",
       coding_difficulty: "MEDIUM",
@@ -90,6 +94,7 @@ export default function CreateJobModal({ open, setOpen }) {
       const payload = {
         ...form,
         experience_level_id: Number(form.experience_level_id),
+        interview_duration_minutes: Number(form.interview_duration_minutes),
         coding_assessment_type: form.coding_assessment_type || null,
         coding_difficulty: form.coding_difficulty || null,
         coding_duration_minutes:
@@ -227,6 +232,25 @@ export default function CreateJobModal({ open, setOpen }) {
             </div>
 
             <div>
+              <label className="mb-2 block text-sm text-slate-300">Interview Timeline</label>
+              <select
+                value={form.interview_duration_minutes}
+                onChange={(e) => handleChange("interview_duration_minutes", Number(e.target.value))}
+                className="w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition focus:border-violet-400/60 focus:shadow-[0_0_0_3px_rgba(139,92,246,0.08)]"
+              >
+                {INTERVIEW_DURATION_OPTIONS.map((minutes) => (
+                  <option key={minutes} value={minutes}>
+                    {minutes} minutes
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 px-4 py-3 text-sm text-cyan-100">
+              Every interview link created for this job will inherit the same interview duration.
+            </div>
+
+            <div>
               <label className="mb-2 block text-sm text-slate-300">Coding Required</label>
               <select
                 value={form.coding_required}
@@ -292,6 +316,7 @@ export default function CreateJobModal({ open, setOpen }) {
           <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-300">
             - Job config is created under the authenticated organization
             <br />- Skills and preferred languages are normalized from comma-separated input
+            <br />- Timeline applies to every interview generated from this job
             <br />- AUTO lets the database recommend whether coding should be enabled
           </div>
 

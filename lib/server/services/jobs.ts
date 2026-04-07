@@ -1,4 +1,4 @@
-import type { z } from "zod"
+﻿import type { z } from "zod"
 
 import { Prisma } from "@prisma/client"
 
@@ -29,7 +29,8 @@ export async function createJob(input: CreateJobInput) {
         ${input.coding_assessment_type ?? null},
         ${input.coding_difficulty ?? null},
         ${input.coding_duration_minutes ?? null}::integer,
-        ${input.coding_languages}::text[]
+        ${input.coding_languages}::text[],
+        ${input.interview_duration_minutes}::integer
       )
     `)
 

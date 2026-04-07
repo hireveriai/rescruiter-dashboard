@@ -1,4 +1,4 @@
-generator client {
+﻿generator client {
   provider = "prisma-client-js"
 }
 
@@ -36,7 +36,7 @@ model JobPosition {
   jobDescription        String?                @map("job_description")
   experienceLevelId     Int                    @db.SmallInt @map("experience_level_id")
   coreSkills            String[]               @map("core_skills")
-  difficultyProfile     DifficultyProfile      @map("difficulty_profile")
+  difficultyProfile     DifficultyProfile      @map("difficulty_profile")`r`n  interviewDurationMinutes Int                 @default(30) @map("interview_duration_minutes")
   companySkillBaselines CompanySkillBaseline[]
   interviewConfigs      InterviewConfig[]
   interviews            Interview[]
@@ -198,6 +198,7 @@ model InterviewInvite {
 
   @@map("interview_invites")
 }
+
 
 
 
