@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params";
@@ -12,6 +12,15 @@ const FALLBACK_LEVELS = [
   { experience_level_id: 4, label: "Senior" },
 ];
 
+const CODING_ASSESSMENT_OPTIONS = [
+  { value: "", label: "Select Coding Assessment Type" },
+  { value: "LIVE_CODING", label: "Live Coding" },
+  { value: "DEBUGGING", label: "Debugging" },
+  { value: "SQL", label: "SQL" },
+  { value: "BACKEND_LOGIC", label: "Backend Logic" },
+  { value: "DSA", label: "DSA" },
+];
+
 export default function CreateJobModal({ open, setOpen }) {
   const searchParams = useAuthSearchParams();
   const [loading, setLoading] = useState(false);
@@ -23,6 +32,11 @@ export default function CreateJobModal({ open, setOpen }) {
     experience_level_id: "",
     difficulty_profile: "MID",
     core_skills: "",
+    coding_required: "AUTO",
+    coding_assessment_type: "",
+    coding_difficulty: "MEDIUM",
+    coding_duration_minutes: 15,
+    coding_languages: "",
   });
 
   useEffect(() => {
@@ -54,6 +68,21 @@ export default function CreateJobModal({ open, setOpen }) {
     }));
   };
 
+  const resetForm = () => {
+    setForm({
+      job_title: "",
+      job_description: "",
+      experience_level_id: "",
+      difficulty_profile: "MID",
+      core_skills: "",
+      coding_required: "AUTO",
+      coding_assessment_type: "",
+      coding_difficulty: "MEDIUM",
+      coding_duration_minutes: 15,
+      coding_languages: "",
+    });
+  };
+
   const handleSubmit = async () => {
     try {
       setLoading(true);
@@ -61,9 +90,19 @@ export default function CreateJobModal({ open, setOpen }) {
       const payload = {
         ...form,
         experience_level_id: Number(form.experience_level_id),
+        coding_assessment_type: form.coding_assessment_type || null,
+        coding_difficulty: form.coding_difficulty || null,
+        coding_duration_minutes:
+          form.coding_duration_minutes === "" || form.coding_duration_minutes === null
+            ? null
+            : Number(form.coding_duration_minutes),
         core_skills: form.core_skills
           .split(",")
           .map((skill) => skill.trim())
+          .filter(Boolean),
+        coding_languages: form.coding_languages
+          .split(",")
+          .map((item) => item.trim())
           .filter(Boolean),
         skill_baseline: [],
       };
@@ -84,14 +123,7 @@ export default function CreateJobModal({ open, setOpen }) {
         return;
       }
 
-      setForm({
-        job_title: "",
-        job_description: "",
-        experience_level_id: "",
-        difficulty_profile: "MID",
-        core_skills: "",
-      });
-
+      resetForm();
       setOpen(false);
     } catch (err) {
       console.error(err);
@@ -193,12 +225,74 @@ export default function CreateJobModal({ open, setOpen }) {
                 className="w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-violet-400/60 focus:shadow-[0_0_0_3px_rgba(139,92,246,0.08)]"
               />
             </div>
+
+            <div>
+              <label className="mb-2 block text-sm text-slate-300">Coding Required</label>
+              <select
+                value={form.coding_required}
+                onChange={(e) => handleChange("coding_required", e.target.value)}
+                className="w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition focus:border-violet-400/60 focus:shadow-[0_0_0_3px_rgba(139,92,246,0.08)]"
+              >
+                <option value="AUTO">Auto</option>
+                <option value="YES">Yes</option>
+                <option value="NO">No</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm text-slate-300">Coding Assessment Type</label>
+              <select
+                value={form.coding_assessment_type}
+                onChange={(e) => handleChange("coding_assessment_type", e.target.value)}
+                className="w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition focus:border-violet-400/60 focus:shadow-[0_0_0_3px_rgba(139,92,246,0.08)]"
+              >
+                {CODING_ASSESSMENT_OPTIONS.map((option) => (
+                  <option key={option.value || "default"} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm text-slate-300">Coding Difficulty</label>
+              <select
+                value={form.coding_difficulty}
+                onChange={(e) => handleChange("coding_difficulty", e.target.value)}
+                className="w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition focus:border-violet-400/60 focus:shadow-[0_0_0_3px_rgba(139,92,246,0.08)]"
+              >
+                <option value="EASY">Easy</option>
+                <option value="MEDIUM">Medium</option>
+                <option value="HARD">Hard</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm text-slate-300">Coding Duration Minutes</label>
+              <input
+                type="number"
+                min="1"
+                value={form.coding_duration_minutes}
+                onChange={(e) => handleChange("coding_duration_minutes", e.target.value === "" ? "" : Number(e.target.value))}
+                className="w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-violet-400/60 focus:shadow-[0_0_0_3px_rgba(139,92,246,0.08)]"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="mb-2 block text-sm text-slate-300">Preferred Languages</label>
+              <input
+                value={form.coding_languages}
+                onChange={(e) => handleChange("coding_languages", e.target.value)}
+                placeholder="JavaScript, TypeScript, SQL, Python"
+                className="w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-violet-400/60 focus:shadow-[0_0_0_3px_rgba(139,92,246,0.08)]"
+              />
+            </div>
           </div>
 
           <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-300">
             - Job config is created under the authenticated organization
-            <br />- Skills are normalized from comma-separated input
-            <br />- Evaluation defaults can be extended later without changing the UI
+            <br />- Skills and preferred languages are normalized from comma-separated input
+            <br />- AUTO lets the database recommend whether coding should be enabled
           </div>
 
           <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
@@ -222,4 +316,3 @@ export default function CreateJobModal({ open, setOpen }) {
     </div>
   );
 }
-

@@ -1,4 +1,4 @@
-﻿import type { z } from "zod"
+import type { z } from "zod"
 
 import { Prisma } from "@prisma/client"
 
@@ -24,7 +24,12 @@ export async function createJob(input: CreateJobInput) {
         ${input.experience_level_id}::smallint,
         ${input.core_skills}::text[],
         ${input.difficulty_profile},
-        ${JSON.stringify(input.skill_baseline)}::jsonb
+        ${JSON.stringify(input.skill_baseline)}::jsonb,
+        ${input.coding_required},
+        ${input.coding_assessment_type ?? null},
+        ${input.coding_difficulty ?? null},
+        ${input.coding_duration_minutes ?? null}::integer,
+        ${input.coding_languages}::text[]
       )
     `)
 
