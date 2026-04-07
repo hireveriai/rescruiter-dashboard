@@ -375,11 +375,9 @@ export async function updateInterviewInvite(input: UpdateInterviewInviteInput) {
         throw fallbackError
       }
 
-      throw toFunctionApiError(error, {
-        statusCode: 500,
-        code: "INTERVIEW_INVITE_UPDATE_FAILED",
-        message: "Failed to update interview invite",
-      })
+      const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : "Failed to update interview invite"
+
+      throw new ApiError(500, "INTERVIEW_INVITE_UPDATE_FAILED", fallbackMessage)
     }
   }
 }
@@ -416,11 +414,9 @@ export async function revokeInterviewInvite(input: RevokeInterviewInviteInput) {
         throw fallbackError
       }
 
-      throw toFunctionApiError(error, {
-        statusCode: 500,
-        code: "INTERVIEW_INVITE_REVOKE_FAILED",
-        message: "Failed to revoke interview invite",
-      })
+      const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : "Failed to revoke interview invite"
+
+      throw new ApiError(500, "INTERVIEW_INVITE_REVOKE_FAILED", fallbackMessage)
     }
   }
 }
@@ -467,5 +463,6 @@ export async function markInterviewAsUsed(token: string) {
 
   return true
 }
+
 
 
