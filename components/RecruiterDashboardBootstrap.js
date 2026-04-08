@@ -97,6 +97,33 @@ export default function RecruiterDashboardBootstrap({ children }) {
     }
 
     let active = true
+    let cachedOverview = null
+
+    if (typeof window !== "undefined") {
+      try {
+        const cached = window.sessionStorage.getItem("hireveri-overview")
+        cachedOverview = cached ? JSON.parse(cached) : null
+      } catch (error) {
+        console.warn("Failed to read cached recruiter overview", error)
+      }
+    }
+
+    let cachedFrame = null
+
+    if (cachedOverview) {
+      cachedFrame = window.requestAnimationFrame(() => {
+        if (!active) {
+          return
+        }
+
+        setState((current) => ({
+          status: "ready",
+          profile: cachedOverview?.profile ?? current.profile,
+          overview: cachedOverview,
+          message: "",
+        }))
+      })
+    }
 
     async function bootstrap() {
       setState((current) => ({
@@ -130,10 +157,21 @@ export default function RecruiterDashboardBootstrap({ children }) {
             overview: null,
             message: data?.error?.message || data?.message || "Unable to load recruiter workspace.",
           })
+          if (typeof window !== "undefined") {
+            window.sessionStorage.removeItem("hireveri-overview")
+          }
           return
         }
 
         const overview = data.data ?? null
+
+        if (typeof window !== "undefined" && overview) {
+          try {
+            window.sessionStorage.setItem("hireveri-overview", JSON.stringify(overview))
+          } catch (error) {
+            console.warn("Failed to cache recruiter overview", error)
+          }
+        }
 
         setState({
           status: "ready",
@@ -159,6 +197,9 @@ export default function RecruiterDashboardBootstrap({ children }) {
 
     return () => {
       active = false
+      if (cachedFrame !== null) {
+        window.cancelAnimationFrame(cachedFrame)
+      }
     }
   }, [searchParams])
 
