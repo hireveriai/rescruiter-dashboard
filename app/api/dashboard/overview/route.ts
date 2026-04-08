@@ -82,7 +82,9 @@ function shorten(text: string | null, words = 18) {
   return `${parts.slice(0, words).join(" ")}...`
 }
 
-async function buildOverview(auth: Awaited<ReturnType<typeof getRecruiterRequestContext>>) {
+async function buildOverview(
+  auth: Awaited<ReturnType<typeof getRecruiterRequestContext>>
+): Promise<OverviewPayload> {
   const appUrl = getInterviewAppUrl()
 
   const [profile, pipelineRows, verisRows, candidates] = await Promise.all([
@@ -104,7 +106,7 @@ async function buildOverview(auth: Awaited<ReturnType<typeof getRecruiterRequest
   ])
 
   const payload = pipelineRows[0]?.fn_get_dashboard_pipeline ?? {}
-  const pipeline = {
+  const pipeline: OverviewPayload["pipeline"] = {
     pending: payload.pipeline?.pending ?? 0,
     inProgress: payload.pipeline?.inProgress ?? 0,
     completed: payload.pipeline?.completed ?? 0,
