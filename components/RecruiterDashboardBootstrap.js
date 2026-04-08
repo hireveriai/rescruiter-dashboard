@@ -116,6 +116,20 @@ export default function RecruiterDashboardBootstrap({ children }) {
           return
         }
 
+        if (typeof window !== "undefined" && cachedOverview?.profile?.userId && cachedOverview?.profile?.organizationId) {
+          try {
+            window.sessionStorage.setItem(
+              "hireveri-auth",
+              JSON.stringify({
+                userId: cachedOverview.profile.userId,
+                organizationId: cachedOverview.profile.organizationId,
+              })
+            )
+          } catch (error) {
+            console.warn("Failed to cache recruiter auth params", error)
+          }
+        }
+
         setState((current) => ({
           status: "ready",
           profile: cachedOverview?.profile ?? current.profile,
@@ -168,6 +182,15 @@ export default function RecruiterDashboardBootstrap({ children }) {
         if (typeof window !== "undefined" && overview) {
           try {
             window.sessionStorage.setItem("hireveri-overview", JSON.stringify(overview))
+            if (overview?.profile?.userId && overview?.profile?.organizationId) {
+              window.sessionStorage.setItem(
+                "hireveri-auth",
+                JSON.stringify({
+                  userId: overview.profile.userId,
+                  organizationId: overview.profile.organizationId,
+                })
+              )
+            }
           } catch (error) {
             console.warn("Failed to cache recruiter overview", error)
           }
