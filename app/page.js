@@ -15,7 +15,7 @@ import WarRoomButton from "../components/WarRoomButton";
 import SendInterviewModal from "../components/SendInterviewModal";
 import RecruiterDashboardBootstrap from "../components/RecruiterDashboardBootstrap";
 
-function DashboardContent({ profile, showRestoreOverlay }) {
+function DashboardContent({ profile, showRestoreOverlay, overview }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   return (
@@ -31,11 +31,11 @@ function DashboardContent({ profile, showRestoreOverlay }) {
             </p>
           </div>
 
-          <Pipeline />
-          <PendingInterviews />
-          <RecordedInterviews />
-          <CandidateList />
-          <VerisSummary />
+          <Pipeline initialPipeline={overview?.pipeline} />
+          <PendingInterviews initialPendingInterviews={overview?.pendingInterviews} />
+          <RecordedInterviews initialRecordedInterviews={overview?.recordedInterviews} />
+          <CandidateList initialCandidates={overview?.candidates} />
+          <VerisSummary initialSummaries={overview?.veris} />
           <WarRoomButton />
         </div>
 
@@ -54,8 +54,8 @@ function DashboardContent({ profile, showRestoreOverlay }) {
 export default function Home() {
   return (
     <RecruiterDashboardBootstrap>
-      {({ profile, showRestoreOverlay }) => (
-        <DashboardContent profile={profile} showRestoreOverlay={showRestoreOverlay} />
+      {({ profile, showRestoreOverlay, overview }) => (
+        <DashboardContent profile={profile} showRestoreOverlay={showRestoreOverlay} overview={overview} />
       )}
     </RecruiterDashboardBootstrap>
   );

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl, hasAuthQuery } from "@/lib/client/auth-query"
@@ -314,9 +314,9 @@ function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, onEdit, o
   )
 }
 
-export default function PendingInterviews() {
+export default function PendingInterviews({ initialPendingInterviews }) {
   const searchParams = useAuthSearchParams()
-  const [interviews, setInterviews] = useState([])
+  const [interviews, setInterviews] = useState(() => initialPendingInterviews ?? [])
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editItem, setEditItem] = useState(null)
   const [editForm, setEditForm] = useState({ accessType: "FLEXIBLE", startTime: "", endTime: "" })
@@ -327,8 +327,9 @@ export default function PendingInterviews() {
   const [notice, setNotice] = useState({ open: false, title: "", message: "", tone: "error" })
   const [nowTick, setNowTick] = useState(() => Date.now())
   const [copiedLink, setCopiedLink] = useState("")
+  const hasInitial = initialPendingInterviews !== undefined
 
-  async function loadPendingInterviews() {
+  const loadPendingInterviews = useCallback(async () => {
     if (!hasAuthQuery(searchParams)) {
       return
     }
@@ -345,9 +346,13 @@ export default function PendingInterviews() {
     }
 
     setInterviews(data.data?.pendingInterviews ?? [])
-  }
+  }, [searchParams])
 
   useEffect(() => {
+    if (hasInitial) {
+      return
+    }
+
     let isMounted = true
 
     loadPendingInterviews().catch((error) => {
@@ -359,7 +364,7 @@ export default function PendingInterviews() {
     return () => {
       isMounted = false
     }
-  }, [searchParams])
+  }, [hasInitial, loadPendingInterviews])
 
   useEffect(() => {
     const timer = setInterval(() => {

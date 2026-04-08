@@ -12,11 +12,16 @@ const FALLBACK_PIPELINE = {
   flagged: 0,
 }
 
-export default function Pipeline() {
+export default function Pipeline({ initialPipeline }) {
   const searchParams = useAuthSearchParams()
   const [pipeline, setPipeline] = useState(FALLBACK_PIPELINE)
+  const displayPipeline = initialPipeline ?? pipeline
 
   useEffect(() => {
+    if (initialPipeline) {
+      return
+    }
+
     if (!hasAuthQuery(searchParams)) {
       return
     }
@@ -40,13 +45,13 @@ export default function Pipeline() {
     return () => {
       isMounted = false
     }
-  }, [searchParams])
+  }, [initialPipeline, searchParams])
 
   const cards = [
-    { title: "Pending", count: pipeline.pending, color: "bg-blue-500" },
-    { title: "In Progress", count: pipeline.inProgress, color: "bg-indigo-500" },
-    { title: "Completed", count: pipeline.completed, color: "bg-green-500" },
-    { title: "Flagged", count: pipeline.flagged, color: "bg-red-500" },
+    { title: "Pending", count: displayPipeline.pending, color: "bg-blue-500" },
+    { title: "In Progress", count: displayPipeline.inProgress, color: "bg-indigo-500" },
+    { title: "Completed", count: displayPipeline.completed, color: "bg-green-500" },
+    { title: "Flagged", count: displayPipeline.flagged, color: "bg-red-500" },
   ]
 
   return (

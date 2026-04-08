@@ -86,6 +86,7 @@ export default function RecruiterDashboardBootstrap({ children }) {
   const [state, setState] = useState({
     status: "loading",
     profile: null,
+    overview: null,
     message: "",
   })
   const [showRestoreOverlay, setShowRestoreOverlay] = useState(false)
@@ -101,11 +102,12 @@ export default function RecruiterDashboardBootstrap({ children }) {
       setState((current) => ({
         status: "loading",
         profile: current.profile,
+        overview: current.overview,
         message: "",
       }))
 
       try {
-        const response = await fetch(buildAuthUrl("/api/me", searchParams), {
+        const response = await fetch(buildAuthUrl("/api/dashboard/overview", searchParams), {
           credentials: "include",
           cache: "no-store",
         })
@@ -125,14 +127,18 @@ export default function RecruiterDashboardBootstrap({ children }) {
           setState({
             status: "error",
             profile: null,
+            overview: null,
             message: data?.error?.message || data?.message || "Unable to load recruiter workspace.",
           })
           return
         }
 
+        const overview = data.data ?? null
+
         setState({
           status: "ready",
-          profile: data.data ?? null,
+          profile: overview?.profile ?? null,
+          overview,
           message: "",
         })
       } catch {
@@ -143,6 +149,7 @@ export default function RecruiterDashboardBootstrap({ children }) {
         setState({
           status: "error",
           profile: null,
+          overview: null,
           message: "Unable to connect to the recruiter workspace.",
         })
       }
@@ -193,6 +200,7 @@ export default function RecruiterDashboardBootstrap({ children }) {
 
   return children({
     profile: state.profile,
+    overview: state.overview,
     restoreStatus: state.status,
     showRestoreOverlay: showRestoreOverlay && state.status === "loading",
   })

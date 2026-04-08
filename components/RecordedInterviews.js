@@ -90,12 +90,17 @@ function RecordedInterviewsModal({ isOpen, onClose, interviews }) {
   )
 }
 
-export default function RecordedInterviews() {
+export default function RecordedInterviews({ initialRecordedInterviews }) {
   const searchParams = useAuthSearchParams()
   const [interviews, setInterviews] = useState([])
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const displayInterviews = initialRecordedInterviews !== undefined ? initialRecordedInterviews : interviews
 
   useEffect(() => {
+    if (initialRecordedInterviews !== undefined) {
+      return
+    }
+
     if (!hasAuthQuery(searchParams)) {
       return
     }
@@ -119,14 +124,14 @@ export default function RecordedInterviews() {
     return () => {
       isMounted = false
     }
-  }, [searchParams])
+  }, [initialRecordedInterviews, searchParams])
 
   const sortedInterviews = useMemo(
     () =>
-      [...interviews].sort(
+      [...displayInterviews].sort(
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       ),
-    [interviews]
+    [displayInterviews]
   )
 
   const previewInterviews = sortedInterviews.slice(0, 3)

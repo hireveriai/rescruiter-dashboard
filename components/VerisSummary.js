@@ -33,11 +33,16 @@ function getRiskColor(value) {
   return "text-red-400"
 }
 
-export default function VerisSummary() {
+export default function VerisSummary({ initialSummaries }) {
   const searchParams = useAuthSearchParams()
   const [summaries, setSummaries] = useState([])
+  const displaySummaries = initialSummaries !== undefined ? initialSummaries : summaries
 
   useEffect(() => {
+    if (initialSummaries !== undefined) {
+      return
+    }
+
     if (!hasAuthQuery(searchParams)) {
       return
     }
@@ -61,7 +66,7 @@ export default function VerisSummary() {
     return () => {
       isMounted = false
     }
-  }, [searchParams])
+  }, [initialSummaries, searchParams])
 
   return (
     <div className="mt-10">
@@ -70,12 +75,12 @@ export default function VerisSummary() {
       </h2>
 
       <div className="grid grid-cols-2 gap-4">
-        {summaries.length === 0 ? (
+        {displaySummaries.length === 0 ? (
           <div className="col-span-2 rounded-lg bg-[#111a2e] p-5 text-center text-gray-400">
             No VERIS summaries available
           </div>
         ) : (
-          summaries.map((item) => (
+          displaySummaries.map((item) => (
             <div
               key={item.attemptId}
               className="bg-[#111a2e] p-5 rounded-lg"

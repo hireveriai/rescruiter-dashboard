@@ -46,12 +46,17 @@ function formatScore(score) {
   return `${Math.round(score)}%`
 }
 
-export default function CandidateList() {
+export default function CandidateList({ initialCandidates }) {
   const searchParams = useAuthSearchParams()
   const [candidates, setCandidates] = useState([])
   const [selectedCandidate, setSelectedCandidate] = useState(null)
+  const displayCandidates = initialCandidates !== undefined ? initialCandidates : candidates
 
   useEffect(() => {
+    if (initialCandidates !== undefined) {
+      return
+    }
+
     if (!hasAuthQuery(searchParams)) {
       return
     }
@@ -75,7 +80,7 @@ export default function CandidateList() {
     return () => {
       isMounted = false
     }
-  }, [searchParams])
+  }, [initialCandidates, searchParams])
 
   return (
     <>
@@ -103,14 +108,14 @@ export default function CandidateList() {
             </thead>
 
             <tbody>
-              {candidates.length === 0 ? (
+              {displayCandidates.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="p-4 text-gray-400 text-center">
                     No candidates available
                   </td>
                 </tr>
               ) : (
-                candidates.map((candidate, index) => (
+                displayCandidates.map((candidate, index) => (
                   <tr key={`${candidate.candidateName}-${index}`} className="border-b border-gray-800">
                     <td className="p-4">{candidate.candidateName}</td>
                     <td className="p-4 text-gray-300">{candidate.jobTitle}</td>
