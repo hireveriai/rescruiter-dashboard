@@ -104,15 +104,16 @@ async function buildOverview(auth: Awaited<ReturnType<typeof getRecruiterRequest
   ])
 
   const payload = pipelineRows[0]?.fn_get_dashboard_pipeline ?? {}
+  const pipeline = {
+    pending: payload.pipeline?.pending ?? 0,
+    inProgress: payload.pipeline?.inProgress ?? 0,
+    completed: payload.pipeline?.completed ?? 0,
+    flagged: payload.pipeline?.flagged ?? 0,
+  }
 
   return {
     profile,
-    pipeline: payload.pipeline ?? {
-      pending: 0,
-      inProgress: 0,
-      completed: 0,
-      flagged: 0,
-    },
+    pipeline,
     pendingInterviews: payload.pendingInterviews ?? [],
     recordedInterviews: payload.recordedInterviews ?? [],
     candidates: candidates ?? [],
