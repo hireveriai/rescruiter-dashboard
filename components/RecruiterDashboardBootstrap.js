@@ -86,22 +86,24 @@ export default function RecruiterDashboardBootstrap({ children }) {
   const [state, setState] = useState({
     status: "loading",
     profile: null,
-    message: "Establishing recruiter session...",
+    message: "",
   })
+  const [showRestoreOverlay, setShowRestoreOverlay] = useState(false)
 
   useEffect(() => {
     if (!hasAuthQuery(searchParams)) {
-      setState({
-        status: "loading",
-        profile: null,
-        message: "Resolving workspace access and organization routing...",
-      })
       return
     }
 
     let active = true
 
     async function bootstrap() {
+      setState((current) => ({
+        status: "loading",
+        profile: current.profile,
+        message: "",
+      }))
+
       try {
         const response = await fetch(buildAuthUrl("/api/me", searchParams), {
           credentials: "include",
@@ -153,15 +155,29 @@ export default function RecruiterDashboardBootstrap({ children }) {
     }
   }, [searchParams])
 
-  if (state.status === "loading") {
-    return (
-      <WorkspaceShell
-        tone="loading"
-        title="Launching your recruiter command center"
-        message={state.message}
-      />
-    )
-  }
+  useEffect(() => {
+    if (state.status !== "loading") {
+      const frame = window.requestAnimationFrame(() => {
+        setShowRestoreOverlay(false)
+      })
+
+      return () => {
+        window.cancelAnimationFrame(frame)
+      }
+    }
+
+    if (showRestoreOverlay) {
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      setShowRestoreOverlay(true)
+    }, 800)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [showRestoreOverlay, state.status])
 
   if (state.status === "error") {
     return (
@@ -175,5 +191,9 @@ export default function RecruiterDashboardBootstrap({ children }) {
     )
   }
 
-  return children(state.profile)
+  return children({
+    profile: state.profile,
+    restoreStatus: state.status,
+    showRestoreOverlay: showRestoreOverlay && state.status === "loading",
+  })
 }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import Navbar from "../components/Navbar";
+import OverlayLoader from "../components/OverlayLoader";
 import Pipeline from "../components/Pipeline";
 import PendingInterviews from "../components/PendingInterviews";
 import RecordedInterviews from "../components/RecordedInterviews";
@@ -14,11 +15,11 @@ import WarRoomButton from "../components/WarRoomButton";
 import SendInterviewModal from "../components/SendInterviewModal";
 import RecruiterDashboardBootstrap from "../components/RecruiterDashboardBootstrap";
 
-function DashboardContent({ profile }) {
+function DashboardContent({ profile, showRestoreOverlay }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-[#0b1220] text-white">
+    <div className="relative min-h-screen bg-[#0b1220] text-white">
       <Navbar onSendInterviewClick={() => setIsModalOpen(true)} initialProfile={profile} />
 
       <div className="grid grid-cols-4 gap-6 p-8">
@@ -45,10 +46,17 @@ function DashboardContent({ profile }) {
       </div>
 
       <SendInterviewModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+      <OverlayLoader key={showRestoreOverlay ? "restore-active" : "restore-idle"} visible={showRestoreOverlay} />
     </div>
   );
 }
 
 export default function Home() {
-  return <RecruiterDashboardBootstrap>{(profile) => <DashboardContent profile={profile} />}</RecruiterDashboardBootstrap>;
+  return (
+    <RecruiterDashboardBootstrap>
+      {({ profile, showRestoreOverlay }) => (
+        <DashboardContent profile={profile} showRestoreOverlay={showRestoreOverlay} />
+      )}
+    </RecruiterDashboardBootstrap>
+  );
 }
