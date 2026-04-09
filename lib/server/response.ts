@@ -3,7 +3,7 @@ import { NextResponse } from "next/server"
 
 import { isApiError } from "@/lib/server/errors"
 
-export function successResponse(data, status = 200) {
+export function successResponse<T>(data: T, status = 200) {
   return NextResponse.json(
     {
       success: true,
@@ -13,7 +13,7 @@ export function successResponse(data, status = 200) {
   )
 }
 
-export function errorResponse(error) {
+export function errorResponse(error: unknown) {
   if (isApiError(error)) {
     return NextResponse.json(
       {
