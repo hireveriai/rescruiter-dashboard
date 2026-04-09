@@ -1,12 +1,6 @@
 import { ApiError, isApiError } from "@/lib/server/errors"
 
-type FunctionFallback = {
-  statusCode: number
-  code: string
-  message: string
-}
-
-const functionErrorMap: Record<string, { statusCode: number; message: string }> = {
+const functionErrorMap = {
   INVALID_EXPERIENCE_LEVEL: { statusCode: 400, message: "experience_level_id does not exist" },
   INVALID_EXPECTED_LEVEL: { statusCode: 400, message: "expected_level must be between 1 and 4" },
   JOB_NOT_FOUND: { statusCode: 404, message: "Job not found for this organization" },
@@ -23,7 +17,7 @@ const functionErrorMap: Record<string, { statusCode: number; message: string }> 
   INSUFFICIENT_PERMISSION: { statusCode: 403, message: "You do not have permission for this action" },
 }
 
-export function toFunctionApiError(error: unknown, fallback: FunctionFallback) {
+export function toFunctionApiError(error, fallback) {
   if (isApiError(error)) {
     return error
   }

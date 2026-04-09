@@ -1,8 +1,5 @@
 export class ApiError extends Error {
-  readonly statusCode: number
-  readonly code: string
-
-  constructor(statusCode: number, code: string, message: string) {
+  constructor(statusCode, code, message) {
     super(message)
     this.name = "ApiError"
     this.statusCode = statusCode
@@ -10,6 +7,6 @@ export class ApiError extends Error {
   }
 }
 
-export function isApiError(error: unknown): error is ApiError {
+export function isApiError(error) {
   return error instanceof ApiError
 }
