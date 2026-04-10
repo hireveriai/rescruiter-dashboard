@@ -1,4 +1,4 @@
-﻿begin;
+begin;
 
 alter table public.job_positions
   add column if not exists interview_duration_minutes integer not null default 30;
@@ -200,6 +200,13 @@ declare
   v_total_duration integer;
   v_mode text;
   v_interview_duration integer := 30;
+  v_coding_required text;
+  v_coding_recommended boolean;
+  v_behavioral_weight integer;
+  v_other_total integer;
+  v_remaining integer;
+  v_scaled_coding integer;
+  v_scaled_system integer;
   v_interview_id uuid;
   v_token uuid;
   v_expires_at timestamptz;
@@ -216,6 +223,13 @@ begin
 
   select coalesce(jp.interview_duration_minutes, 30)
   into v_interview_duration
+  from public.job_positions jp
+  where jp.job_id = p_job_id
+    and jp.organization_id = p_organization_id
+  limit 1;
+
+  select jp.coding_required, jp.coding_recommended
+  into v_coding_required, v_coding_recommended
   from public.job_positions jp
   where jp.job_id = p_job_id
     and jp.organization_id = p_organization_id
@@ -286,6 +300,27 @@ begin
   if v_template_id is null then
     raise exception 'TEMPLATE_NOT_FOUND: no active evaluation template found';
   end if;
+
+  v_behavioral_weight := case
+    when upper(coalesce(v_coding_required, 'AUTO')) = 'YES' then 20
+    when upper(coalesce(v_coding_required, 'AUTO')) = 'NO' then 45
+    else 30
+  end;
+
+  v_remaining := greatest(0, 100 - v_behavioral_weight);
+  v_other_total := coalesce(v_coding_weight, 0) + coalesce(v_system_design_weight, 0);
+
+  if v_other_total = 0 then
+    v_scaled_coding := v_remaining;
+    v_scaled_system := 0;
+  else
+    v_scaled_coding := round((v_remaining::numeric * coalesce(v_coding_weight, 0)) / v_other_total);
+    v_scaled_system := v_remaining - v_scaled_coding;
+  end if;
+
+  v_coding_weight := v_scaled_coding;
+  v_system_design_weight := v_scaled_system;
+  v_verbal_weight := v_behavioral_weight;
 
   v_interview_id := gen_random_uuid();
   v_token := gen_random_uuid();
@@ -380,3 +415,4 @@ end;
 $$;
 
 commit;
+
