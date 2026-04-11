@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import { useEffect, useState } from "react"
 
@@ -160,7 +160,16 @@ export default function RecruiterDashboardBootstrap({ children }) {
         }
 
         if (response.status === 401) {
-          window.location.replace(getRecruiterLoginUrl())
+          setState({
+            status: "error",
+            profile: null,
+            overview: null,
+            message: "Session could not be validated. Please sign in again.",
+          })
+          if (typeof window !== "undefined") {
+            window.sessionStorage.removeItem("hireveri-overview")
+            window.sessionStorage.removeItem("hireveri-auth")
+          }
           return
         }
 
@@ -269,3 +278,4 @@ export default function RecruiterDashboardBootstrap({ children }) {
     showRestoreOverlay: showRestoreOverlay && state.status === "loading",
   })
 }
+
