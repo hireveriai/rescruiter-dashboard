@@ -66,7 +66,7 @@ export function enforceBehavioralQuestions(params: {
   const { roleType, baseQuestions, behavioralBank } = params
   const behavioralCount = getBehavioralCount(baseQuestions.length, roleType)
 
-  const selectedBehavioral = behavioralBank.slice(0, behavioralCount).map((item, index) => ({
+  const selectedBehavioral: Question[] = behavioralBank.slice(0, behavioralCount).map((item, index): Question => ({
     ...item,
     id: item.id || `behavioral-${index}`,
     phase: "MID",
@@ -75,3 +75,4 @@ export function enforceBehavioralQuestions(params: {
 
   return insertBehavioralMidFlow(baseQuestions, selectedBehavioral)
 }
+
