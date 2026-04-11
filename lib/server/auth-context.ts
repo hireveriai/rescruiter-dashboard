@@ -18,6 +18,7 @@ type AuthSessionRow = {
 
 type RecruiterLookupRow = {
   user_id: string
+  organization_id: string
 }
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -62,14 +63,52 @@ function getErrorMessage(error: unknown) {
   return "Unknown database error"
 }
 
+async function lookupRecruiterByIdentity(
+  identityId: string,
+  hintedUserId: string | null,
+  hintedOrganizationId: string | null
+): Promise<RecruiterLookupRow | null> {
+  let recruiterRows
+  const hasHints = Boolean(hintedUserId && hintedOrganizationId)
+
+  try {
+    if (hasHints) {
+      recruiterRows = await prisma.$queryRaw<RecruiterLookupRow[]>(Prisma.sql`
+        select u.user_id::text as user_id,
+               u.organization_id::text as organization_id
+        from public.users u
+        where u.user_id::text = ${hintedUserId}
+          and u.organization_id::text = ${hintedOrganizationId}
+          and u.identity_id::text = ${identityId}
+          and u.role = 'RECRUITER'
+          and u.is_active = true
+        limit 1
+      `)
+    }
+
+    if (!recruiterRows || recruiterRows.length === 0) {
+      recruiterRows = await prisma.$queryRaw<RecruiterLookupRow[]>(Prisma.sql`
+        select u.user_id::text as user_id,
+               u.organization_id::text as organization_id
+        from public.users u
+        where u.identity_id::text = ${identityId}
+          and u.role = 'RECRUITER'
+          and u.is_active = true
+        limit 1
+      `)
+    }
+  } catch (error) {
+    console.error("Recruiter user lookup failed", error)
+    throw new ApiError(500, "RECRUITER_LOOKUP_FAILED", `Could not validate recruiter access: ${getErrorMessage(error)}`)
+  }
+
+  return recruiterRows[0] ?? null
+}
+
 export async function getRecruiterRequestContext(request: Request): Promise<RecruiterRequestContext> {
   const url = new URL(request.url)
   const hintedUserId = toUuidOrNull(String(url.searchParams.get("userId") ?? "").trim())
   const hintedOrganizationId = toUuidOrNull(String(url.searchParams.get("organizationId") ?? "").trim())
-
-  if (!hintedUserId || !hintedOrganizationId) {
-    throw new ApiError(401, "AUTH_CONTEXT_MISSING", "userId and organizationId are required in the URL")
-  }
 
   const cookieMap = parseCookieHeader(request.headers.get("cookie"))
   const sessionCookie = cookieMap.hireveri_session
@@ -98,66 +137,20 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
   }
 
   const session = sessionRows[0]
+  const identityId = session?.identity_id ?? sessionId
+  const validatedVia = session?.identity_id ? "auth_session" : "identity_cookie"
 
-  if (!session?.identity_id) {
-    let fallbackRows
+  const recruiter = await lookupRecruiterByIdentity(identityId, hintedUserId, hintedOrganizationId)
 
-    try {
-      fallbackRows = await prisma.$queryRaw<RecruiterLookupRow[]>(Prisma.sql`
-        select u.user_id::text as user_id
-        from public.users u
-        where u.user_id::text = ${hintedUserId}
-          and u.organization_id::text = ${hintedOrganizationId}
-          and u.identity_id::text = ${sessionId}
-          and u.role = 'RECRUITER'
-          and u.is_active = true
-        limit 1
-      `)
-    } catch (error) {
-      console.error("Recruiter fallback identity lookup failed", error)
-      throw new ApiError(500, "RECRUITER_FALLBACK_LOOKUP_FAILED", `Could not validate recruiter access: ${getErrorMessage(error)}`)
-    }
-
-    if (!fallbackRows[0]?.user_id) {
-      throw new ApiError(401, "INVALID_SESSION", "Authenticated recruiter session is invalid or expired")
-    }
-
-    return {
-      userId: hintedUserId,
-      organizationId: hintedOrganizationId,
-      sessionCookiePresent: true,
-      sessionCookieMatched: true,
-      sessionValidatedVia: "identity_cookie",
-    }
-  }
-
-  let recruiterRows
-
-  try {
-    recruiterRows = await prisma.$queryRaw<RecruiterLookupRow[]>(Prisma.sql`
-      select u.user_id::text as user_id
-      from public.users u
-      where u.user_id::text = ${hintedUserId}
-        and u.organization_id::text = ${hintedOrganizationId}
-        and u.identity_id::text = ${session.identity_id}
-        and u.role = 'RECRUITER'
-        and u.is_active = true
-      limit 1
-    `)
-  } catch (error) {
-    console.error("Recruiter user lookup failed", error)
-    throw new ApiError(500, "RECRUITER_LOOKUP_FAILED", `Could not validate recruiter access: ${getErrorMessage(error)}`)
-  }
-
-  if (!recruiterRows[0]?.user_id) {
+  if (!recruiter?.user_id || !recruiter.organization_id) {
     throw new ApiError(401, "RECRUITER_NOT_FOUND", "Recruiter not found for the authenticated session")
   }
 
   return {
-    userId: hintedUserId,
-    organizationId: hintedOrganizationId,
+    userId: recruiter.user_id,
+    organizationId: recruiter.organization_id,
     sessionCookiePresent: true,
     sessionCookieMatched: true,
-    sessionValidatedVia: "auth_session",
+    sessionValidatedVia: validatedVia,
   }
 }
