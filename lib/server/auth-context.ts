@@ -8,16 +8,21 @@ export type RecruiterRequestContext = {
   organizationId: string
   sessionCookiePresent: boolean
   sessionCookieMatched: boolean
-  sessionValidatedVia: "auth_session" | "identity_cookie"
+  sessionValidatedVia: "auth_session" | "identity_cookie" | "jwt"
 }
 
 type AuthSessionRow = {
   session_id: string
   identity_id: string
+  is_active: boolean | null
 }
 
 type AuthIdentityRow = {
   identity_id: string
+}
+
+type AuthUserRow = {
+  email: string | null
 }
 
 type RecruiterLookupRow = {
@@ -65,6 +70,115 @@ function getErrorMessage(error: unknown) {
   }
 
   return "Unknown database error"
+}
+
+function decodeBase64Url(value: string): string | null {
+  try {
+    const normalized = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=")
+    return Buffer.from(normalized, "base64").toString("utf8")
+  } catch {
+    return null
+  }
+}
+
+function decodeJwtSub(token: string | null | undefined): string | null {
+  if (!token) {
+    return null
+  }
+
+  const parts = token.split(".")
+  if (parts.length < 2) {
+    return null
+  }
+
+  const payload = decodeBase64Url(parts[1])
+  if (!payload) {
+    return null
+  }
+
+  try {
+    const parsed = JSON.parse(payload) as { sub?: string }
+    const sub = parsed.sub?.trim()
+    return sub && UUID_REGEX.test(sub) ? sub : null
+  } catch {
+    return null
+  }
+}
+
+function parseSupabaseAuthCookieValue(rawValue: string): string | null {
+  if (!rawValue) {
+    return null
+  }
+
+  let decoded = rawValue
+
+  try {
+    decoded = decodeURIComponent(decoded)
+  } catch {
+    decoded = rawValue
+  }
+
+  if (decoded.startsWith("base64-")) {
+    const base64Payload = decoded.slice("base64-".length)
+    const base64Decoded = decodeBase64Url(base64Payload)
+    if (base64Decoded) {
+      decoded = base64Decoded
+    }
+  }
+
+  try {
+    const parsed = JSON.parse(decoded) as { access_token?: string }
+    return parsed.access_token ?? null
+  } catch {
+    return null
+  }
+}
+
+function extractSupabaseJwtFromCookies(cookieMap: Record<string, string>): string | null {
+  const authCookieKeys = Object.keys(cookieMap).filter((key) => key.startsWith("sb-") && key.includes("-auth-token"))
+  if (authCookieKeys.length === 0) {
+    return null
+  }
+
+  const grouped: Record<string, string[]> = {}
+
+  authCookieKeys.forEach((key) => {
+    const chunkMatch = key.match(/^(.*)\.(\d+)$/)
+    if (chunkMatch) {
+      const base = chunkMatch[1]
+      const index = Number(chunkMatch[2])
+      if (!grouped[base]) {
+        grouped[base] = []
+      }
+      grouped[base][index] = cookieMap[key]
+      return
+    }
+
+    grouped[key] = [cookieMap[key]]
+  })
+
+  for (const baseKey of Object.keys(grouped)) {
+    const chunks = grouped[baseKey].filter(Boolean)
+    const combined = chunks.join("")
+    const accessToken = parseSupabaseAuthCookieValue(combined)
+    if (accessToken) {
+      return accessToken
+    }
+  }
+
+  return null
+}
+
+function extractJwtFromRequest(request: Request, cookieMap: Record<string, string>): string | null {
+  const authHeader = request.headers.get("authorization")
+  if (authHeader?.toLowerCase().startsWith("bearer ")) {
+    const token = authHeader.slice(7).trim()
+    if (token) {
+      return token
+    }
+  }
+
+  return extractSupabaseJwtFromCookies(cookieMap)
 }
 
 async function lookupIdentityFromSupabaseSession(sessionId: string): Promise<string | null> {
@@ -144,6 +258,96 @@ async function lookupRecruiterByIdentity(
   return recruiterRows[0] ?? null
 }
 
+async function fetchAuthUserEmail(identityId: string): Promise<string | null> {
+  try {
+    const rows = await prisma.$queryRaw<AuthUserRow[]>(Prisma.sql`
+      select u.email
+      from auth.users u
+      where u.id::text = ${identityId}
+      limit 1
+    `)
+
+    const email = rows[0]?.email
+    return email ? email.trim().toLowerCase() : null
+  } catch (error) {
+    console.warn("Supabase auth.users lookup failed", error)
+  }
+
+  return null
+}
+
+async function reconcileRecruiterIdentity(
+  identityId: string,
+  hintedUserId: string | null,
+  hintedOrganizationId: string | null
+): Promise<RecruiterLookupRow | null> {
+  const email = await fetchAuthUserEmail(identityId)
+
+  if (!email) {
+    return null
+  }
+
+  let recruiterRows
+  const hasHints = Boolean(hintedUserId && hintedOrganizationId)
+
+  try {
+    if (hasHints) {
+      recruiterRows = await prisma.$queryRaw<RecruiterLookupRow[]>(Prisma.sql`
+        select u.user_id::text as user_id,
+               u.organization_id::text as organization_id
+        from public.users u
+        where u.user_id::text = ${hintedUserId}
+          and u.organization_id::text = ${hintedOrganizationId}
+          and lower(u.email) = ${email}
+          and u.role = 'RECRUITER'
+          and u.is_active = true
+        limit 1
+      `)
+    }
+
+    if (!recruiterRows || recruiterRows.length === 0) {
+      recruiterRows = await prisma.$queryRaw<RecruiterLookupRow[]>(Prisma.sql`
+        select u.user_id::text as user_id,
+               u.organization_id::text as organization_id
+        from public.users u
+        where lower(u.email) = ${email}
+          and u.role = 'RECRUITER'
+          and u.is_active = true
+        limit 1
+      `)
+    }
+
+    const recruiter = recruiterRows?.[0]
+
+    if (recruiter?.user_id) {
+      await prisma.$queryRaw(Prisma.sql`
+        update public.users
+        set identity_id = ${identityId}::uuid
+        where user_id::text = ${recruiter.user_id}
+      `)
+    }
+
+    return recruiter ?? null
+  } catch (error) {
+    console.error("Recruiter identity reconciliation failed", error)
+    return null
+  }
+}
+
+async function reactivateAuthSessionIfNeeded(session: AuthSessionRow) {
+  if (session.is_active === false) {
+    try {
+      await prisma.$queryRaw(Prisma.sql`
+        update public.auth_sessions
+        set is_active = true
+        where session_id::text = ${session.session_id}
+      `)
+    } catch (error) {
+      console.warn("Failed to reactivate recruiter session", error)
+    }
+  }
+}
+
 export async function getRecruiterRequestContext(request: Request): Promise<RecruiterRequestContext> {
   const url = new URL(request.url)
   const hintedUserId = toUuidOrNull(String(url.searchParams.get("userId") ?? "").trim())
@@ -160,24 +364,42 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
   let identityId: string | null = null
   let validatedVia: RecruiterRequestContext["sessionValidatedVia"] = "identity_cookie"
 
-  try {
-    const sessionRows = await prisma.$queryRaw<AuthSessionRow[]>(Prisma.sql`
-      select
-        s.session_id::text as session_id,
-        s.identity_id::text as identity_id
-      from public.auth_sessions s
-      where s.session_id::text = ${sessionId}
-        and s.is_active = true
-        and s.expires_at > now()
-      limit 1
-    `)
-
-    if (sessionRows[0]?.identity_id) {
-      identityId = sessionRows[0].identity_id
-      validatedVia = "auth_session"
+  const jwt = extractJwtFromRequest(request, cookieMap)
+  if (jwt) {
+    const jwtSub = decodeJwtSub(jwt)
+    if (jwtSub) {
+      identityId = jwtSub
+      validatedVia = "jwt"
     }
-  } catch (error) {
-    console.warn("Recruiter auth session lookup skipped", error)
+  }
+
+  let matchedSession: AuthSessionRow | null = null
+
+  if (!identityId) {
+    try {
+      const sessionRows = await prisma.$queryRaw<AuthSessionRow[]>(Prisma.sql`
+        select
+          s.session_id::text as session_id,
+          s.identity_id::text as identity_id,
+          s.is_active
+        from public.auth_sessions s
+        where s.session_id::text = ${sessionId}
+          and (s.expires_at is null or s.expires_at > now())
+        limit 1
+      `)
+
+      if (sessionRows[0]?.identity_id) {
+        matchedSession = sessionRows[0]
+        identityId = sessionRows[0].identity_id
+        validatedVia = "auth_session"
+      }
+    } catch (error) {
+      console.warn("Recruiter auth session lookup skipped", error)
+    }
+  }
+
+  if (matchedSession) {
+    await reactivateAuthSessionIfNeeded(matchedSession)
   }
 
   if (!identityId) {
@@ -188,7 +410,11 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
     throw new ApiError(401, "INVALID_SESSION", "Authenticated recruiter session is invalid or expired")
   }
 
-  const recruiter = await lookupRecruiterByIdentity(identityId, hintedUserId, hintedOrganizationId)
+  let recruiter = await lookupRecruiterByIdentity(identityId, hintedUserId, hintedOrganizationId)
+
+  if (!recruiter) {
+    recruiter = await reconcileRecruiterIdentity(identityId, hintedUserId, hintedOrganizationId)
+  }
 
   if (!recruiter?.user_id || !recruiter.organization_id) {
     throw new ApiError(401, "RECRUITER_NOT_FOUND", "Recruiter not found for the authenticated session")

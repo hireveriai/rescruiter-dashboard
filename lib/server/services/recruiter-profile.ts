@@ -25,7 +25,7 @@ export type RecruiterProfile = {
   recruiterRoleId: number | null
   recruiterProfileExists: boolean
   sessionCookieMatched: boolean
-  sessionValidatedVia: "auth_session" | "identity_cookie"
+  sessionValidatedVia: "auth_session" | "identity_cookie" | "jwt"
 }
 
 export async function getRecruiterProfile(auth: RecruiterRequestContext): Promise<RecruiterProfile> {
