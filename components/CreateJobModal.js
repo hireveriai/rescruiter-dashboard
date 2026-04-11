@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params";
@@ -88,7 +88,7 @@ export default function CreateJobModal({ open, setOpen }) {
       return;
     }
 
-    fetch(buildAuthUrl("/api/experience-levels", searchParams))
+    fetch(buildAuthUrl("/api/experience-levels", searchParams), { credentials: "include" })
       .then(async (res) => {
         const data = await res.json();
 
@@ -155,6 +155,7 @@ export default function CreateJobModal({ open, setOpen }) {
 
       const res = await fetch(buildAuthUrl("/api/jobs/create", searchParams), {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
         },
@@ -402,3 +403,4 @@ export default function CreateJobModal({ open, setOpen }) {
     </>
   );
 }
+
