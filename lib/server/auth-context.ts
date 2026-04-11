@@ -8,7 +8,7 @@ export type RecruiterRequestContext = {
   organizationId: string
   sessionCookiePresent: boolean
   sessionCookieMatched: boolean
-  sessionValidatedVia: "auth_session"
+  sessionValidatedVia: "auth_session" | "identity_cookie"
 }
 
 type AuthSessionRow = {
@@ -100,7 +100,35 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
   const session = sessionRows[0]
 
   if (!session?.identity_id) {
-    throw new ApiError(401, "INVALID_SESSION", "Authenticated recruiter session is invalid or expired")
+    let fallbackRows
+
+    try {
+      fallbackRows = await prisma.$queryRaw<RecruiterLookupRow[]>(Prisma.sql`
+        select u.user_id::text as user_id
+        from public.users u
+        where u.user_id::text = ${hintedUserId}
+          and u.organization_id::text = ${hintedOrganizationId}
+          and u.identity_id::text = ${sessionId}
+          and u.role = 'RECRUITER'
+          and u.is_active = true
+        limit 1
+      `)
+    } catch (error) {
+      console.error("Recruiter fallback identity lookup failed", error)
+      throw new ApiError(500, "RECRUITER_FALLBACK_LOOKUP_FAILED", `Could not validate recruiter access: ${getErrorMessage(error)}`)
+    }
+
+    if (!fallbackRows[0]?.user_id) {
+      throw new ApiError(401, "INVALID_SESSION", "Authenticated recruiter session is invalid or expired")
+    }
+
+    return {
+      userId: hintedUserId,
+      organizationId: hintedOrganizationId,
+      sessionCookiePresent: true,
+      sessionCookieMatched: true,
+      sessionValidatedVia: "identity_cookie",
+    }
   }
 
   let recruiterRows
