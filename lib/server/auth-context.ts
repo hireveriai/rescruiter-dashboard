@@ -16,6 +16,10 @@ type AuthSessionRow = {
   identity_id: string
 }
 
+type AuthIdentityRow = {
+  identity_id: string
+}
+
 type RecruiterLookupRow = {
   user_id: string
   organization_id: string
@@ -61,6 +65,41 @@ function getErrorMessage(error: unknown) {
   }
 
   return "Unknown database error"
+}
+
+async function lookupIdentityFromSupabaseSession(sessionId: string): Promise<string | null> {
+  try {
+    const sessionRows = await prisma.$queryRaw<AuthIdentityRow[]>(Prisma.sql`
+      select s.user_id::text as identity_id
+      from auth.sessions s
+      where s.id::text = ${sessionId}
+      limit 1
+    `)
+
+    if (sessionRows[0]?.identity_id) {
+      return sessionRows[0].identity_id
+    }
+  } catch (error) {
+    console.warn("Supabase auth.sessions lookup failed", error)
+  }
+
+  try {
+    const refreshRows = await prisma.$queryRaw<AuthIdentityRow[]>(Prisma.sql`
+      select rt.user_id::text as identity_id
+      from auth.refresh_tokens rt
+      where rt.id::text = ${sessionId}
+         or rt.session_id::text = ${sessionId}
+      limit 1
+    `)
+
+    if (refreshRows[0]?.identity_id) {
+      return refreshRows[0].identity_id
+    }
+  } catch (error) {
+    console.warn("Supabase auth.refresh_tokens lookup failed", error)
+  }
+
+  return null
 }
 
 async function lookupRecruiterByIdentity(
@@ -118,10 +157,11 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
     throw new ApiError(401, "SESSION_COOKIE_MISSING", "Authenticated recruiter session is missing")
   }
 
-  let sessionRows: AuthSessionRow[] = []
+  let identityId: string | null = null
+  let validatedVia: RecruiterRequestContext["sessionValidatedVia"] = "identity_cookie"
 
   try {
-    sessionRows = await prisma.$queryRaw<AuthSessionRow[]>(Prisma.sql`
+    const sessionRows = await prisma.$queryRaw<AuthSessionRow[]>(Prisma.sql`
       select
         s.session_id::text as session_id,
         s.identity_id::text as identity_id
@@ -131,14 +171,22 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
         and s.expires_at > now()
       limit 1
     `)
+
+    if (sessionRows[0]?.identity_id) {
+      identityId = sessionRows[0].identity_id
+      validatedVia = "auth_session"
+    }
   } catch (error) {
     console.warn("Recruiter auth session lookup skipped", error)
-    sessionRows = []
   }
 
-  const session = sessionRows[0]
-  const identityId = session?.identity_id ?? sessionId
-  const validatedVia = session?.identity_id ? "auth_session" : "identity_cookie"
+  if (!identityId) {
+    identityId = await lookupIdentityFromSupabaseSession(sessionId)
+  }
+
+  if (!identityId) {
+    throw new ApiError(401, "INVALID_SESSION", "Authenticated recruiter session is invalid or expired")
+  }
 
   const recruiter = await lookupRecruiterByIdentity(identityId, hintedUserId, hintedOrganizationId)
 
