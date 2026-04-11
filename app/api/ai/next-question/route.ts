@@ -13,6 +13,7 @@ export async function POST(request: Request) {
       skillTags: body.skillTags ?? [],
       baseQuestions: body.baseQuestions ?? [],
       behavioralBank: body.behavioralBank ?? [],
+      jobTitle: body.jobTitle ?? body.roleTitle ?? body.title,
     })
 
     return NextResponse.json({
