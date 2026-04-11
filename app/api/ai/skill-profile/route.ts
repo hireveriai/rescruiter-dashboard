@@ -12,6 +12,22 @@ import {
 import { prisma } from "@/lib/server/prisma"
 import { errorResponse } from "@/lib/server/response"
 
+type IncomingQuestion = {
+  id?: string
+  questionId?: string
+  text?: string
+  question?: string
+}
+
+type IncomingAnswer = {
+  questionId?: string
+  question_id?: string
+  questionText?: string
+  text?: string
+  answer?: string
+  score?: number
+}
+
 async function ensureSkillProfileTable() {
   await prisma.$executeRaw`
     create table if not exists public.interview_skill_profiles (
@@ -46,8 +62,8 @@ export async function POST(request: Request) {
     const coreSkills = Array.isArray(body.core_skills) ? body.core_skills : body.coreSkills
     const resumeSkills = Array.isArray(body.resume_skills) ? body.resume_skills : body.resumeSkills
 
-    const questions = Array.isArray(body.questions) ? body.questions : []
-    const answers = Array.isArray(body.answers) ? body.answers : []
+    const questions: IncomingQuestion[] = Array.isArray(body.questions) ? body.questions : []
+    const answers: IncomingAnswer[] = Array.isArray(body.answers) ? body.answers : []
 
     const bucketWeights = typeof body.bucket_weights === "object" ? body.bucket_weights : body.bucketWeights
 
@@ -57,7 +73,7 @@ export async function POST(request: Request) {
       resumeSkills: Array.isArray(resumeSkills) ? resumeSkills : [],
     })
 
-    const mapped = questions.map((question) => {
+    const mapped = questions.map((question: IncomingQuestion) => {
       const text = String(question.text ?? question.question ?? "")
       const mapping = mapQuestionToSkill(text, skills)
       return {
@@ -70,7 +86,7 @@ export async function POST(request: Request) {
 
     const coverage = computeSkillCoverage(mapped, skills)
 
-    const scoreEntries = answers.map((answer) => {
+    const scoreEntries = answers.map((answer: IncomingAnswer) => {
       const questionId = answer.questionId ?? answer.question_id
       const question = mapped.find((item) => item.questionId === questionId)
       const skill = question?.skill ?? mapQuestionToSkill(String(answer.questionText ?? ""), skills).skill
