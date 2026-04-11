@@ -107,7 +107,7 @@ export async function POST(req: Request) {
       }
     }
 
-    const rows = await prisma.$queryRaw<CandidateFunctionRow[]>(Prisma.sql`
+    const rows = (await prisma.$queryRaw(Prisma.sql`
       select *
       from public.fn_upsert_candidate(
         ${auth.organizationId}::uuid,
@@ -117,7 +117,7 @@ export async function POST(req: Request) {
         ${resumeUrl},
         ${resumeText}
       )
-    `)
+    `)) as CandidateFunctionRow[]
 
     const result = rows[0]
 
@@ -154,3 +154,4 @@ export async function POST(req: Request) {
     )
   }
 }
+
