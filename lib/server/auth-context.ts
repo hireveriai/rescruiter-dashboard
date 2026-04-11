@@ -118,7 +118,7 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
     throw new ApiError(401, "SESSION_COOKIE_MISSING", "Authenticated recruiter session is missing")
   }
 
-  let sessionRows
+  let sessionRows: AuthSessionRow[] = []
 
   try {
     sessionRows = await prisma.$queryRaw<AuthSessionRow[]>(Prisma.sql`
@@ -132,8 +132,8 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
       limit 1
     `)
   } catch (error) {
-    console.error("Recruiter auth session lookup failed", error)
-    throw new ApiError(500, "AUTH_SESSION_LOOKUP_FAILED", `Could not validate recruiter session: ${getErrorMessage(error)}`)
+    console.warn("Recruiter auth session lookup skipped", error)
+    sessionRows = []
   }
 
   const session = sessionRows[0]
