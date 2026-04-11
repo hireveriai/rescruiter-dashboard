@@ -8,6 +8,8 @@ export type Question = {
   phase: QuestionPhase
   tags: string[]
   type: "BEHAVIORAL" | "TECHNICAL" | "SYSTEM" | "GENERAL"
+  skill?: string
+  skillBucket?: string
 }
 
 type BehavioralMix = {
@@ -75,4 +77,3 @@ export function enforceBehavioralQuestions(params: {
 
   return insertBehavioralMidFlow(baseQuestions, selectedBehavioral)
 }
-

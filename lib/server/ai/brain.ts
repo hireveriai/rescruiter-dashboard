@@ -1,4 +1,5 @@
 import { enforceBehavioralQuestions, Question, RoleType } from "@/lib/server/ai/behavioral"
+import { assignSkillsToQuestions, buildSkillUniverse } from "@/lib/server/ai/skills"
 
 export type GenerateQuestionsInput = {
   roleType: RoleType
@@ -7,6 +8,13 @@ export type GenerateQuestionsInput = {
   baseQuestions: Question[]
   behavioralBank: Question[]
   jobTitle?: string
+  previousQuestions?: string[]
+  similarityThreshold?: number
+  includeAttemptHistory?: boolean
+  jobDescription?: string
+  coreSkills?: string[]
+  resumeSkills?: string[]
+  skillsRemaining?: string[]
 }
 
 export type EvaluateAnswerInput = {
@@ -32,6 +40,50 @@ export type NextQuestionResult = {
   nextQuestion: Question | null
 }
 
+export type QuestionQualityInput = {
+  question: string
+  jobTitle?: string
+  jobSkills: string[]
+  previousQuestions: string[]
+  similarityThreshold?: number
+}
+
+export type QuestionQualityResult = {
+  status: "accepted" | "rejected"
+  reason: string
+  score: {
+    clarity: number
+    relevance: number
+    specificity: number
+    average: number
+  }
+}
+
+export type RegenerationReason =
+  | "job_title_used"
+  | "generic_question"
+  | "no_skill_reference"
+  | "repetition"
+  | "grammar_issue"
+  | "no_scenario"
+  | "too_short"
+  | "low_quality"
+
+export type RegenerationAttempt = {
+  attempt: number
+  question: string
+  status: "accepted" | "rejected"
+  reason: RegenerationReason | "ok"
+}
+
+export type RegenerationResult = {
+  question: Question
+  status: "accepted" | "rejected"
+  reason: RegenerationReason | "ok"
+  attempts: number
+  history?: RegenerationAttempt[]
+}
+
 const DEFAULT_SKILLS = ["system design", "troubleshooting", "database", "api", "security"]
 
 const GENERIC_PATTERNS = [
@@ -45,6 +97,30 @@ const GENERIC_PATTERNS = [
   /describe yourself/i,
   /what motivates you/i,
   /what are you looking for/i,
+  /describe a situation/i,
+  /tell me about a time/i,
+]
+
+const LOCATION_TERMS = [
+  "delhi",
+  "bangalore",
+  "bengaluru",
+  "mumbai",
+  "pune",
+  "hyderabad",
+  "remote",
+  "onsite",
+  "on-site",
+  "office",
+  "us",
+  "usa",
+  "india",
+  "uk",
+  "london",
+  "nyc",
+  "new york",
+  "sf",
+  "san francisco",
 ]
 
 const SCENARIO_KEYWORDS = [
@@ -78,8 +154,97 @@ const QUESTION_STARTERS = [
   "Can you walk me through",
 ]
 
+const STOPWORDS = new Set([
+  "a",
+  "an",
+  "the",
+  "and",
+  "or",
+  "to",
+  "of",
+  "in",
+  "for",
+  "on",
+  "at",
+  "with",
+  "is",
+  "are",
+  "was",
+  "were",
+  "be",
+  "been",
+  "being",
+  "this",
+  "that",
+  "these",
+  "those",
+  "it",
+  "as",
+  "by",
+  "from",
+  "if",
+  "when",
+  "then",
+  "you",
+  "your",
+  "we",
+  "our",
+  "us",
+])
+
 function normalizeText(value: string) {
   return value.toLowerCase().replace(/\s+/g, " ").trim()
+}
+
+function prioritizeRemainingSkills(skills: string[], remaining: string[] | undefined) {
+  if (!remaining || remaining.length === 0) {
+    return skills
+  }
+
+  const normalizedRemaining = remaining.map((skill) => normalizeText(skill))
+  const prioritized = [...skills].sort((a, b) => {
+    const aPriority = normalizedRemaining.includes(normalizeText(a)) ? 1 : 0
+    const bPriority = normalizedRemaining.includes(normalizeText(b)) ? 1 : 0
+    return bPriority - aPriority
+  })
+
+  return prioritized
+}
+
+function filterQuestionsByRemaining(questions: Question[], remaining: string[] | undefined) {
+  if (!remaining || remaining.length === 0) {
+    return questions
+  }
+
+  const filtered = questions.filter((question) => containsSkillTag(question.text, remaining))
+  return filtered.length > 0 ? filtered : questions
+}
+
+function tokenize(text: string) {
+  return normalizeText(text)
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(" ")
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 3 && !STOPWORDS.has(token))
+}
+
+function similarityScore(a: string, b: string) {
+  const aTokens = new Set(tokenize(a))
+  const bTokens = new Set(tokenize(b))
+
+  if (aTokens.size === 0 || bTokens.size === 0) {
+    return 0
+  }
+
+  let intersection = 0
+  aTokens.forEach((token) => {
+    if (bTokens.has(token)) {
+      intersection += 1
+    }
+  })
+
+  const union = aTokens.size + bTokens.size - intersection
+  return union === 0 ? 0 : intersection / union
 }
 
 function containsJobTitle(text: string, jobTitle?: string) {
@@ -94,6 +259,11 @@ function containsJobTitle(text: string, jobTitle?: string) {
 
   const normalizedText = normalizeText(text)
   return normalizedText.includes(normalizedTitle)
+}
+
+function containsLocation(text: string) {
+  const normalizedText = normalizeText(text)
+  return LOCATION_TERMS.some((term) => normalizedText.includes(term))
 }
 
 function containsSkillTag(text: string, skillTags: string[]) {
@@ -118,12 +288,126 @@ function hasPreferredStarter(text: string) {
   return QUESTION_STARTERS.some((starter) => text.startsWith(starter))
 }
 
+function looksGrammatical(text: string) {
+  const trimmed = text.trim()
+  if (!trimmed.endsWith("?")) {
+    return false
+  }
+
+  if (!/^[A-Z]/.test(trimmed)) {
+    return false
+  }
+
+  if (/\?{2,}|!{2,}/.test(trimmed)) {
+    return false
+  }
+
+  if (trimmed.split(" ").length < 6) {
+    return false
+  }
+
+  return true
+}
+
+function scoreQuestion(text: string, skillTags: string[]) {
+  const lengthScore = Math.min(5, Math.max(1, Math.floor(text.trim().length / 30)))
+  const relevanceScore = containsSkillTag(text, skillTags) ? 5 : 2
+  const specificityScore = containsScenario(text) ? 5 : 2
+  const average = Number(((lengthScore + relevanceScore + specificityScore) / 3).toFixed(2))
+
+  return {
+    clarity: lengthScore,
+    relevance: relevanceScore,
+    specificity: specificityScore,
+    average,
+  }
+}
+
+function mapRejectionReason(reason: string): RegenerationReason {
+  if (reason.includes("job title")) {
+    return "job_title_used"
+  }
+  if (reason.includes("generic")) {
+    return "generic_question"
+  }
+  if (reason.includes("missing job skill")) {
+    return "no_skill_reference"
+  }
+  if (reason.includes("too similar")) {
+    return "repetition"
+  }
+  if (reason.includes("grammar") || reason.includes("structure")) {
+    return "grammar_issue"
+  }
+  if (reason.includes("scenario")) {
+    return "no_scenario"
+  }
+  if (reason.includes("short")) {
+    return "too_short"
+  }
+  if (reason.includes("low quality")) {
+    return "low_quality"
+  }
+  return "low_quality"
+}
+
+export function validateQuestionQuality(input: QuestionQualityInput): QuestionQualityResult {
+  const { question, jobTitle, jobSkills, previousQuestions } = input
+  const trimmed = question.trim()
+
+  if (containsJobTitle(trimmed, jobTitle)) {
+    return { status: "rejected", reason: "contains job title", score: scoreQuestion(trimmed, jobSkills) }
+  }
+
+  if (containsLocation(trimmed)) {
+    return { status: "rejected", reason: "contains location", score: scoreQuestion(trimmed, jobSkills) }
+  }
+
+  if (isGenericOrVague(trimmed)) {
+    return { status: "rejected", reason: "generic or vague", score: scoreQuestion(trimmed, jobSkills) }
+  }
+
+  if (!containsSkillTag(trimmed, jobSkills)) {
+    return { status: "rejected", reason: "missing job skill", score: scoreQuestion(trimmed, jobSkills) }
+  }
+
+  if (!containsScenario(trimmed)) {
+    return { status: "rejected", reason: "missing real-world scenario", score: scoreQuestion(trimmed, jobSkills) }
+  }
+
+  if (!looksGrammatical(trimmed)) {
+    return { status: "rejected", reason: "grammar or structure issues", score: scoreQuestion(trimmed, jobSkills) }
+  }
+
+  const similarityThreshold = typeof input.similarityThreshold === "number" ? input.similarityThreshold : 0.72
+  for (const prev of previousQuestions) {
+    if (similarityScore(trimmed, prev) >= similarityThreshold) {
+      return { status: "rejected", reason: "too similar to previous question", score: scoreQuestion(trimmed, jobSkills) }
+    }
+  }
+
+  const score = scoreQuestion(trimmed, jobSkills)
+  if (score.average < 3) {
+    return { status: "rejected", reason: "low quality score", score }
+  }
+
+  return { status: "accepted", reason: "ok", score }
+}
+
+function sanitizeQuestions(questions: Question[], jobTitle: string | undefined, skillTags: string[]) {
+  return questions.filter((question) => validateQuestionText(question.text, jobTitle, skillTags))
+}
+
 function validateQuestionText(text: string, jobTitle: string | undefined, skillTags: string[]) {
-  if (!text || text.trim().length < 12) {
+  if (!text || text.trim().length < 18) {
     return false
   }
 
   if (containsJobTitle(text, jobTitle)) {
+    return false
+  }
+
+  if (containsLocation(text)) {
     return false
   }
 
@@ -139,18 +423,18 @@ function validateQuestionText(text: string, jobTitle: string | undefined, skillT
     return false
   }
 
+  if (!looksGrammatical(text)) {
+    return false
+  }
+
   return true
 }
 
-function sanitizeQuestions(questions: Question[], jobTitle: string | undefined, skillTags: string[]) {
-  return questions.filter((question) => validateQuestionText(question.text, jobTitle, skillTags))
-}
-
-function createFallbackQuestion(skill: string, index: number): Question {
+function createFallbackQuestion(skill: string, index: number, scenario: string): Question {
   const templates = [
-    `How do you handle a production incident involving ${skill}?`,
-    `What would you check if ${skill} started failing during a deployment?`,
-    `Can you walk me through diagnosing a performance issue related to ${skill}?`,
+    `How do you handle a ${scenario} involving ${skill}?`,
+    `What would you check if ${skill} started failing during a ${scenario}?`,
+    `Can you walk me through diagnosing a ${scenario} related to ${skill}?`,
   ]
 
   const text = templates[index % templates.length]
@@ -171,7 +455,8 @@ function buildFallbackQuestions(skillTags: string[], totalNeeded: number) {
   let index = 0
   while (fallback.length < totalNeeded) {
     const skill = skills[index % skills.length]
-    const question = createFallbackQuestion(skill, index)
+    const scenario = SCENARIO_KEYWORDS[index % SCENARIO_KEYWORDS.length]
+    const question = createFallbackQuestion(skill, index, scenario)
     fallback.push(question)
     index += 1
   }
@@ -194,23 +479,233 @@ function enforceQuestionStyle(questions: Question[]) {
   })
 }
 
-export function generateQuestions(input: GenerateQuestionsInput) {
-  const skillTags = input.skillTags ?? []
-  const jobTitle = input.jobTitle
+function buildRegeneratedQuestion(params: {
+  reason: RegenerationReason
+  skill: string
+  scenario: string
+  attempt: number
+}): Question {
+  const { reason, skill, scenario, attempt } = params
+  const baseTemplates = [
+    `How do you handle a ${scenario} involving ${skill}?`,
+    `What would you check if ${skill} started failing during a ${scenario}?`,
+    `Can you walk me through diagnosing a ${scenario} related to ${skill}?`,
+  ]
 
-  const sanitizedBase = sanitizeQuestions(input.baseQuestions ?? [], jobTitle, skillTags)
-  const sanitizedBehavioral = sanitizeQuestions(input.behavioralBank ?? [], jobTitle, skillTags)
+  if (reason === "generic_question") {
+    return {
+      id: `regen-${skill}-${attempt}`,
+      text: `Can you walk me through a recent ${scenario} where ${skill} was the root cause?`,
+      phase: "MID",
+      tags: [skill],
+      type: "TECHNICAL",
+    }
+  }
+
+  if (reason === "no_skill_reference") {
+    return {
+      id: `regen-${skill}-${attempt}`,
+      text: `How do you handle a ${scenario} when working with ${skill}?`,
+      phase: "MID",
+      tags: [skill],
+      type: "TECHNICAL",
+    }
+  }
+
+  if (reason === "repetition") {
+    return {
+      id: `regen-${skill}-${attempt}`,
+      text: `What would you check if ${skill} caused unexpected ${scenario} in a core workflow?`,
+      phase: "MID",
+      tags: [skill],
+      type: "TECHNICAL",
+    }
+  }
+
+  if (reason === "grammar_issue") {
+    return {
+      id: `regen-${skill}-${attempt}`,
+      text: `What would you check if ${skill} introduced ${scenario} after a deployment?`,
+      phase: "MID",
+      tags: [skill],
+      type: "TECHNICAL",
+    }
+  }
+
+  if (reason === "job_title_used") {
+    return {
+      id: `regen-${skill}-${attempt}`,
+      text: `Can you walk me through resolving a ${scenario} tied to ${skill}?`,
+      phase: "MID",
+      tags: [skill],
+      type: "TECHNICAL",
+    }
+  }
+
+  return {
+    id: `regen-${skill}-${attempt}`,
+    text: baseTemplates[attempt % baseTemplates.length],
+    phase: "MID",
+    tags: [skill],
+    type: "TECHNICAL",
+  }
+}
+
+function regenerateQuestionWithFeedback(params: {
+  original: Question
+  reason: RegenerationReason
+  skillTags: string[]
+  previousQuestions: string[]
+  attempt: number
+}): Question {
+  const { reason, skillTags, previousQuestions, attempt } = params
+  const skillPool = skillTags.length > 0 ? skillTags : DEFAULT_SKILLS
+  const scenario = SCENARIO_KEYWORDS[(attempt + previousQuestions.length) % SCENARIO_KEYWORDS.length]
+
+  let skill = skillPool[attempt % skillPool.length]
+  if (reason === "repetition" && skillPool.length > 1) {
+    skill = skillPool[(attempt + 1) % skillPool.length]
+  }
+
+  return buildRegeneratedQuestion({ reason, skill, scenario, attempt })
+}
+
+export function regenerateQuestionWithValidation(params: {
+  question: Question
+  jobTitle: string | undefined
+  jobSkills: string[]
+  previousQuestions: string[]
+  similarityThreshold?: number
+  includeAttemptHistory?: boolean
+}): RegenerationResult {
+  const { question, jobTitle, jobSkills, previousQuestions, similarityThreshold, includeAttemptHistory } = params
+  let attempt = 0
+  let candidate = question
+  let lastReason: RegenerationReason | "ok" = "ok"
+  const history: RegenerationAttempt[] = []
+
+  while (attempt < 3) {
+    const quality = validateQuestionQuality({
+      question: candidate.text,
+      jobTitle,
+      jobSkills,
+      previousQuestions,
+      similarityThreshold,
+    })
+
+    if (quality.status === "accepted") {
+      history.push({
+        attempt: attempt + 1,
+        question: candidate.text,
+        status: "accepted",
+        reason: "ok",
+      })
+
+      return {
+        question: candidate,
+        status: "accepted",
+        reason: "ok",
+        attempts: attempt + 1,
+        history: includeAttemptHistory ? history : undefined,
+      }
+    }
+
+    lastReason = mapRejectionReason(quality.reason)
+    history.push({
+      attempt: attempt + 1,
+      question: candidate.text,
+      status: "rejected",
+      reason: lastReason,
+    })
+
+    candidate = regenerateQuestionWithFeedback({
+      original: question,
+      reason: lastReason,
+      skillTags: jobSkills,
+      previousQuestions,
+      attempt,
+    })
+    attempt += 1
+  }
+
+  const fallbackSkill = jobSkills[0] ?? DEFAULT_SKILLS[0]
+  const fallback = createFallbackQuestion(fallbackSkill, attempt, SCENARIO_KEYWORDS[attempt % SCENARIO_KEYWORDS.length])
+
+  return {
+    question: fallback,
+    status: "rejected",
+    reason: lastReason,
+    attempts: attempt,
+    history: includeAttemptHistory ? history : undefined,
+  }
+}
+
+function filterAndRegenerateQuestions(params: {
+  questions: Question[]
+  jobTitle: string | undefined
+  skillTags: string[]
+  previousQuestions: string[]
+  similarityThreshold?: number
+}): Question[] {
+  const { questions, jobTitle, skillTags, previousQuestions, similarityThreshold } = params
+  const accepted: Question[] = []
+  const prev = [...previousQuestions]
+
+  questions.forEach((question) => {
+    const regeneration = regenerateQuestionWithValidation({
+      question,
+      jobTitle,
+      jobSkills: skillTags,
+      previousQuestions: prev,
+      similarityThreshold,
+    })
+
+    accepted.push(regeneration.question)
+    prev.push(regeneration.question.text)
+  })
+
+  return accepted
+}
+
+export function generateQuestions(input: GenerateQuestionsInput) {
+  const derivedSkills = buildSkillUniverse({
+    jobDescription: input.jobDescription,
+    coreSkills: input.coreSkills,
+    resumeSkills: input.resumeSkills,
+  })
+
+  const skillTags = input.skillTags?.length ? input.skillTags : derivedSkills
+  const prioritizedSkills = prioritizeRemainingSkills(skillTags, input.skillsRemaining)
+  const jobTitle = input.jobTitle
+  const previousQuestions = input.previousQuestions ?? []
+
+  const baseQuestions = filterQuestionsByRemaining(input.baseQuestions ?? [], input.skillsRemaining)
+  const behavioralQuestions = filterQuestionsByRemaining(input.behavioralBank ?? [], input.skillsRemaining)
+
+  const sanitizedBase = sanitizeQuestions(baseQuestions, jobTitle, prioritizedSkills)
+  const sanitizedBehavioral = sanitizeQuestions(behavioralQuestions, jobTitle, prioritizedSkills)
 
   const combinedBase = sanitizedBase.slice(0, input.totalQuestions)
-  const needed = Math.max(0, input.totalQuestions - combinedBase.length)
-  const fallback = needed > 0 ? buildFallbackQuestions(skillTags, needed) : []
 
-  const curatedBase = enforceQuestionStyle([...combinedBase, ...fallback])
+  const curatedBase = filterAndRegenerateQuestions({
+    questions: combinedBase,
+    jobTitle,
+    skillTags: prioritizedSkills,
+    previousQuestions,
+    similarityThreshold: input.similarityThreshold,
+  })
+
+  const needed = Math.max(0, input.totalQuestions - curatedBase.length)
+  const fallback = needed > 0 ? buildFallbackQuestions(prioritizedSkills, needed) : []
+
+  const finalBase = enforceQuestionStyle([...curatedBase, ...fallback])
+  const withSkills = assignSkillsToQuestions(finalBase, prioritizedSkills)
+  const behavioralWithSkills = assignSkillsToQuestions(sanitizedBehavioral, prioritizedSkills)
 
   return enforceBehavioralQuestions({
     roleType: input.roleType,
-    baseQuestions: curatedBase,
-    behavioralBank: sanitizedBehavioral,
+    baseQuestions: withSkills,
+    behavioralBank: behavioralWithSkills,
   })
 }
 
