@@ -1,4 +1,3 @@
-import { Prisma } from "@prisma/client"
 import { NextResponse } from "next/server"
 
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
@@ -107,7 +106,7 @@ export async function POST(req: Request) {
       }
     }
 
-    const rows = (await prisma.$queryRaw(Prisma.sql`
+    const rows = (await prisma.$queryRaw`
       select *
       from public.fn_upsert_candidate(
         ${auth.organizationId}::uuid,
@@ -117,7 +116,7 @@ export async function POST(req: Request) {
         ${resumeUrl},
         ${resumeText}
       )
-    `)) as CandidateFunctionRow[]
+    `) as CandidateFunctionRow[]
 
     const result = rows[0]
 
@@ -154,4 +153,3 @@ export async function POST(req: Request) {
     )
   }
 }
-
