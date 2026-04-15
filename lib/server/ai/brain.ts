@@ -379,7 +379,7 @@ export function validateQuestionQuality(input: QuestionQualityInput): QuestionQu
     return { status: "rejected", reason: "grammar or structure issues", score: scoreQuestion(trimmed, jobSkills) }
   }
 
-  const similarityThreshold = typeof input.similarityThreshold === "number" ? input.similarityThreshold : 0.72
+  const similarityThreshold = typeof input.similarityThreshold === "number" ? input.similarityThreshold : 0.8
   for (const prev of previousQuestions) {
     if (similarityScore(trimmed, prev) >= similarityThreshold) {
       return { status: "rejected", reason: "too similar to previous question", score: scoreQuestion(trimmed, jobSkills) }
@@ -477,6 +477,37 @@ function enforceQuestionStyle(questions: Question[]) {
       text: `Can you walk me through ${trimmed.charAt(0).toLowerCase()}${trimmed.slice(1)}`,
     }
   })
+}
+
+function enforceUniqueSkills(questions: Question[], skillTags: string[]) {
+  const seen = new Set<string>()
+  const normalizedTags = skillTags.map((skill) => normalizeText(skill))
+  const output: Question[] = []
+
+  questions.forEach((question, index) => {
+    const skill = question.tags?.[0] ?? ""
+    const normalizedSkill = normalizeText(skill)
+    if (!normalizedSkill || seen.has(normalizedSkill)) {
+      const available = normalizedTags.filter((tag) => !seen.has(tag))
+      if (available.length === 0) {
+        return
+      }
+
+      const replacementSkill = available[index % available.length]
+      output.push({
+        ...question,
+        text: `What would you check if ${replacementSkill} caused a production issue?`,
+        tags: [replacementSkill],
+      })
+      seen.add(replacementSkill)
+      return
+    }
+
+    seen.add(normalizedSkill)
+    output.push(question)
+  })
+
+  return output
 }
 
 function buildRegeneratedQuestion(params: {
@@ -700,11 +731,12 @@ export function generateQuestions(input: GenerateQuestionsInput) {
 
   const finalBase = enforceQuestionStyle([...curatedBase, ...fallback])
   const withSkills = assignSkillsToQuestions(finalBase, prioritizedSkills)
+  const uniqueSkills = enforceUniqueSkills(withSkills, prioritizedSkills)
   const behavioralWithSkills = assignSkillsToQuestions(sanitizedBehavioral, prioritizedSkills)
 
   return enforceBehavioralQuestions({
     roleType: input.roleType,
-    baseQuestions: withSkills,
+    baseQuestions: uniqueSkills,
     behavioralBank: behavioralWithSkills,
   })
 }

@@ -8,6 +8,14 @@ export type SkillBucket =
   | "data"
   | "general"
 
+export type SkillType =
+  | "technical"
+  | "functional"
+  | "behavioral"
+  | "analytical"
+  | "strategic"
+  | "operational"
+
 export type SkillUniverseInput = {
   jobDescription?: string
   coreSkills?: string[]
@@ -149,6 +157,70 @@ const SCENARIO_KEYWORDS = [
   "data loss",
 ]
 
+const FUNCTIONAL_SKILL_HINTS = [
+  "scheduling",
+  "resource allocation",
+  "resource planning",
+  "capacity planning",
+  "workflow",
+  "process",
+  "prioritization",
+  "roadmap",
+  "delivery",
+  "stakeholder",
+  "billing",
+  "crm",
+  "accounting",
+  "payroll",
+  "compliance",
+]
+
+const BEHAVIORAL_SKILL_HINTS = [
+  "communication",
+  "coordination",
+  "collaboration",
+  "conflict",
+  "leadership",
+  "ownership",
+  "feedback",
+  "mentoring",
+  "empathy",
+  "influence",
+]
+
+const ANALYTICAL_SKILL_HINTS = [
+  "analysis",
+  "analytics",
+  "metrics",
+  "reporting",
+  "insights",
+  "forecasting",
+  "data-driven",
+  "kpi",
+]
+
+const STRATEGIC_SKILL_HINTS = [
+  "strategy",
+  "strategic",
+  "roadmap",
+  "vision",
+  "long-term",
+  "business planning",
+  "market",
+  "go-to-market",
+]
+
+const OPERATIONAL_SKILL_HINTS = [
+  "execution",
+  "operations",
+  "operational",
+  "coordination",
+  "resource handling",
+  "logistics",
+  "fulfillment",
+  "service delivery",
+]
+
 function normalizeText(value: string) {
   return value.toLowerCase().replace(/\s+/g, " ").trim()
 }
@@ -223,6 +295,37 @@ export function bucketSkill(skill: string): SkillBucket {
   }
 
   return "general"
+}
+
+export function classifySkillType(skill: string): SkillType {
+  const normalized = normalizeSkillName(skill)
+
+  if (BEHAVIORAL_SKILL_HINTS.some((hint) => normalized.includes(hint))) {
+    return "behavioral"
+  }
+
+  if (ANALYTICAL_SKILL_HINTS.some((hint) => normalized.includes(hint))) {
+    return "analytical"
+  }
+
+  if (STRATEGIC_SKILL_HINTS.some((hint) => normalized.includes(hint))) {
+    return "strategic"
+  }
+
+  if (OPERATIONAL_SKILL_HINTS.some((hint) => normalized.includes(hint))) {
+    return "operational"
+  }
+
+  if (FUNCTIONAL_SKILL_HINTS.some((hint) => normalized.includes(hint))) {
+    return "functional"
+  }
+
+  const bucket = bucketSkill(normalized)
+  if (bucket !== "general") {
+    return "technical"
+  }
+
+  return "functional"
 }
 
 export function mapQuestionToSkill(questionText: string, skills: string[]) {

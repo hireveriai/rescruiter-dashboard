@@ -171,10 +171,12 @@ export default function SendInterviewModal({ isOpen, onClose }) {
 
       const candidateResponse = await fetch(buildAuthUrl("/api/candidate", searchParams), {
         method: "POST",
+        credentials: "include",
         body: candidateFormData,
       })
 
-      const candidateData = await candidateResponse.json()
+      const candidateText = await candidateResponse.text()
+      const candidateData = candidateText ? JSON.parse(candidateText) : {}
       if (!candidateResponse.ok) {
         throw new Error(candidateData.message || candidateData.error?.message || "Failed to create candidate")
       }
@@ -191,6 +193,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
 
       const interviewResponse = await fetch(buildAuthUrl("/api/interview/create-link", searchParams), {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
         },
@@ -203,7 +206,8 @@ export default function SendInterviewModal({ isOpen, onClose }) {
         }),
       })
 
-      const interviewData = await interviewResponse.json()
+      const interviewText = await interviewResponse.text()
+      const interviewData = interviewText ? JSON.parse(interviewText) : {}
       if (!interviewResponse.ok) {
         throw new Error(interviewData.message || interviewData.error?.message || "Failed to generate link")
       }

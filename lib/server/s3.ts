@@ -12,25 +12,36 @@ function getRequiredEnv(name: string) {
   return value
 }
 
-const region = getRequiredEnv("AWS_REGION")
-const bucketName = getRequiredEnv("S3_BUCKET_NAME")
+function getOptionalEnv(name: string) {
+  const value = process.env[name]
+  return value && value.trim() ? value : null
+}
+
+const region = getOptionalEnv("AWS_REGION")
+const bucketName = getOptionalEnv("S3_BUCKET_NAME")
 const customEndpoint = process.env.S3_ENDPOINT?.trim() || null
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || null
 const explicitPublicBaseUrl = process.env.S3_PUBLIC_BASE_URL?.trim() || null
+const accessKeyId = getOptionalEnv("AWS_ACCESS_KEY_ID")
+const secretAccessKey = getOptionalEnv("AWS_SECRET_ACCESS_KEY")
 
-export const s3Client = new S3Client({
-  region,
-  ...(customEndpoint
-    ? {
-        endpoint: customEndpoint,
-        forcePathStyle: true,
-      }
-    : {}),
-  credentials: {
-    accessKeyId: getRequiredEnv("AWS_ACCESS_KEY_ID"),
-    secretAccessKey: getRequiredEnv("AWS_SECRET_ACCESS_KEY"),
-  },
-})
+const s3Configured = Boolean(region && bucketName && accessKeyId && secretAccessKey)
+
+export const s3Client = s3Configured
+  ? new S3Client({
+      region: region!,
+      ...(customEndpoint
+        ? {
+            endpoint: customEndpoint,
+            forcePathStyle: true,
+          }
+        : {}),
+      credentials: {
+        accessKeyId: accessKeyId!,
+        secretAccessKey: secretAccessKey!,
+      },
+    })
+  : null
 
 function buildObjectKey(fileName: string) {
   const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "-")
@@ -43,13 +54,17 @@ function buildPublicUrl(key: string) {
   }
 
   if (supabaseUrl) {
-    return `${supabaseUrl.replace(/\/+$/, "")}/storage/v1/object/public/${bucketName}/${key}`
+    return `${supabaseUrl.replace(/\/+$/, "")}/storage/v1/object/public/${bucketName ?? "storage"}/${key}`
   }
 
   return `https://${bucketName}.s3.${region}.amazonaws.com/${key}`
 }
 
 export async function uploadFileToS3(file: File) {
+  if (!s3Configured || !s3Client || !bucketName || !region) {
+    return null
+  }
+
   const arrayBuffer = await file.arrayBuffer()
   const buffer = Buffer.from(arrayBuffer)
   const key = buildObjectKey(file.name)
