@@ -274,31 +274,32 @@ function buildQuestionsForSkills(skills: string[], offset: number) {
     (skill: string) => `Walk me through your process to maintain ${skill} day to day.`,
   ]
 
-  return skills.map((skill, idx) => ({
-    id: `q-${offset + idx}-${skill.replace(/\s+/g, "-")}`,
-    text: (() => {
-      const type = classifySkillType(skill)
-      const templateSet =
-        type === "behavioral"
-          ? behavioralTemplates
-          : type === "functional"
-          ? functionalTemplates
-          : type === "analytical"
-          ? analyticalTemplates
-          : type === "strategic"
-          ? strategicTemplates
-          : type === "operational"
-          ? operationalTemplates
-          : technicalTemplates
-      const template = templateSet[(offset + idx) % templateSet.length]
-      return template(skill, offset + idx)
-    })(),
-    phase: "MID" as const,
-    tags: [skill],
-    type: (classifySkillType(skill) === "behavioral"
-      ? "BEHAVIORAL"
-      : "TECHNICAL") as const,
-  }))
+  return skills.map((skill, idx) => {
+    const skillType = classifySkillType(skill)
+    const templateSet =
+      skillType === "behavioral"
+        ? behavioralTemplates
+        : skillType === "functional"
+        ? functionalTemplates
+        : skillType === "analytical"
+        ? analyticalTemplates
+        : skillType === "strategic"
+        ? strategicTemplates
+        : skillType === "operational"
+        ? operationalTemplates
+        : technicalTemplates
+    const template = templateSet[(offset + idx) % templateSet.length]
+    const questionType: "BEHAVIORAL" | "TECHNICAL" =
+      skillType === "behavioral" ? "BEHAVIORAL" : "TECHNICAL"
+
+    return {
+      id: `q-${offset + idx}-${skill.replace(/\s+/g, "-")}`,
+      text: template(skill, offset + idx),
+      phase: "MID" as const,
+      tags: [skill],
+      type: questionType,
+    }
+  })
 }
 
 function deriveBehavioralQuestions(count: number, skills: string[], offset: number) {
