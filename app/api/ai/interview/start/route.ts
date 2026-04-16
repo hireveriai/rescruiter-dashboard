@@ -39,22 +39,12 @@ export async function POST(request: Request) {
         candidateResumeSkills: body.resume_skills ?? body.resumeSkills,
         experienceLevel: body.experience_level ?? body.experienceLevel,
         totalQuestions: body.total_questions ?? body.totalQuestions,
-        interviewDurationMinutes: body.interview_duration_minutes ?? body.interviewDurationMinutes,
+        interviewDurationMinutes:
+          body.interview_duration_minutes ?? body.interviewDurationMinutes,
         jobTitle: body.job_title ?? body.jobTitle,
         previousQuestions: body.previous_questions ?? body.previousQuestions,
         similarityThreshold: body.similarity_threshold ?? body.similarityThreshold,
       })
-      : generateBaseInterviewQuestions({
-        jobDescription: body.job_description ?? body.jobDescription,
-        coreSkills: body.core_skills ?? body.coreSkills,
-        candidateResumeText: body.candidate_resume ?? body.candidateResume,
-        candidateResumeSkills: body.resume_skills ?? body.resumeSkills,
-        experienceLevel: body.experience_level ?? body.experienceLevel,
-      totalQuestions: body.total_questions ?? body.totalQuestions,
-      jobTitle: body.job_title ?? body.jobTitle,
-      previousQuestions: body.previous_questions ?? body.previousQuestions,
-          similarityThreshold: body.similarity_threshold ?? body.similarityThreshold,
-        })
 
     if (requireAi && useAiGeneration && output.questions.length === 0) {
       return NextResponse.json(
