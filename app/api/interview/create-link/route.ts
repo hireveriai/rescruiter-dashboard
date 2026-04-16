@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { Prisma } from "@prisma/client"
 
 import { ApiError } from "@/lib/server/errors"
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
@@ -15,6 +16,10 @@ import { sendInterviewEmail } from "@/lib/services/email.service"
 type CandidateEmailRow = {
   full_name: string | null
   email: string
+}
+
+type JobDurationRow = {
+  interview_duration_minutes: number | null
 }
 
 export async function POST(request: Request) {
@@ -38,13 +43,20 @@ export async function POST(request: Request) {
         jobDescription: true,
         coreSkills: true,
         experienceLevelId: true,
-        interviewDurationMinutes: true,
       },
     })
 
     if (!job) {
       throw new ApiError(404, "JOB_NOT_FOUND", "Job not found for this organization")
     }
+
+    const durationRows = await prisma.$queryRaw<JobDurationRow[]>(Prisma.sql`
+      select interview_duration_minutes
+      from public.job_positions
+      where job_id = ${jobId}::uuid
+      limit 1
+    `)
+    const interviewDurationMinutes = durationRows[0]?.interview_duration_minutes ?? undefined
 
     const result = await createInterviewLink({
       ...payload,
@@ -81,7 +93,7 @@ export async function POST(request: Request) {
             interviewDurationMinutes:
               payload.interview_duration_minutes ??
               payload.interviewDurationMinutes ??
-              job.interviewDurationMinutes ??
+              interviewDurationMinutes ??
               undefined,
             jobTitle: job.jobTitle ?? undefined,
             previousQuestions: existingQuestions,
