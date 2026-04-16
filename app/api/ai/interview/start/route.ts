@@ -46,13 +46,16 @@ export async function POST(request: Request) {
         similarityThreshold: body.similarity_threshold ?? body.similarityThreshold,
       })
 
+    const errorMessage =
+      "error_message" in output ? output.error_message : undefined
+
     if (requireAi && useAiGeneration && output.questions.length === 0) {
       return NextResponse.json(
         {
           success: false,
           error: {
             code: "AI_GENERATION_REQUIRED",
-            message: output.error_message ?? "AI question generation was required but failed.",
+            message: errorMessage ?? "AI question generation was required but failed.",
           },
         },
         { status: 502 }
