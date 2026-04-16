@@ -32,6 +32,11 @@ export type InterviewQuestion = {
   skill_bucket?: string
 }
 
+type EnrichedGeneratedQuestion = Question & {
+  skill?: string
+  skillBucket?: string
+}
+
 export type BaseGenerationOutput = {
   questions: InterviewQuestion[]
   skills_covered: string[]
@@ -461,7 +466,7 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
     }).question
   })
 
-  const withSkills = assignSkillsToQuestions(regenerated, skillUniverse)
+  const withSkills: EnrichedGeneratedQuestion[] = assignSkillsToQuestions(regenerated, skillUniverse)
   const coverage = computeSkillCoverage(withSkills, skillUniverse)
 
   const output: InterviewQuestion[] = withSkills.map((question) => ({
