@@ -341,6 +341,21 @@ function mapSkillType(bucket: string, type: Question["type"]) {
   return "functional"
 }
 
+function normalizeInterviewSkillType(
+  value: "technical" | "functional" | "behavioral" | string
+): InterviewQuestion["skill_type"] {
+  if (value === "behavioral" || value === "functional" || value === "technical") {
+    return value
+  }
+
+  const normalized = normalizeText(value)
+  if (normalized === "analytical" || normalized === "strategic" || normalized === "operational") {
+    return "functional"
+  }
+
+  return "technical"
+}
+
 function detectSignals(answer: string) {
   const normalized = normalizeText(answer)
   const vague = normalized.length < 60 || VAGUE_MARKERS.some((marker) => normalized.includes(marker))
@@ -473,7 +488,9 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
     id: question.id,
     question: question.text,
     skill: normalizeSkillName(question.skill ?? mapQuestionToSkill(question.text, skillUniverse).skill),
-    skill_type: mapSkillType(question.skillBucket ?? bucketSkill(question.skill ?? "general"), question.type),
+    skill_type: normalizeInterviewSkillType(
+      mapSkillType(question.skillBucket ?? bucketSkill(question.skill ?? "general"), question.type)
+    ),
     skill_bucket: question.skillBucket,
   }))
 
@@ -755,12 +772,13 @@ export async function generateBaseInterviewQuestionsAI(
           id: buildInterviewQuestionId("ai", accepted.length, skillMatch),
           question: item.question,
           skill: normalizeSkillName(skillMatch),
-          skill_type:
+          skill_type: normalizeInterviewSkillType(
             item.skill_type === "behavioral" ||
             item.skill_type === "functional" ||
             item.skill_type === "technical"
               ? item.skill_type
-              : classifySkillType(skillMatch),
+              : classifySkillType(skillMatch)
+          ),
           skill_bucket: bucketSkill(skillMatch),
         })
       }
@@ -809,12 +827,13 @@ export async function generateBaseInterviewQuestionsAI(
           id: buildInterviewQuestionId("ai", accepted.length, skillMatch),
           question: item.question,
           skill: normalizeSkillName(skillMatch),
-          skill_type:
+          skill_type: normalizeInterviewSkillType(
             item.skill_type === "behavioral" ||
             item.skill_type === "functional" ||
             item.skill_type === "technical"
               ? item.skill_type
-              : classifySkillType(skillMatch),
+              : classifySkillType(skillMatch)
+          ),
           skill_bucket: bucketSkill(skillMatch),
         })
       }
@@ -846,7 +865,7 @@ export async function generateBaseInterviewQuestionsAI(
           id: buildInterviewQuestionId("ai", accepted.length, skill),
           question: item.question,
           skill: normalizeSkillName(skill),
-          skill_type: classifySkillType(skill),
+          skill_type: normalizeInterviewSkillType(classifySkillType(skill)),
           skill_bucket: bucketSkill(skill),
         })
       }
@@ -871,7 +890,9 @@ export async function generateBaseInterviewQuestionsAI(
           id: question.id,
           question: question.text,
           skill: normalizeSkillName(question.skill ?? normalizedSkill),
-          skill_type: mapSkillType(question.skillBucket ?? bucketSkill(normalizedSkill), question.type),
+          skill_type: normalizeInterviewSkillType(
+            mapSkillType(question.skillBucket ?? bucketSkill(normalizedSkill), question.type)
+          ),
           skill_bucket: question.skillBucket,
         })
       }
