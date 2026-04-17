@@ -9,6 +9,31 @@ import { buildAuthUrl } from "@/lib/client/auth-query"
 import Navbar from "../../components/Navbar"
 import SendInterviewModal from "../../components/SendInterviewModal"
 
+function JobDescriptionCell({ description }) {
+  const value = String(description || "").trim()
+  const fallback = "No job description provided"
+  const preview =
+    value.length > 44
+      ? `${value.slice(0, 44).trimEnd()}...`
+      : value || fallback
+
+  return (
+    <div className="group relative max-w-[320px]">
+      <div className="cursor-help leading-6 text-slate-400">
+        {preview}
+      </div>
+
+      {value ? (
+        <div className="pointer-events-none absolute left-0 top-full z-30 mt-2 hidden w-[420px] max-w-[70vw] rounded-2xl border border-slate-700 bg-[#1f2937] px-4 py-3 text-sm leading-7 text-slate-100 shadow-[0_18px_48px_rgba(2,6,23,0.45)] group-hover:block">
+          <div className="max-h-72 overflow-y-auto whitespace-pre-wrap break-words">
+            {value}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function getDifficultyTone(profile) {
   const normalized = String(profile ?? "MID").toUpperCase()
 
@@ -121,9 +146,7 @@ export default function JobsPage() {
                     <tr key={job.jobId} className="border-t border-slate-800/80 align-top text-slate-200">
                       <td className="p-5 font-medium text-white">{job.jobTitle}</td>
                       <td className="p-5 text-slate-400">
-                        <div className="max-w-[320px] leading-6">
-                          {job.jobDescription || "No job description provided"}
-                        </div>
+                        <JobDescriptionCell description={job.jobDescription} />
                       </td>
                       <td className="p-5">
                         <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] ${getDifficultyTone(job.difficultyProfile)}`}>

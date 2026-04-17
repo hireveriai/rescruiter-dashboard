@@ -62,6 +62,15 @@ export default function Sidebar({ initialProfile = null }) {
   const [openSendInterview, setOpenSendInterview] = useState(false)
 
   useEffect(() => {
+    if (!initialProfile) {
+      return
+    }
+
+    setUser(initialProfile)
+    setProfileError("")
+  }, [initialProfile])
+
+  useEffect(() => {
     let isMounted = true
 
     function handleOpenCreateJobEvent() {

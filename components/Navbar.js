@@ -75,6 +75,14 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null }) 
   const [profile, setProfile] = useState(initialProfile);
 
   useEffect(() => {
+    if (!initialProfile) {
+      return;
+    }
+
+    setProfile(initialProfile);
+  }, [initialProfile]);
+
+  useEffect(() => {
     if (initialProfile || !hasAuthQuery(searchParams)) {
       return;
     }
