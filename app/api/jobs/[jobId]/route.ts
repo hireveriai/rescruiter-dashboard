@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
 import { ApiError } from "@/lib/server/errors"
@@ -6,16 +6,13 @@ import { errorResponse, successResponse } from "@/lib/server/response"
 import { setJobActiveState, updateJob } from "@/lib/server/services/jobs"
 import { updateJobSchema } from "@/lib/server/validators"
 
-type RouteParams = {
-  params: {
-    jobId: string
-  }
-}
-
-export async function PATCH(request: Request, { params }: RouteParams) {
+export async function PATCH(
+  request: NextRequest,
+  context: { params: Promise<{ jobId: string }> }
+) {
   try {
     const auth = await getRecruiterRequestContext(request)
-    const { jobId } = params
+    const { jobId } = await context.params
     const payload = await request.json()
 
     if (!jobId) {
