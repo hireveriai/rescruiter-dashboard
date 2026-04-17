@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params";
 
 import { buildAuthUrl } from "@/lib/client/auth-query";
@@ -22,6 +22,48 @@ const CODING_ASSESSMENT_OPTIONS = [
 ];
 
 const INTERVIEW_DURATION_OPTIONS = [30, 45, 60];
+
+function createDefaultForm() {
+  return {
+    job_title: "",
+    job_description: "",
+    experience_level_id: "",
+    difficulty_profile: "MID",
+    core_skills: "",
+    interview_duration_minutes: 30,
+    coding_required: "AUTO",
+    coding_assessment_type: "",
+    coding_difficulty: "MEDIUM",
+    coding_duration_minutes: 15,
+    coding_languages: "",
+    is_active: true,
+  };
+}
+
+function mapJobToForm(job) {
+  if (!job) {
+    return createDefaultForm();
+  }
+
+  return {
+    job_title: job.jobTitle ?? job.job_title ?? "",
+    job_description: job.jobDescription ?? job.job_description ?? "",
+    experience_level_id: String(job.experienceLevelId ?? job.experience_level_id ?? ""),
+    difficulty_profile: String(job.difficultyProfile ?? job.difficulty_profile ?? "MID"),
+    core_skills: Array.isArray(job.coreSkills ?? job.core_skills)
+      ? (job.coreSkills ?? job.core_skills).join(", ")
+      : "",
+    interview_duration_minutes: Number(
+      job.interviewDurationMinutes ?? job.interview_duration_minutes ?? 30
+    ),
+    coding_required: "AUTO",
+    coding_assessment_type: "",
+    coding_difficulty: "MEDIUM",
+    coding_duration_minutes: 15,
+    coding_languages: "",
+    is_active: job.isActive ?? job.is_active ?? true,
+  };
+}
 
 function NoticeModal({ open, title, message, onClose, tone = "error" }) {
   if (!open) {
@@ -63,25 +105,30 @@ function NoticeModal({ open, title, message, onClose, tone = "error" }) {
   );
 }
 
-export default function CreateJobModal({ open, setOpen }) {
+export default function CreateJobModal({
+  open,
+  setOpen,
+  mode = "create",
+  initialJob = null,
+  onSuccess,
+}) {
   const searchParams = useAuthSearchParams();
   const [loading, setLoading] = useState(false);
   const [levels, setLevels] = useState([]);
   const [notice, setNotice] = useState({ open: false, title: "", message: "", tone: "error" });
+  const [form, setForm] = useState(createDefaultForm);
 
-  const [form, setForm] = useState({
-    job_title: "",
-    job_description: "",
-    experience_level_id: "",
-    difficulty_profile: "MID",
-    core_skills: "",
-    interview_duration_minutes: 30,
-    coding_required: "AUTO",
-    coding_assessment_type: "",
-    coding_difficulty: "MEDIUM",
-    coding_duration_minutes: 15,
-    coding_languages: "",
-  });
+  const isEditMode = mode === "edit";
+  const actionLabel = isEditMode ? "Save Changes" : "Create Job";
+  const loadingLabel = isEditMode ? "Saving..." : "Creating...";
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    setForm(mapJobToForm(initialJob));
+  }, [initialJob, open]);
 
   useEffect(() => {
     if (!open) {
@@ -105,6 +152,11 @@ export default function CreateJobModal({ open, setOpen }) {
       });
   }, [open, searchParams]);
 
+  const levelOptions = useMemo(
+    () => (levels.length > 0 ? levels : FALLBACK_LEVELS),
+    [levels]
+  );
+
   const handleChange = (key, value) => {
     setForm((prev) => ({
       ...prev,
@@ -113,19 +165,7 @@ export default function CreateJobModal({ open, setOpen }) {
   };
 
   const resetForm = () => {
-    setForm({
-      job_title: "",
-      job_description: "",
-      experience_level_id: "",
-      difficulty_profile: "MID",
-      core_skills: "",
-      interview_duration_minutes: 30,
-      coding_required: "AUTO",
-      coding_assessment_type: "",
-      coding_difficulty: "MEDIUM",
-      coding_duration_minutes: 15,
-      coding_languages: "",
-    });
+    setForm(createDefaultForm());
   };
 
   const handleSubmit = async () => {
@@ -151,10 +191,16 @@ export default function CreateJobModal({ open, setOpen }) {
           .map((item) => item.trim())
           .filter(Boolean),
         skill_baseline: [],
+        is_active: Boolean(form.is_active),
       };
 
-      const res = await fetch(buildAuthUrl("/api/jobs/create", searchParams), {
-        method: "POST",
+      const endpoint = isEditMode
+        ? buildAuthUrl(`/api/jobs/${initialJob?.jobId ?? initialJob?.job_id}`, searchParams)
+        : buildAuthUrl("/api/jobs/create", searchParams);
+      const method = isEditMode ? "PATCH" : "POST";
+
+      const res = await fetch(endpoint, {
+        method,
         credentials: "include",
         headers: {
           "Content-Type": "application/json",
@@ -165,23 +211,26 @@ export default function CreateJobModal({ open, setOpen }) {
       const data = await res.json();
 
       if (!res.ok) {
-        console.error(data);
         setNotice({
           open: true,
-          title: "Unable to create job",
-          message: data?.error?.message || "Failed to create job",
+          title: isEditMode ? "Unable to update job" : "Unable to create job",
+          message: data?.error?.message || data?.message || "Failed to save job",
           tone: "error",
         });
         return;
       }
 
-      resetForm();
+      if (!isEditMode) {
+        resetForm();
+      }
+
+      onSuccess?.();
       setOpen(false);
     } catch (err) {
       console.error(err);
       setNotice({
         open: true,
-        title: "Unable to create job",
+        title: isEditMode ? "Unable to update job" : "Unable to create job",
         message: "Something went wrong",
         tone: "error",
       });
@@ -204,7 +253,7 @@ export default function CreateJobModal({ open, setOpen }) {
                   Role Configuration
                 </p>
                 <h2 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">
-                  Create Job
+                  {isEditMode ? "Edit Job" : "Create Job"}
                 </h2>
                 <p className="mt-2 max-w-2xl text-sm text-slate-300">
                   Define the role, experience band, and evaluation context used to
@@ -238,12 +287,8 @@ export default function CreateJobModal({ open, setOpen }) {
                   className="w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition focus:border-violet-400/60 focus:shadow-[0_0_0_3px_rgba(139,92,246,0.08)]"
                 >
                   <option value="">Select Experience Level</option>
-
-                  {levels.map((lvl) => (
-                    <option
-                      key={lvl.experience_level_id}
-                      value={lvl.experience_level_id}
-                    >
+                  {levelOptions.map((lvl) => (
+                    <option key={lvl.experience_level_id} value={lvl.experience_level_id}>
                       {lvl.label}
                     </option>
                   ))}
@@ -302,75 +347,13 @@ export default function CreateJobModal({ open, setOpen }) {
               <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 px-4 py-3 text-sm text-cyan-100">
                 Every interview link created for this job will inherit the same interview duration.
               </div>
-
-              <div>
-                <label className="mb-2 block text-sm text-slate-300">Coding Required</label>
-                <select
-                  value={form.coding_required}
-                  onChange={(e) => handleChange("coding_required", e.target.value)}
-                  className="w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition focus:border-violet-400/60 focus:shadow-[0_0_0_3px_rgba(139,92,246,0.08)]"
-                >
-                  <option value="AUTO">Auto</option>
-                  <option value="YES">Yes</option>
-                  <option value="NO">No</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm text-slate-300">Coding Assessment Type</label>
-                <select
-                  value={form.coding_assessment_type}
-                  onChange={(e) => handleChange("coding_assessment_type", e.target.value)}
-                  className="w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition focus:border-violet-400/60 focus:shadow-[0_0_0_3px_rgba(139,92,246,0.08)]"
-                >
-                  {CODING_ASSESSMENT_OPTIONS.map((option) => (
-                    <option key={option.value || "default"} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm text-slate-300">Coding Difficulty</label>
-                <select
-                  value={form.coding_difficulty}
-                  onChange={(e) => handleChange("coding_difficulty", e.target.value)}
-                  className="w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition focus:border-violet-400/60 focus:shadow-[0_0_0_3px_rgba(139,92,246,0.08)]"
-                >
-                  <option value="EASY">Easy</option>
-                  <option value="MEDIUM">Medium</option>
-                  <option value="HARD">Hard</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm text-slate-300">Coding Duration Minutes</label>
-                <input
-                  type="number"
-                  min="1"
-                  value={form.coding_duration_minutes}
-                  onChange={(e) => handleChange("coding_duration_minutes", e.target.value === "" ? "" : Number(e.target.value))}
-                  className="w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-violet-400/60 focus:shadow-[0_0_0_3px_rgba(139,92,246,0.08)]"
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="mb-2 block text-sm text-slate-300">Preferred Languages</label>
-                <input
-                  value={form.coding_languages}
-                  onChange={(e) => handleChange("coding_languages", e.target.value)}
-                  placeholder="JavaScript, TypeScript, SQL, Python"
-                  className="w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-violet-400/60 focus:shadow-[0_0_0_3px_rgba(139,92,246,0.08)]"
-                />
-              </div>
             </div>
 
             <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-300">
               - Job config is created under the authenticated organization
-              <br />- Skills and preferred languages are normalized from comma-separated input
+              <br />- Skills are normalized from comma-separated input
               <br />- Timeline applies to every interview generated from this job
-              <br />- AUTO lets the database recommend whether coding should be enabled
+              <br />- Edit mode updates the role without creating a duplicate
             </div>
 
             <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
@@ -386,7 +369,7 @@ export default function CreateJobModal({ open, setOpen }) {
                 disabled={loading}
                 className="rounded-2xl bg-gradient-to-r from-violet-500 via-fuchsia-500 to-indigo-500 px-6 py-3 text-sm font-medium text-white shadow-[0_18px_30px_rgba(139,92,246,0.28)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {loading ? "Creating..." : "Create Job"}
+                {loading ? loadingLabel : actionLabel}
               </button>
             </div>
           </div>
@@ -403,4 +386,3 @@ export default function CreateJobModal({ open, setOpen }) {
     </>
   );
 }
-

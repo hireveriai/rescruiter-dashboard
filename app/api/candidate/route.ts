@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client"
 import { NextResponse } from "next/server"
 
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
@@ -6,6 +7,7 @@ import { prisma } from "@/lib/server/prisma"
 import { toFunctionApiError } from "@/lib/server/function-errors"
 import { parseResumeText } from "@/lib/server/resumeParser"
 import { uploadFileToS3 } from "@/lib/server/s3"
+import { jobPositionsSupportIsActive } from "@/lib/server/services/jobs"
 
 function getStringValue(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : ""
@@ -45,6 +47,11 @@ type CandidateFunctionRow = {
   candidate_id: string
 }
 
+type JobLookupRow = {
+  organization_id: string
+  is_active: boolean
+}
+
 export async function POST(req: Request) {
   try {
     const auth = await getRecruiterRequestContext(req)
@@ -65,13 +72,17 @@ export async function POST(req: Request) {
       )
     }
 
-    const job = await prisma.jobPosition.findFirst({
-      where: {
-        jobId,
-        organizationId: auth.organizationId,
-      },
-      select: { organizationId: true },
-    })
+    const hasIsActive = await jobPositionsSupportIsActive()
+    const jobs = await prisma.$queryRaw<JobLookupRow[]>(Prisma.sql`
+      select
+        organization_id,
+        ${hasIsActive ? Prisma.sql`is_active` : Prisma.sql`true`} as is_active
+      from public.job_positions
+      where job_id = ${jobId}::uuid
+        and organization_id = ${auth.organizationId}::uuid
+      limit 1
+    `)
+    const job = jobs[0]
 
     if (!job) {
       return NextResponse.json(
@@ -80,6 +91,16 @@ export async function POST(req: Request) {
           message: "Job not found for this organization",
         },
         { status: 404 }
+      )
+    }
+
+    if (hasIsActive && job.is_active === false) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "This job is inactive and cannot accept new candidates",
+        },
+        { status: 409 }
       )
     }
 

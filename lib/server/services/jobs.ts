@@ -5,12 +5,20 @@ import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/server/prisma"
 import { ApiError } from "@/lib/server/errors"
 import { toFunctionApiError } from "@/lib/server/function-errors"
-import { createJobSchema } from "@/lib/server/validators"
+import { createJobSchema, updateJobSchema } from "@/lib/server/validators"
 
 type CreateJobInput = z.infer<typeof createJobSchema>
+type UpdateJobInput = z.infer<typeof updateJobSchema> & {
+  job_id: string
+  organization_id: string
+}
 
 type CreatedJobRow = {
   job_id: string
+}
+
+type ColumnExistsRow = {
+  exists: boolean
 }
 
 export async function createJob(input: CreateJobInput) {
@@ -46,6 +54,99 @@ export async function createJob(input: CreateJobInput) {
       statusCode: 500,
       code: "JOB_CREATE_FAILED",
       message: "Failed to create job",
+    })
+  }
+}
+
+let hasJobIsActiveColumnCache: boolean | null = null
+
+export async function jobPositionsSupportIsActive() {
+  if (hasJobIsActiveColumnCache !== null) {
+    return hasJobIsActiveColumnCache
+  }
+
+  try {
+    const rows = await prisma.$queryRaw<ColumnExistsRow[]>(Prisma.sql`
+      select exists (
+        select 1
+        from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'job_positions'
+          and column_name = 'is_active'
+      )
+    `)
+
+    hasJobIsActiveColumnCache = Boolean(rows[0]?.exists)
+    return hasJobIsActiveColumnCache
+  } catch (error) {
+    console.warn("Job position is_active capability lookup failed", error)
+    hasJobIsActiveColumnCache = false
+    return false
+  }
+}
+
+export async function updateJob(input: UpdateJobInput) {
+  try {
+    await prisma.$executeRaw(Prisma.sql`
+      update public.job_positions
+      set
+        job_title = ${input.job_title},
+        job_description = ${input.job_description ?? null},
+        experience_level_id = ${input.experience_level_id}::smallint,
+        core_skills = ${input.core_skills}::text[],
+        difficulty_profile = ${input.difficulty_profile}::difficulty_profile,
+        interview_duration_minutes = ${input.interview_duration_minutes}::integer
+      where job_id = ${input.job_id}::uuid
+        and organization_id = ${input.organization_id}::uuid
+    `)
+
+    if (await jobPositionsSupportIsActive()) {
+      await prisma.$executeRaw(Prisma.sql`
+        update public.job_positions
+        set is_active = ${input.is_active ?? true}
+        where job_id = ${input.job_id}::uuid
+          and organization_id = ${input.organization_id}::uuid
+      `)
+    }
+
+    return { job_id: input.job_id }
+  } catch (error) {
+    throw toFunctionApiError(error, {
+      statusCode: 500,
+      code: "JOB_UPDATE_FAILED",
+      message: "Failed to update job",
+    })
+  }
+}
+
+export async function setJobActiveState(input: { job_id: string; organization_id: string; is_active: boolean }) {
+  const supportsIsActive = await jobPositionsSupportIsActive()
+
+  if (!supportsIsActive) {
+    throw new ApiError(
+      400,
+      "JOB_INACTIVE_UNSUPPORTED",
+      "Job active/inactive status is not supported in the current database schema"
+    )
+  }
+
+  try {
+    await prisma.$executeRaw(Prisma.sql`
+      update public.job_positions
+      set is_active = ${input.is_active}
+      where job_id = ${input.job_id}::uuid
+        and organization_id = ${input.organization_id}::uuid
+    `)
+
+    return {
+      job_id: input.job_id,
+      is_active: input.is_active,
+    }
+  } catch (error) {
+    throw toFunctionApiError(error, {
+      statusCode: 500,
+      code: "JOB_STATUS_UPDATE_FAILED",
+      message: "Failed to update job status",
     })
   }
 }

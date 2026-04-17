@@ -6,6 +6,7 @@ import { getRecruiterRequestContext } from "@/lib/server/auth-context"
 import { prisma } from "@/lib/server/prisma"
 import { errorResponse, successResponse } from "@/lib/server/response"
 import { generateBaseInterviewQuestionsAI } from "@/lib/server/ai/interview-flow"
+import { jobPositionsSupportIsActive } from "@/lib/server/services/jobs"
 import { createInterviewLink } from "@/lib/server/services/interview.service"
 import {
   fetchExistingInterviewQuestions,
@@ -22,6 +23,10 @@ type JobDurationRow = {
   interview_duration_minutes: number | null
 }
 
+type JobStatusRow = {
+  is_active: boolean
+}
+
 export async function POST(request: Request) {
   try {
     const auth = await getRecruiterRequestContext(request)
@@ -31,6 +36,8 @@ export async function POST(request: Request) {
     if (!jobId) {
       throw new ApiError(400, "INVALID_JOB_ID", "jobId is required")
     }
+
+    const hasIsActive = await jobPositionsSupportIsActive()
 
     const job = await prisma.jobPosition.findFirst({
       where: {
@@ -48,6 +55,20 @@ export async function POST(request: Request) {
 
     if (!job) {
       throw new ApiError(404, "JOB_NOT_FOUND", "Job not found for this organization")
+    }
+
+    if (hasIsActive) {
+      const statusRows = await prisma.$queryRaw<JobStatusRow[]>(Prisma.sql`
+        select is_active
+        from public.job_positions
+        where job_id = ${jobId}::uuid
+          and organization_id = ${auth.organizationId}::uuid
+        limit 1
+      `)
+
+      if (statusRows[0]?.is_active === false) {
+        throw new ApiError(409, "JOB_INACTIVE", "This job is inactive and cannot create new interview links")
+      }
     }
 
     const durationRows = await prisma.$queryRaw<JobDurationRow[]>(Prisma.sql`

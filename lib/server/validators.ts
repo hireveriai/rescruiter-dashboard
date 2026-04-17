@@ -28,6 +28,16 @@ export const createJobSchema = z.object({
     .default([]),
 })
 
+export const updateJobSchema = z.object({
+  job_title: z.string().trim().min(1),
+  job_description: z.string().trim().optional().nullable(),
+  experience_level_id: z.number().int().positive(),
+  core_skills: z.array(z.string().trim().min(1)).default([]),
+  difficulty_profile: z.enum(["JUNIOR", "MID", "SENIOR"]).default("MID"),
+  interview_duration_minutes: z.union([z.literal(30), z.literal(45), z.literal(60)]).default(30),
+  is_active: z.boolean().optional(),
+})
+
 export const createInterviewConfigSchema = z.object({
   job_id: uuidField,
   template_id: uuidField,

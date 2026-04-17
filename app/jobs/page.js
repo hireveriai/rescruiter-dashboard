@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
@@ -8,6 +8,27 @@ import { buildAuthUrl } from "@/lib/client/auth-query"
 
 import Navbar from "../../components/Navbar"
 import SendInterviewModal from "../../components/SendInterviewModal"
+import CreateJobModal from "../../components/CreateJobModal"
+
+function getDifficultyTone(profile) {
+  const normalized = String(profile ?? "MID").toUpperCase()
+
+  if (normalized === "SENIOR") {
+    return "bg-slate-800 text-slate-100 border-slate-700"
+  }
+
+  if (normalized === "JUNIOR") {
+    return "bg-emerald-500/10 text-emerald-300 border-emerald-500/20"
+  }
+
+  return "bg-blue-500/10 text-blue-300 border-blue-500/20"
+}
+
+function getStatusTone(isActive) {
+  return isActive
+    ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-300"
+    : "border-amber-500/20 bg-amber-500/10 text-amber-300"
+}
 
 function JobDescriptionCell({ description }) {
   const value = String(description || "").trim()
@@ -34,38 +55,38 @@ function JobDescriptionCell({ description }) {
   )
 }
 
-function getDifficultyTone(profile) {
-  const normalized = String(profile ?? "MID").toUpperCase()
-
-  if (normalized === "SENIOR") {
-    return "bg-slate-800 text-slate-100 border-slate-700"
-  }
-
-  if (normalized === "JUNIOR") {
-    return "bg-emerald-500/10 text-emerald-300 border-emerald-500/20"
-  }
-
-  return "bg-blue-500/10 text-blue-300 border-blue-500/20"
-}
-
 export default function JobsPage() {
   const searchParams = useAuthSearchParams()
   const [jobs, setJobs] = useState([])
+  const [supportsJobActiveState, setSupportsJobActiveState] = useState(false)
   const [openSendInterview, setOpenSendInterview] = useState(false)
+  const [openEditJob, setOpenEditJob] = useState(false)
+  const [selectedJob, setSelectedJob] = useState(null)
+  const [pendingJobId, setPendingJobId] = useState("")
 
   useEffect(() => {
     let isMounted = true
 
-    fetch(buildAuthUrl("/api/jobs", searchParams))
-      .then((res) => res.json())
-      .then((data) => {
-        if (isMounted && data.success) {
-          setJobs(data.jobs ?? [])
+    async function loadJobs() {
+      try {
+        const response = await fetch(buildAuthUrl("/api/jobs?includeInactive=1", searchParams), {
+          credentials: "include",
+          cache: "no-store",
+        })
+        const data = await response.json()
+
+        if (!isMounted || !data.success) {
+          return
         }
-      })
-      .catch((error) => {
+
+        setJobs(data.jobs ?? [])
+        setSupportsJobActiveState(Boolean(data.meta?.supportsJobActiveState))
+      } catch (error) {
         console.error("Failed to fetch jobs page data", error)
-      })
+      }
+    }
+
+    loadJobs()
 
     return () => {
       isMounted = false
@@ -76,9 +97,56 @@ export default function JobsPage() {
     const total = jobs.length
     const totalInterviews = jobs.reduce((sum, job) => sum + (job._count?.interviews ?? 0), 0)
     const seniorRoles = jobs.filter((job) => String(job.difficultyProfile).toUpperCase() === "SENIOR").length
+    const activeJobs = jobs.filter((job) => job.isActive !== false).length
 
-    return { total, totalInterviews, seniorRoles }
+    return { total, totalInterviews, seniorRoles, activeJobs }
   }, [jobs])
+
+  const handleEdit = (job) => {
+    setSelectedJob(job)
+    setOpenEditJob(true)
+  }
+
+  const handleToggleActive = async (job) => {
+    const nextIsActive = !(job.isActive !== false)
+
+    try {
+      setPendingJobId(job.jobId)
+
+      const response = await fetch(buildAuthUrl(`/api/jobs/${job.jobId}`, searchParams), {
+        method: "PATCH",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          is_active: nextIsActive,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || !data.success) {
+        throw new Error(data?.error?.message || data?.message || "Failed to update job status")
+      }
+
+      setJobs((currentJobs) =>
+        currentJobs.map((item) =>
+          item.jobId === job.jobId
+            ? {
+                ...item,
+                isActive: nextIsActive,
+              }
+            : item
+        )
+      )
+    } catch (error) {
+      console.error("Failed to update job status", error)
+      window.alert(error instanceof Error ? error.message : "Failed to update job status")
+    } finally {
+      setPendingJobId("")
+    }
+  }
 
   return (
     <div className="min-h-screen bg-[#08111f] text-white">
@@ -95,10 +163,14 @@ export default function JobsPage() {
               </p>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[520px]">
+            <div className="grid gap-3 sm:grid-cols-4 xl:min-w-[680px]">
               <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-4">
                 <p className="text-sm text-slate-500">Total Jobs</p>
                 <p className="mt-3 text-3xl font-semibold text-white">{stats.total}</p>
+              </div>
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-4">
+                <p className="text-sm text-slate-500">Active Jobs</p>
+                <p className="mt-3 text-3xl font-semibold text-white">{stats.activeJobs}</p>
               </div>
               <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-4">
                 <p className="text-sm text-slate-500">Active Interview Tracks</p>
@@ -125,21 +197,24 @@ export default function JobsPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[920px] text-sm">
+            <table className="w-full min-w-[1200px] text-sm">
               <thead className="bg-slate-950/20 text-slate-400">
                 <tr>
                   <th className="p-5 text-left font-medium">Job Title</th>
                   <th className="p-5 text-left font-medium">Description</th>
+                  <th className="p-5 text-left font-medium">Status</th>
                   <th className="p-5 text-left font-medium">Difficulty</th>
                   <th className="p-5 text-left font-medium">Experience Level</th>
+                  <th className="p-5 text-left font-medium">Timeline</th>
                   <th className="p-5 text-left font-medium">Core Skills</th>
                   <th className="p-5 text-left font-medium">Open Interviews</th>
+                  <th className="p-5 text-left font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {jobs.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="p-10 text-center text-slate-400">No jobs available</td>
+                    <td colSpan={9} className="p-10 text-center text-slate-400">No jobs available</td>
                   </tr>
                 ) : (
                   jobs.map((job) => (
@@ -149,11 +224,17 @@ export default function JobsPage() {
                         <JobDescriptionCell description={job.jobDescription} />
                       </td>
                       <td className="p-5">
+                        <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] ${getStatusTone(job.isActive !== false)}`}>
+                          {job.isActive !== false ? "ACTIVE" : "INACTIVE"}
+                        </span>
+                      </td>
+                      <td className="p-5">
                         <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] ${getDifficultyTone(job.difficultyProfile)}`}>
                           {job.difficultyProfile ?? "MID"}
                         </span>
                       </td>
                       <td className="p-5 text-slate-300">{job.experienceLevelId ?? "-"}</td>
+                      <td className="p-5 text-slate-300">{job.interviewDurationMinutes ?? 30} min</td>
                       <td className="p-5 text-slate-300">
                         <div className="flex max-w-[260px] flex-wrap gap-2">
                           {(job.coreSkills ?? []).length > 0 ? (
@@ -168,6 +249,32 @@ export default function JobsPage() {
                         </div>
                       </td>
                       <td className="p-5 text-slate-300">{job._count?.interviews ?? 0}</td>
+                      <td className="p-5">
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleEdit(job)}
+                            className="rounded-xl border border-blue-400/30 bg-blue-500/10 px-3 py-2 text-xs font-medium text-blue-200 transition hover:border-blue-300/50 hover:bg-blue-500/15 hover:text-white"
+                          >
+                            Edit
+                          </button>
+
+                          {supportsJobActiveState ? (
+                            <button
+                              type="button"
+                              onClick={() => handleToggleActive(job)}
+                              disabled={pendingJobId === job.jobId}
+                              className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-200 transition hover:border-amber-300/50 hover:bg-amber-500/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {pendingJobId === job.jobId
+                                ? "Saving..."
+                                : job.isActive !== false
+                                  ? "Mark Inactive"
+                                  : "Mark Active"}
+                            </button>
+                          ) : null}
+                        </div>
+                      </td>
                     </tr>
                   ))
                 )}
@@ -178,7 +285,23 @@ export default function JobsPage() {
       </main>
 
       <SendInterviewModal isOpen={openSendInterview} onClose={() => setOpenSendInterview(false)} />
+      <CreateJobModal
+        open={openEditJob}
+        setOpen={setOpenEditJob}
+        mode="edit"
+        initialJob={selectedJob}
+        onSuccess={async () => {
+          const response = await fetch(buildAuthUrl("/api/jobs?includeInactive=1", searchParams), {
+            credentials: "include",
+            cache: "no-store",
+          })
+          const data = await response.json()
+          if (data.success) {
+            setJobs(data.jobs ?? [])
+            setSupportsJobActiveState(Boolean(data.meta?.supportsJobActiveState))
+          }
+        }}
+      />
     </div>
   )
 }
-

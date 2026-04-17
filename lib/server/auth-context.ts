@@ -387,8 +387,10 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
   const cookieMap = parseCookieHeader(request.headers.get("cookie"))
   const sessionCookie = cookieMap.hireveri_session
   const sessionId = toUuidOrNull(sessionCookie)
+  const jwt = extractJwtFromRequest(request, cookieMap)
+  const jwtSub = decodeJwtSub(jwt)
 
-  if (!sessionCookie || !sessionId) {
+  if ((!sessionCookie || !sessionId) && !jwtSub) {
     if (DEV_AUTH_BYPASS) {
       const recruiter = await lookupRecruiterByParams(hintedUserId, hintedOrganizationId)
       if (recruiter?.user_id && recruiter.organization_id) {
@@ -405,21 +407,12 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
     throw new ApiError(401, "SESSION_COOKIE_MISSING", "Authenticated recruiter session is missing")
   }
 
-  let identityId: string | null = null
-  let validatedVia: RecruiterRequestContext["sessionValidatedVia"] = "identity_cookie"
-
-  const jwt = extractJwtFromRequest(request, cookieMap)
-  if (jwt) {
-    const jwtSub = decodeJwtSub(jwt)
-    if (jwtSub) {
-      identityId = jwtSub
-      validatedVia = "jwt"
-    }
-  }
+  let identityId: string | null = jwtSub
+  let validatedVia: RecruiterRequestContext["sessionValidatedVia"] = jwtSub ? "jwt" : "identity_cookie"
 
   let matchedSession: AuthSessionRow | null = null
 
-  if (!identityId) {
+  if (!identityId && sessionId) {
     try {
       const sessionRows = await prisma.$queryRaw<AuthSessionRow[]>(Prisma.sql`
         select
@@ -447,7 +440,7 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
   }
 
   if (!identityId) {
-    identityId = await lookupIdentityFromSupabaseSession(sessionId)
+    identityId = sessionId ? await lookupIdentityFromSupabaseSession(sessionId) : null
   }
 
   if (!identityId) {
@@ -480,8 +473,8 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
   return {
     userId: recruiter.user_id,
     organizationId: recruiter.organization_id,
-    sessionCookiePresent: true,
-    sessionCookieMatched: true,
+    sessionCookiePresent: Boolean(sessionCookie && sessionId),
+    sessionCookieMatched: Boolean((sessionCookie && sessionId) || validatedVia === "jwt"),
     sessionValidatedVia: validatedVia,
   }
 }
