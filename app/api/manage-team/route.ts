@@ -64,6 +64,10 @@ type RecruiterAuth = {
   organizationId: string
 }
 
+type ExistsRow = {
+  exists: boolean
+}
+
 function getRecruiterAppUrl() {
   return (
     process.env.RECRUITER_APP_URL ||
@@ -73,113 +77,187 @@ function getRecruiterAppUrl() {
   )
 }
 
-async function getTeamWorkspace(auth: RecruiterAuth) {
-  await prisma.$queryRaw(Prisma.sql`
-    select public.fn_ensure_default_recruiter_profile(
-      ${auth.userId}::uuid,
-      ${auth.organizationId}::uuid
-    )
+async function functionExists(functionName: string) {
+  const rows = await prisma.$queryRaw<ExistsRow[]>(Prisma.sql`
+    select exists (
+      select 1
+      from pg_proc p
+      inner join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public'
+        and p.proname = ${functionName}
+    ) as exists
   `)
+
+  return rows[0]?.exists ?? false
+}
+
+async function tableExists(tableName: string) {
+  const rows = await prisma.$queryRaw<ExistsRow[]>(Prisma.sql`
+    select exists (
+      select 1
+      from information_schema.tables
+      where table_schema = 'public'
+        and table_name = ${tableName}
+    ) as exists
+  `)
+
+  return rows[0]?.exists ?? false
+}
+
+async function getTeamWorkspace(auth: RecruiterAuth) {
+  const [hasEnsureProfileFn, hasRecruiterProfiles, hasRecruiterRolePool, hasRolePermissions, hasPermissions] =
+    await Promise.all([
+      functionExists("fn_ensure_default_recruiter_profile"),
+      tableExists("recruiter_profiles"),
+      tableExists("recruiter_role_pool"),
+      tableExists("role_permissions"),
+      tableExists("permissions"),
+    ])
+
+  if (hasEnsureProfileFn) {
+    try {
+      await prisma.$queryRaw(Prisma.sql`
+        select public.fn_ensure_default_recruiter_profile(
+          ${auth.userId}::uuid,
+          ${auth.organizationId}::uuid
+        )
+      `)
+    } catch (error) {
+      console.error("Failed to ensure recruiter profile for manage-team", error)
+    }
+  }
+
+  const hasRoleSystem =
+    hasRecruiterProfiles && hasRecruiterRolePool && hasRolePermissions && hasPermissions
+
   const summaryRows = await prisma.$queryRaw<TeamSummaryRow[]>(Prisma.sql`
     select
       o.organization_name,
       count(u.user_id)::int as total_members,
       count(*) filter (where u.is_active = true)::int as active_members,
       count(*) filter (where u.role = 'RECRUITER')::int as recruiters,
-      count(*) filter (
-        where rp.recruiter_role_id is not null
-          and (
-            lower(coalesce(rrp.code, '')) like '%founder%'
-            or lower(coalesce(rrp.code, '')) like '%super%'
-            or exists (
-              select 1
-              from public.role_permissions perms_admin
-              where perms_admin.recruiter_role_id = rp.recruiter_role_id
-                and perms_admin.permission in ('users.manage', 'organization.settings')
-            )
-          )
-      )::int as admins
+      ${hasRoleSystem
+        ? Prisma.sql`
+            count(*) filter (
+              where rp.recruiter_role_id is not null
+                and (
+                  lower(coalesce(rrp.code, '')) like '%founder%'
+                  or lower(coalesce(rrp.code, '')) like '%super%'
+                  or exists (
+                    select 1
+                    from public.role_permissions perms_admin
+                    where perms_admin.recruiter_role_id = rp.recruiter_role_id
+                      and perms_admin.permission in ('users.manage', 'organization.settings')
+                  )
+                )
+            )::int
+          `
+        : Prisma.sql`count(*) filter (where u.role in ('ADMIN', 'ORG_OWNER'))::int`} as admins
     from public.organizations o
     left join public.users u
       on u.organization_id = o.organization_id
      and u.role in ('RECRUITER', 'ADMIN', 'ORG_OWNER')
-    left join public.recruiter_profiles rp
-      on rp.recruiter_id = u.user_id
-    left join public.recruiter_role_pool rrp
-      on rrp.recruiter_role_id = rp.recruiter_role_id
+    ${hasRecruiterProfiles
+      ? Prisma.sql`left join public.recruiter_profiles rp on rp.recruiter_id = u.user_id`
+      : Prisma.sql``}
+    ${hasRecruiterProfiles && hasRecruiterRolePool
+      ? Prisma.sql`left join public.recruiter_role_pool rrp on rrp.recruiter_role_id = rp.recruiter_role_id`
+      : Prisma.sql``}
     where o.organization_id = ${auth.organizationId}::uuid
     group by o.organization_name
     limit 1
   `)
 
-  const teamRows = await prisma.$queryRaw<TeamMemberRow[]>(Prisma.sql`
-    select
-      u.user_id,
-      u.full_name,
-      u.email,
-      u.role,
-      u.is_active,
-      u.created_at::text,
-      rp.recruiter_role_id,
-      rrp.code as recruiter_role_code,
-      rrp.description as recruiter_role_description,
-      coalesce(
-        jsonb_agg(
-          distinct jsonb_build_object(
-            'code', perms.permission,
-            'description', pd.description
-          )
-        ) filter (where perms.permission is not null),
-        '[]'::jsonb
-      ) as permission_details
-    from public.users u
-    left join public.recruiter_profiles rp
-      on rp.recruiter_id = u.user_id
-    left join public.recruiter_role_pool rrp
-      on rrp.recruiter_role_id = rp.recruiter_role_id
-    left join public.role_permissions perms
-      on perms.recruiter_role_id = rp.recruiter_role_id
-    left join public.permissions pd
-      on pd.permission_code = perms.permission
-    where u.organization_id = ${auth.organizationId}::uuid
-      and u.role in ('RECRUITER', 'ADMIN', 'ORG_OWNER')
-    group by
-      u.user_id,
-      u.full_name,
-      u.email,
-      u.role,
-      u.is_active,
-      u.created_at,
-      rp.recruiter_role_id,
-      rrp.code,
-      rrp.description
-    order by
-      case when u.user_id = ${auth.userId}::uuid then 0 else 1 end,
-      u.created_at desc
-  `)
+  const teamRows = hasRoleSystem
+    ? await prisma.$queryRaw<TeamMemberRow[]>(Prisma.sql`
+        select
+          u.user_id,
+          u.full_name,
+          u.email,
+          u.role,
+          u.is_active,
+          u.created_at::text,
+          rp.recruiter_role_id,
+          rrp.code as recruiter_role_code,
+          rrp.description as recruiter_role_description,
+          coalesce(
+            jsonb_agg(
+              distinct jsonb_build_object(
+                'code', perms.permission,
+                'description', pd.description
+              )
+            ) filter (where perms.permission is not null),
+            '[]'::jsonb
+          ) as permission_details
+        from public.users u
+        left join public.recruiter_profiles rp
+          on rp.recruiter_id = u.user_id
+        left join public.recruiter_role_pool rrp
+          on rrp.recruiter_role_id = rp.recruiter_role_id
+        left join public.role_permissions perms
+          on perms.recruiter_role_id = rp.recruiter_role_id
+        left join public.permissions pd
+          on pd.permission_code = perms.permission
+        where u.organization_id = ${auth.organizationId}::uuid
+          and u.role in ('RECRUITER', 'ADMIN', 'ORG_OWNER')
+        group by
+          u.user_id,
+          u.full_name,
+          u.email,
+          u.role,
+          u.is_active,
+          u.created_at,
+          rp.recruiter_role_id,
+          rrp.code,
+          rrp.description
+        order by
+          case when u.user_id = ${auth.userId}::uuid then 0 else 1 end,
+          u.created_at desc
+      `)
+    : await prisma.$queryRaw<TeamMemberRow[]>(Prisma.sql`
+        select
+          u.user_id,
+          u.full_name,
+          u.email,
+          u.role,
+          u.is_active,
+          u.created_at::text,
+          null::smallint as recruiter_role_id,
+          null::text as recruiter_role_code,
+          null::text as recruiter_role_description,
+          '[]'::jsonb as permission_details
+        from public.users u
+        where u.organization_id = ${auth.organizationId}::uuid
+          and u.role in ('RECRUITER', 'ADMIN', 'ORG_OWNER')
+        order by
+          case when u.user_id = ${auth.userId}::uuid then 0 else 1 end,
+          u.created_at desc
+      `)
 
-  const availableRoleRows = await prisma.$queryRaw<AvailableRoleRow[]>(Prisma.sql`
-    select
-      rrp.recruiter_role_id,
-      rrp.code,
-      rrp.description,
-      coalesce(
-        jsonb_agg(
-          distinct jsonb_build_object(
-            'code', perms.permission,
-            'description', pd.description
-          )
-        ) filter (where perms.permission is not null),
-        '[]'::jsonb
-      ) as permission_details
-    from public.recruiter_role_pool rrp
-    left join public.role_permissions perms
-      on perms.recruiter_role_id = rrp.recruiter_role_id
-    left join public.permissions pd
-      on pd.permission_code = perms.permission
-    group by rrp.recruiter_role_id, rrp.code, rrp.description
-    order by rrp.recruiter_role_id asc
-  `)
+  const availableRoleRows = hasRoleSystem
+    ? await prisma.$queryRaw<AvailableRoleRow[]>(Prisma.sql`
+        select
+          rrp.recruiter_role_id,
+          rrp.code,
+          rrp.description,
+          coalesce(
+            jsonb_agg(
+              distinct jsonb_build_object(
+                'code', perms.permission,
+                'description', pd.description
+              )
+            ) filter (where perms.permission is not null),
+            '[]'::jsonb
+          ) as permission_details
+        from public.recruiter_role_pool rrp
+        left join public.role_permissions perms
+          on perms.recruiter_role_id = rrp.recruiter_role_id
+        left join public.permissions pd
+          on pd.permission_code = perms.permission
+        group by rrp.recruiter_role_id, rrp.code, rrp.description
+        order by rrp.recruiter_role_id asc
+      `)
+    : []
 
   const summary = summaryRows[0] ?? {
     organization_name: null,
@@ -204,8 +282,9 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
   }))
 
   const currentMember = team.find((member) => member.isCurrentUser)
-  const canManageUsers =
-    currentMember?.permissions?.some((permission) => permission.code === "users.manage") ?? false
+  const canManageUsers = hasRoleSystem
+    ? currentMember?.permissions?.some((permission) => permission.code === "users.manage") ?? false
+    : currentMember?.platformRole === "ADMIN" || currentMember?.platformRole === "ORG_OWNER"
 
   return {
     organization: summary.organization_name ?? "",
