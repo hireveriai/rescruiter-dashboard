@@ -29,6 +29,24 @@ function KebabIcon() {
   )
 }
 
+function EditIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5Z" />
+    </svg>
+  )
+}
+
 function getDifficultyTone(profile) {
   const normalized = String(profile ?? "MID").toUpperCase()
 
@@ -64,8 +82,8 @@ function JobDescriptionCell({ description }) {
       </div>
 
       {value ? (
-        <div className="pointer-events-none absolute left-0 top-full z-30 mt-2 hidden w-[420px] max-w-[70vw] rounded-2xl border border-slate-700 bg-[#1f2937] px-4 py-3 text-sm leading-7 text-slate-100 shadow-[0_18px_48px_rgba(2,6,23,0.45)] group-hover:block">
-          <div className="max-h-72 overflow-y-auto whitespace-pre-wrap break-words">
+        <div className="pointer-events-none absolute left-0 top-full z-30 mt-2 hidden w-[640px] max-w-[70vw] rounded-2xl border border-slate-700 bg-[#1f2937] px-4 py-3 text-sm leading-7 text-slate-100 shadow-[0_18px_48px_rgba(2,6,23,0.45)] group-hover:block">
+          <div className="whitespace-pre-wrap break-words">
             {value}
           </div>
         </div>
@@ -245,6 +263,7 @@ export default function JobsPage() {
             <table className="w-full min-w-[1200px] text-sm">
               <thead className="bg-slate-950/20 text-slate-400">
                 <tr>
+                  <th className="w-[56px] p-5 text-left font-medium"></th>
                   <th className="p-5 text-left font-medium">Job Title</th>
                   <th className="p-5 text-left font-medium">Description</th>
                   <th className="p-5 text-left font-medium">Status</th>
@@ -253,17 +272,27 @@ export default function JobsPage() {
                   <th className="p-5 text-left font-medium">Timeline</th>
                   <th className="p-5 text-left font-medium">Core Skills</th>
                   <th className="p-5 text-left font-medium">Open Interviews</th>
-                  <th className="p-5 text-right font-medium">Actions</th>
+                  <th className="w-[1%] whitespace-nowrap p-5 text-right font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {jobs.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="p-10 text-center text-slate-400">No jobs available</td>
+                    <td colSpan={10} className="p-10 text-center text-slate-400">No jobs available</td>
                   </tr>
                 ) : (
                   jobs.map((job) => (
                     <tr key={job.jobId} className="border-t border-slate-800/80 align-top text-slate-200">
+                      <td className="p-5">
+                        <button
+                          type="button"
+                          onClick={() => handleEdit(job)}
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-700 bg-slate-900/80 text-slate-300 transition hover:border-blue-400/40 hover:bg-blue-500/10 hover:text-blue-100"
+                          aria-label={`Edit ${job.jobTitle}`}
+                        >
+                          <EditIcon />
+                        </button>
+                      </td>
                       <td className="p-5 font-medium text-white">{job.jobTitle}</td>
                       <td className="p-5 text-slate-400">
                         <JobDescriptionCell description={job.jobDescription} />
@@ -294,7 +323,7 @@ export default function JobsPage() {
                         </div>
                       </td>
                       <td className="p-5 text-slate-300">{job._count?.interviews ?? 0}</td>
-                      <td className="p-5">
+                      <td className="w-[1%] whitespace-nowrap p-5 text-right">
                         <div className="flex justify-end">
                           <div
                             className="flex items-center justify-end gap-2 md:gap-3"
@@ -305,7 +334,7 @@ export default function JobsPage() {
                                 type="button"
                                 onClick={() => handleToggleActive(job)}
                                 disabled={pendingJobId === job.jobId}
-                                className="hidden min-w-[132px] items-center justify-center rounded-xl border border-cyan-400/30 bg-[linear-gradient(135deg,rgba(34,211,238,0.2),rgba(59,130,246,0.18))] px-3.5 py-2 text-xs font-semibold text-cyan-100 shadow-[0_10px_24px_rgba(8,145,178,0.16)] transition hover:border-cyan-300/50 hover:text-white hover:shadow-[0_14px_28px_rgba(8,145,178,0.24)] disabled:cursor-not-allowed disabled:opacity-60 md:inline-flex"
+                                className="hidden items-center justify-center rounded-xl border border-cyan-400/30 bg-[linear-gradient(135deg,rgba(34,211,238,0.2),rgba(59,130,246,0.18))] px-4 py-2 text-xs font-semibold text-cyan-100 shadow-[0_10px_24px_rgba(8,145,178,0.16)] transition hover:border-cyan-300/50 hover:text-white hover:shadow-[0_14px_28px_rgba(8,145,178,0.24)] disabled:cursor-not-allowed disabled:opacity-60 md:inline-flex"
                               >
                                 {pendingJobId === job.jobId
                                   ? "Saving..."
@@ -315,7 +344,7 @@ export default function JobsPage() {
                               </button>
                             ) : null}
 
-                            <div className="relative">
+                            <div className="relative flex items-center">
                               <button
                                 type="button"
                                 onClick={() =>
@@ -332,14 +361,6 @@ export default function JobsPage() {
 
                               {openActionMenuJobId === job.jobId ? (
                                 <div className="absolute right-0 top-[calc(100%+10px)] z-30 w-44 overflow-hidden rounded-2xl border border-slate-800 bg-[#111a2d]/98 p-2 shadow-[0_20px_60px_rgba(2,6,23,0.42)]">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleEdit(job)}
-                                    className="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm text-slate-200 transition hover:bg-slate-800/80 hover:text-white"
-                                  >
-                                    Edit
-                                  </button>
-
                                   {supportsJobActiveState ? (
                                     <button
                                       type="button"
