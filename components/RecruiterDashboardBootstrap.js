@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 
-import { buildAuthUrl, hasAuthQuery } from "@/lib/client/auth-query"
+import { buildAuthUrl } from "@/lib/client/auth-query"
 import { getRecruiterLoginUrl } from "@/lib/client/auth-session"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
@@ -92,10 +92,6 @@ export default function RecruiterDashboardBootstrap({ children }) {
   const [showRestoreOverlay, setShowRestoreOverlay] = useState(false)
 
   useEffect(() => {
-    if (!hasAuthQuery(searchParams)) {
-      return
-    }
-
     let active = true
     let cachedOverview = null
 
@@ -114,20 +110,6 @@ export default function RecruiterDashboardBootstrap({ children }) {
       cachedFrame = window.requestAnimationFrame(() => {
         if (!active) {
           return
-        }
-
-        if (typeof window !== "undefined" && cachedOverview?.profile?.userId && cachedOverview?.profile?.organizationId) {
-          try {
-            window.sessionStorage.setItem(
-              "hireveri-auth",
-              JSON.stringify({
-                userId: cachedOverview.profile.userId,
-                organizationId: cachedOverview.profile.organizationId,
-              })
-            )
-          } catch (error) {
-            console.warn("Failed to cache recruiter auth params", error)
-          }
         }
 
         setState((current) => ({
@@ -168,7 +150,6 @@ export default function RecruiterDashboardBootstrap({ children }) {
           })
           if (typeof window !== "undefined") {
             window.sessionStorage.removeItem("hireveri-overview")
-            window.sessionStorage.removeItem("hireveri-auth")
           }
           return
         }
@@ -191,15 +172,6 @@ export default function RecruiterDashboardBootstrap({ children }) {
         if (typeof window !== "undefined" && overview) {
           try {
             window.sessionStorage.setItem("hireveri-overview", JSON.stringify(overview))
-            if (overview?.profile?.userId && overview?.profile?.organizationId) {
-              window.sessionStorage.setItem(
-                "hireveri-auth",
-                JSON.stringify({
-                  userId: overview.profile.userId,
-                  organizationId: overview.profile.organizationId,
-                })
-              )
-            }
           } catch (error) {
             console.warn("Failed to cache recruiter overview", error)
           }

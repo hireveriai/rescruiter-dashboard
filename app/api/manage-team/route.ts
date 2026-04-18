@@ -411,7 +411,7 @@ export async function PATCH(request: Request) {
         throw new ApiError(404, "TEAM_MEMBER_NOT_FOUND", "Team member not found in this organization")
       }
 
-      const workspaceLink = `${getRecruiterAppUrl().replace(/\/$/, "")}/?userId=${auth.userId}&organizationId=${auth.organizationId}`
+      const workspaceLink = `${getRecruiterAppUrl().replace(/\/$/, "")}/`
 
       await sendRecruiterAccessEmail({
         to: teamMember.email,

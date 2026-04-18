@@ -48,8 +48,8 @@ export default function Pipeline({ initialPipeline }) {
   }, [initialPipeline, searchParams])
 
   const cards = [
-    { title: "Pending", count: displayPipeline.pending, color: "bg-blue-500" },
-    { title: "In Progress", count: displayPipeline.inProgress, color: "bg-indigo-500" },
+    { title: "Invited", count: displayPipeline.pending, color: "bg-blue-500" },
+    { title: "Started", count: displayPipeline.inProgress, color: "bg-indigo-500" },
     { title: "Completed", count: displayPipeline.completed, color: "bg-green-500" },
     { title: "Flagged", count: displayPipeline.flagged, color: "bg-red-500" },
   ]

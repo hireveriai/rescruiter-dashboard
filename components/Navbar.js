@@ -15,7 +15,7 @@ const navItems = [
   { href: "/jobs", label: "Jobs", disabled: false },
   { href: "/candidates", label: "Candidates", disabled: false },
   { href: "/interviews", label: "Interviews", disabled: false },
-  { href: "#", label: "Reports", disabled: true },
+  { href: "/reports", label: "Reports", disabled: false },
   { href: "#", label: "Alerts", disabled: true },
 ];
 

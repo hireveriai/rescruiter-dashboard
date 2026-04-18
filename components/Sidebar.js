@@ -32,9 +32,9 @@ const quickActions = [
   {
     id: "generate-report",
     title: "Generate Report",
-    description: "Reporting workflows will be enabled in a later release.",
-    tone: "disabled",
-    disabled: true,
+    description: "Open decision-ready reports across funnel, fraud, and audit intelligence.",
+    tone: "neutral",
+    href: "/reports",
   },
 ]
 

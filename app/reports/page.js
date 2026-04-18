@@ -1,0 +1,461 @@
+"use client"
+
+import Link from "next/link"
+import { useEffect, useMemo, useState } from "react"
+
+import Navbar from "@/components/Navbar"
+import SendInterviewModal from "@/components/SendInterviewModal"
+import { buildAuthUrl } from "@/lib/client/auth-query"
+import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
+
+function formatDateTime(dateValue) {
+  const date = new Date(dateValue)
+  if (Number.isNaN(date.getTime())) {
+    return "-"
+  }
+
+  return date.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+}
+
+function formatPercent(value) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) {
+    return "-"
+  }
+
+  return `${Number(value).toFixed(1)}%`
+}
+
+function getSeverityClass(severity) {
+  if (severity === "critical") {
+    return "border-rose-500/30 bg-rose-500/12 text-rose-100"
+  }
+
+  if (severity === "warning") {
+    return "border-amber-500/30 bg-amber-500/12 text-amber-100"
+  }
+
+  return "border-cyan-500/30 bg-cyan-500/12 text-cyan-100"
+}
+
+function getRecommendationClass(recommendation) {
+  const normalized = String(recommendation ?? "").toUpperCase()
+
+  if (normalized === "HIRE") {
+    return "border-emerald-500/30 bg-emerald-500/12 text-emerald-200"
+  }
+
+  if (normalized === "HOLD") {
+    return "border-amber-500/30 bg-amber-500/12 text-amber-200"
+  }
+
+  return "border-rose-500/30 bg-rose-500/12 text-rose-200"
+}
+
+function ExpandableSection({ title, subtitle, defaultOpen = true, children }) {
+  const [open, setOpen] = useState(defaultOpen)
+
+  return (
+    <section className="overflow-hidden rounded-[28px] border border-slate-800 bg-[linear-gradient(180deg,rgba(15,23,42,0.96),rgba(8,17,31,0.98))] shadow-[0_18px_60px_rgba(2,6,23,0.3)]">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center justify-between gap-4 border-b border-slate-800 px-6 py-5 text-left"
+      >
+        <div>
+          <h2 className="text-lg font-semibold text-white">{title}</h2>
+          <p className="mt-1 text-sm text-slate-400">{subtitle}</p>
+        </div>
+        <span className="rounded-full border border-slate-700 bg-slate-900/80 px-3 py-1 text-xs uppercase tracking-[0.24em] text-slate-300">
+          {open ? "Collapse" : "Expand"}
+        </span>
+      </button>
+
+      {open ? <div className="px-6 py-6">{children}</div> : null}
+    </section>
+  )
+}
+
+function LoadingState() {
+  return (
+    <div className="grid gap-6">
+      {Array.from({ length: 4 }).map((_, index) => (
+        <div
+          key={index}
+          className="h-48 animate-pulse rounded-[28px] border border-slate-800 bg-slate-900/55"
+        />
+      ))}
+    </div>
+  )
+}
+
+export default function ReportsPage() {
+  const searchParams = useAuthSearchParams()
+  const [report, setReport] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
+  const [openSendInterview, setOpenSendInterview] = useState(false)
+
+  useEffect(() => {
+    let active = true
+
+    setLoading(true)
+    setError("")
+
+    fetch(buildAuthUrl("/api/reports/overview", searchParams), {
+      credentials: "include",
+      cache: "no-store",
+    })
+      .then(async (response) => {
+        const data = await response.json().catch(() => null)
+        if (!active) {
+          return
+        }
+
+        if (!response.ok || !data?.success) {
+          throw new Error(data?.error?.message || data?.message || "Unable to load reports")
+        }
+
+        setReport(data.data ?? null)
+      })
+      .catch((fetchError) => {
+        if (!active) {
+          return
+        }
+
+        setError(fetchError instanceof Error ? fetchError.message : "Unable to load reports")
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false)
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [searchParams])
+
+  const generatedAt = useMemo(() => {
+    return report?.generatedAt ? formatDateTime(report.generatedAt) : "-"
+  }, [report])
+
+  return (
+    <div className="min-h-screen bg-[#08111f] text-white">
+      <Navbar onSendInterviewClick={() => setOpenSendInterview(true)} />
+
+      <main className="mx-auto max-w-[1680px] px-4 py-8 sm:px-6 lg:px-8">
+        <section className="relative overflow-hidden rounded-[34px] border border-cyan-400/15 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.15),transparent_25%),radial-gradient(circle_at_top_right,rgba(59,130,246,0.12),transparent_22%),linear-gradient(180deg,rgba(12,20,36,0.96),rgba(8,17,31,0.98))] px-8 py-8 shadow-[0_24px_100px_rgba(2,6,23,0.45)]">
+          <div className="absolute inset-x-16 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/70 to-transparent" />
+          <div className="flex flex-col gap-8 xl:flex-row xl:items-end xl:justify-between">
+            <div className="max-w-4xl">
+              <p className="text-xs font-semibold uppercase tracking-[0.34em] text-cyan-300/75">HireVeri Reports</p>
+              <h1 className="mt-4 text-4xl font-semibold tracking-tight text-white lg:text-5xl">
+                Behavioral intelligence, fraud visibility, and hiring decisions in one command view
+              </h1>
+              <p className="mt-4 max-w-3xl text-base leading-7 text-slate-300">
+                A decision-ready reporting layer for executive summaries, interview funnel analysis, cognitive risk,
+                forensic review, candidate ranking, and recruiter audit traceability.
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 xl:min-w-[420px]">
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+                <p className="text-sm text-slate-500">Generated</p>
+                <p className="mt-3 text-lg font-semibold text-white">{generatedAt}</p>
+              </div>
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+                <p className="text-sm text-slate-500">Module State</p>
+                <p className="mt-3 text-lg font-semibold text-cyan-200">Live Aggregation</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div className="mt-8 flex items-center justify-between gap-4">
+          <p className="text-sm text-slate-400">
+            Enterprise reporting focused on forensic hiring signals and recruiter traceability.
+          </p>
+          <Link
+            href={buildAuthUrl("/", searchParams)}
+            className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
+          >
+            Back to Dashboard
+          </Link>
+        </div>
+
+        <div className="mt-8">
+          {loading ? <LoadingState /> : null}
+
+          {!loading && error ? (
+            <div className="rounded-[28px] border border-rose-500/20 bg-rose-500/10 p-6 text-rose-100">
+              {error}
+            </div>
+          ) : null}
+
+          {!loading && !error && report ? (
+            <div className="grid gap-6">
+              <ExpandableSection
+                title="Executive Summary"
+                subtitle="Top-line metrics for recruiter leadership, audit readiness, and hiring performance."
+              >
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                  {report.executiveSummary.cards.map((card) => (
+                    <div key={card.label} className="rounded-2xl border border-slate-800 bg-slate-950/35 p-5">
+                      <p className="text-sm text-slate-500">{card.label}</p>
+                      <p className="mt-3 text-3xl font-semibold text-white">{card.value}</p>
+                      <p className="mt-3 text-sm leading-6 text-slate-400">{card.helper}</p>
+                    </div>
+                  ))}
+                  <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-5 xl:col-span-1">
+                    <p className="text-sm text-cyan-100/70">Drop-off Rate</p>
+                    <p className="mt-3 text-3xl font-semibold text-white">{formatPercent(report.executiveSummary.dropOffRate)}</p>
+                    <p className="mt-3 text-sm leading-6 text-cyan-50/75">
+                      Invite-to-start fallout across the current recruiter organization.
+                    </p>
+                  </div>
+                </div>
+              </ExpandableSection>
+
+              <ExpandableSection
+                title="Interview Funnel"
+                subtitle="Invited to selected conversion flow with stage-level drop-off visibility."
+              >
+                <div className="grid gap-5 xl:grid-cols-[1.5fr_0.9fr]">
+                  <div className="grid gap-4">
+                    {report.interviewFunnel.stages.map((stage) => (
+                      <div key={stage.key} className="rounded-2xl border border-slate-800 bg-slate-950/30 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium text-white">{stage.label}</p>
+                            <p className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-500">Stage Count</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-2xl font-semibold text-white">{stage.count}</p>
+                            <p className="text-xs text-slate-400">Conversion {formatPercent(stage.conversionRate)}</p>
+                          </div>
+                        </div>
+                        <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-900">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500"
+                            style={{ width: `${Math.max(stage.conversionRate, 6)}%` }}
+                          />
+                        </div>
+                        <p className="mt-3 text-xs text-slate-400">Drop-off at this stage: {formatPercent(stage.dropOffRate)}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-5">
+                    <p className="text-sm font-medium text-white">Drop-off Analytics</p>
+                    <div className="mt-5 space-y-4">
+                      {report.interviewFunnel.stages.slice(0, 4).map((stage) => (
+                        <div key={`${stage.key}-analytics`} className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-sm text-slate-300">{stage.label}</span>
+                            <span className="text-sm font-medium text-white">{formatPercent(stage.dropOffRate)}</span>
+                          </div>
+                          <p className="mt-2 text-xs leading-5 text-slate-500">
+                            {stage.dropOffRate >= 40
+                              ? "High decay signal. This stage likely needs tighter scheduling or candidate comms."
+                              : "Healthy movement relative to the current funnel volume."}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </ExpandableSection>
+
+              <ExpandableSection
+                title="Cognitive Risk Report"
+                subtitle="A compact readout of confidence, stress, clarity, suspicion, and behavioral anomaly load."
+              >
+                <div className="grid gap-4 lg:grid-cols-5">
+                  {[
+                    ["Confidence", report.cognitiveRisk.confidenceScore, "text-cyan-200"],
+                    ["Stress", report.cognitiveRisk.stressIndex, "text-amber-200"],
+                    ["Clarity", report.cognitiveRisk.clarityIndex, "text-emerald-200"],
+                    ["Suspicion", report.cognitiveRisk.suspicionIndex, "text-rose-200"],
+                    ["Anomalies", report.cognitiveRisk.behavioralAnomalies, "text-violet-200"],
+                  ].map(([label, value, tone]) => (
+                    <div key={label} className="rounded-2xl border border-slate-800 bg-slate-950/35 p-5">
+                      <p className="text-sm text-slate-500">{label}</p>
+                      <p className={`mt-3 text-3xl font-semibold ${tone}`}>{value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/35 p-5">
+                  <p className="text-sm font-medium text-white">Narrative</p>
+                  <p className="mt-3 text-sm leading-7 text-slate-300">{report.cognitiveRisk.narrative}</p>
+                </div>
+              </ExpandableSection>
+
+              <ExpandableSection
+                title="Interview Timeline"
+                subtitle="Timestamped recruiter and AI events, ready for recording deep-linking when recording feeds are attached."
+              >
+                <div className="space-y-4">
+                  {report.interviewTimeline.map((item) => (
+                    <div key={item.id} className="grid gap-4 rounded-2xl border border-slate-800 bg-slate-950/30 p-4 lg:grid-cols-[180px_1fr_auto] lg:items-center">
+                      <div className="text-sm text-slate-400">{formatDateTime(item.at)}</div>
+                      <div>
+                        <div className="flex flex-wrap items-center gap-3">
+                          <p className="text-sm font-medium text-white">{item.title}</p>
+                          <span className={`rounded-full border px-2.5 py-1 text-[11px] uppercase tracking-[0.18em] ${getSeverityClass(item.severity)}`}>
+                            {item.severity}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-sm leading-6 text-slate-400">{item.detail}</p>
+                      </div>
+                      {item.recordingUrl ? (
+                        <a
+                          href={item.recordingUrl}
+                          className="rounded-xl border border-cyan-500/25 bg-cyan-500/10 px-4 py-2 text-sm text-cyan-100 transition hover:bg-cyan-500/20"
+                        >
+                          Jump to Recording
+                        </a>
+                      ) : (
+                        <span className="rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-2 text-sm text-slate-500">
+                          No Recording
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </ExpandableSection>
+
+              <ExpandableSection
+                title="Fraud Detection"
+                subtitle="Forensic visibility across suspicious patterns and signal-feed readiness."
+              >
+                <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {report.fraudDetection.cards.map((card) => (
+                      <div key={card.label} className="rounded-2xl border border-slate-800 bg-slate-950/35 p-5">
+                        <p className="text-sm text-slate-500">{card.label}</p>
+                        <p className="mt-3 text-3xl font-semibold text-white">{card.value}</p>
+                        <p className="mt-3 text-sm leading-6 text-slate-400">{card.helper}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-5">
+                    <p className="text-sm font-medium text-white">Suspicious Pattern Brief</p>
+                    <div className="mt-4 space-y-3">
+                      {report.fraudDetection.suspiciousPatterns.map((pattern) => (
+                        <div key={pattern} className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-sm leading-6 text-slate-300">
+                          {pattern}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </ExpandableSection>
+
+              <ExpandableSection
+                title="Candidate Ranking"
+                subtitle="Score-weighted ordering with recommendation and current risk posture."
+              >
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[860px] text-sm">
+                    <thead className="text-slate-400">
+                      <tr className="border-b border-slate-800">
+                        <th className="px-4 py-4 text-left font-medium">Rank</th>
+                        <th className="px-4 py-4 text-left font-medium">Candidate</th>
+                        <th className="px-4 py-4 text-left font-medium">Role</th>
+                        <th className="px-4 py-4 text-left font-medium">Score</th>
+                        <th className="px-4 py-4 text-left font-medium">Recommendation</th>
+                        <th className="px-4 py-4 text-left font-medium">Risk</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.candidateRanking.map((candidate) => (
+                        <tr key={candidate.attemptId} className="border-b border-slate-800/70 text-slate-200">
+                          <td className="px-4 py-4 font-semibold text-white">{candidate.rank}</td>
+                          <td className="px-4 py-4">{candidate.candidateName}</td>
+                          <td className="px-4 py-4 text-slate-400">{candidate.jobTitle}</td>
+                          <td className="px-4 py-4 text-cyan-200">{candidate.score}</td>
+                          <td className="px-4 py-4">
+                            <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] ${getRecommendationClass(candidate.recommendation)}`}>
+                              {candidate.recommendation}
+                            </span>
+                          </td>
+                          <td className="px-4 py-4 text-slate-300">{candidate.riskLevel}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </ExpandableSection>
+
+              <ExpandableSection
+                title="Role Insights"
+                subtitle="Performance distribution, failure trends, and recurring skill gaps per job."
+              >
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[980px] text-sm">
+                    <thead className="text-slate-400">
+                      <tr className="border-b border-slate-800">
+                        <th className="px-4 py-4 text-left font-medium">Role</th>
+                        <th className="px-4 py-4 text-left font-medium">Avg Score</th>
+                        <th className="px-4 py-4 text-left font-medium">Completed</th>
+                        <th className="px-4 py-4 text-left font-medium">Flagged</th>
+                        <th className="px-4 py-4 text-left font-medium">Selected</th>
+                        <th className="px-4 py-4 text-left font-medium">Failure Trend</th>
+                        <th className="px-4 py-4 text-left font-medium">Skill Gap Analysis</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.roleInsights.map((role) => (
+                        <tr key={role.jobId} className="border-b border-slate-800/70 text-slate-200">
+                          <td className="px-4 py-4 font-medium text-white">{role.jobTitle}</td>
+                          <td className="px-4 py-4 text-cyan-200">{role.averageScore}</td>
+                          <td className="px-4 py-4">{role.completedInterviews}</td>
+                          <td className="px-4 py-4">{role.flaggedInterviews}</td>
+                          <td className="px-4 py-4">{role.selectedCandidates}</td>
+                          <td className="px-4 py-4 text-slate-300">{role.failureTrend}</td>
+                          <td className="px-4 py-4 text-slate-400">
+                            {role.skillGaps.length > 0 ? role.skillGaps.join(", ") : "No recurring low-signal gaps yet"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </ExpandableSection>
+
+              <ExpandableSection
+                title="Audit Logs"
+                subtitle="Recruiter, candidate, and AI-side event trail for enterprise-grade traceability."
+                defaultOpen={false}
+              >
+                <div className="space-y-3">
+                  {report.auditLogs.map((item) => (
+                    <div key={item.id} className="grid gap-3 rounded-2xl border border-slate-800 bg-slate-950/30 p-4 lg:grid-cols-[170px_170px_170px_1fr]">
+                      <div className="text-sm text-slate-400">{formatDateTime(item.at)}</div>
+                      <div className="text-sm font-medium text-white">{item.actor}</div>
+                      <div className="text-sm text-cyan-200">{item.action}</div>
+                      <div>
+                        <p className="text-sm text-white">{item.target}</p>
+                        <p className="mt-1 text-sm text-slate-400">{item.source} · {item.detail}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ExpandableSection>
+            </div>
+          ) : null}
+        </div>
+      </main>
+
+      <SendInterviewModal isOpen={openSendInterview} onClose={() => setOpenSendInterview(false)} />
+    </div>
+  )
+}

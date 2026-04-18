@@ -6,17 +6,11 @@ import { errorResponse } from "@/lib/server/response"
 import { prisma } from "@/lib/server/prisma"
 import { getInterviewAppUrl } from "@/lib/server/interview-url"
 import { getCandidatesDashboard } from "@/lib/server/services/dashboard.service"
+import { getDashboardPipelineData } from "@/lib/server/services/dashboard-pipeline"
 import { getRecruiterProfile } from "@/lib/server/services/recruiter-profile"
 
 type PipelineFunctionRow = {
   fn_get_dashboard_pipeline: {
-    pipeline?: {
-      pending?: number
-      inProgress?: number
-      completed?: number
-      flagged?: number
-    }
-    pendingInterviews?: Array<Record<string, unknown>>
     recordedInterviews?: Array<Record<string, unknown>>
   }
 }
@@ -104,19 +98,16 @@ async function buildOverview(
       limit: 5,
     }),
   ])
+  const pipelineData = await getDashboardPipelineData({
+    organizationId: auth.organizationId,
+  })
 
   const payload = pipelineRows[0]?.fn_get_dashboard_pipeline ?? {}
-  const pipeline: OverviewPayload["pipeline"] = {
-    pending: payload.pipeline?.pending ?? 0,
-    inProgress: payload.pipeline?.inProgress ?? 0,
-    completed: payload.pipeline?.completed ?? 0,
-    flagged: payload.pipeline?.flagged ?? 0,
-  }
 
   return {
     profile,
-    pipeline,
-    pendingInterviews: payload.pendingInterviews ?? [],
+    pipeline: pipelineData.pipeline,
+    pendingInterviews: pipelineData.pendingInterviews,
     recordedInterviews: payload.recordedInterviews ?? [],
     candidates: candidates ?? [],
     veris: verisRows.map((row) => ({

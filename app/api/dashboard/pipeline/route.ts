@@ -1,20 +1,14 @@
-﻿import { Prisma } from "@prisma/client"
+import { Prisma } from "@prisma/client"
 import { NextResponse } from "next/server"
 
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
-import { errorResponse } from "@/lib/server/response"
-import { prisma } from "@/lib/server/prisma"
 import { getInterviewAppUrl } from "@/lib/server/interview-url"
+import { prisma } from "@/lib/server/prisma"
+import { errorResponse } from "@/lib/server/response"
+import { getDashboardPipelineData } from "@/lib/server/services/dashboard-pipeline"
 
-type PipelineFunctionRow = {
+type RecordedFunctionRow = {
   fn_get_dashboard_pipeline: {
-    pipeline?: {
-      pending?: number
-      inProgress?: number
-      completed?: number
-      flagged?: number
-    }
-    pendingInterviews?: Array<Record<string, unknown>>
     recordedInterviews?: Array<Record<string, unknown>>
   }
 }
@@ -23,8 +17,11 @@ export async function GET(request: Request) {
   try {
     const auth = await getRecruiterRequestContext(request)
     const appUrl = getInterviewAppUrl()
+    const pipelineData = await getDashboardPipelineData({
+      organizationId: auth.organizationId,
+    })
 
-    const rows = await prisma.$queryRaw<PipelineFunctionRow[]>(Prisma.sql`
+    const rows = await prisma.$queryRaw<RecordedFunctionRow[]>(Prisma.sql`
       select public.fn_get_dashboard_pipeline(
         ${auth.organizationId}::uuid,
         ${appUrl}
@@ -36,13 +33,8 @@ export async function GET(request: Request) {
     return NextResponse.json({
       success: true,
       data: {
-        pipeline: payload.pipeline ?? {
-          pending: 0,
-          inProgress: 0,
-          completed: 0,
-          flagged: 0,
-        },
-        pendingInterviews: payload.pendingInterviews ?? [],
+        pipeline: pipelineData.pipeline,
+        pendingInterviews: pipelineData.pendingInterviews,
         recordedInterviews: payload.recordedInterviews ?? [],
       },
     })

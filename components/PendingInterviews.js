@@ -252,7 +252,7 @@ function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, onEdit, o
 
         <div className="flex items-center justify-between border-b border-white/10 px-8 py-6">
           <div>
-            <h3 className="text-2xl font-semibold text-white">All Pending Interviews</h3>
+            <h3 className="text-2xl font-semibold text-white">All Invited Interviews</h3>
             <p className="mt-2 text-sm text-slate-400">
               Live invite queue sorted by newest invite first.
             </p>
@@ -280,7 +280,7 @@ function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, onEdit, o
           <div className="mt-4 space-y-3">
             {interviews.length === 0 ? (
               <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-6 text-center text-slate-400">
-                No pending interview invites
+                No invited interviews
               </div>
             ) : (
               interviews.map((item) => (
@@ -520,7 +520,7 @@ export default function PendingInterviews({ initialPendingInterviews }) {
       <div className="mt-10">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-xl font-semibold">
-            Pending Interviews
+            Invited Interviews
           </h2>
 
           <button
@@ -548,7 +548,7 @@ export default function PendingInterviews({ initialPendingInterviews }) {
               {previewInterviews.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="p-4 text-center text-gray-400">
-                    No pending interview invites
+                    No invited interviews
                   </td>
                 </tr>
               ) : (

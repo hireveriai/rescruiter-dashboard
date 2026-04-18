@@ -33,8 +33,7 @@ type RecruiterLookupRow = {
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const DEV_AUTH_BYPASS =
   process.env.DEV_AUTH_BYPASS === "true" ||
-  process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS === "true" ||
-  process.env.NODE_ENV === "development"
+  process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS === "true"
 
 function parseCookieHeader(cookieHeader: string | null): Record<string, string> {
   if (!cookieHeader) {
@@ -221,39 +220,20 @@ async function lookupIdentityFromSupabaseSession(sessionId: string): Promise<str
 }
 
 async function lookupRecruiterByIdentity(
-  identityId: string,
-  hintedUserId: string | null,
-  hintedOrganizationId: string | null
+  identityId: string
 ): Promise<RecruiterLookupRow | null> {
   let recruiterRows
-  const hasHints = Boolean(hintedUserId && hintedOrganizationId)
 
   try {
-    if (hasHints) {
-      recruiterRows = await prisma.$queryRaw<RecruiterLookupRow[]>(Prisma.sql`
-        select u.user_id::text as user_id,
-               u.organization_id::text as organization_id
-        from public.users u
-        where u.user_id::text = ${hintedUserId}
-          and u.organization_id::text = ${hintedOrganizationId}
-          and u.identity_id::text = ${identityId}
-          and u.role = 'RECRUITER'
-          and u.is_active = true
-        limit 1
-      `)
-    }
-
-    if (!recruiterRows || recruiterRows.length === 0) {
-      recruiterRows = await prisma.$queryRaw<RecruiterLookupRow[]>(Prisma.sql`
-        select u.user_id::text as user_id,
-               u.organization_id::text as organization_id
-        from public.users u
-        where u.identity_id::text = ${identityId}
-          and u.role = 'RECRUITER'
-          and u.is_active = true
-        limit 1
-      `)
-    }
+    recruiterRows = await prisma.$queryRaw<RecruiterLookupRow[]>(Prisma.sql`
+      select u.user_id::text as user_id,
+             u.organization_id::text as organization_id
+      from public.users u
+      where u.identity_id::text = ${identityId}
+        and u.role = 'RECRUITER'
+        and u.is_active = true
+      limit 1
+    `)
   } catch (error) {
     console.error("Recruiter user lookup failed", error)
     throw new ApiError(500, "RECRUITER_LOOKUP_FAILED", `Could not validate recruiter access: ${getErrorMessage(error)}`)
@@ -281,9 +261,7 @@ async function fetchAuthUserEmail(identityId: string): Promise<string | null> {
 }
 
 async function reconcileRecruiterIdentity(
-  identityId: string,
-  hintedUserId: string | null,
-  hintedOrganizationId: string | null
+  identityId: string
 ): Promise<RecruiterLookupRow | null> {
   const email = await fetchAuthUserEmail(identityId)
 
@@ -292,34 +270,17 @@ async function reconcileRecruiterIdentity(
   }
 
   let recruiterRows
-  const hasHints = Boolean(hintedUserId && hintedOrganizationId)
 
   try {
-    if (hasHints) {
-      recruiterRows = await prisma.$queryRaw<RecruiterLookupRow[]>(Prisma.sql`
-        select u.user_id::text as user_id,
-               u.organization_id::text as organization_id
-        from public.users u
-        where u.user_id::text = ${hintedUserId}
-          and u.organization_id::text = ${hintedOrganizationId}
-          and lower(u.email) = ${email}
-          and u.role = 'RECRUITER'
-          and u.is_active = true
-        limit 1
-      `)
-    }
-
-    if (!recruiterRows || recruiterRows.length === 0) {
-      recruiterRows = await prisma.$queryRaw<RecruiterLookupRow[]>(Prisma.sql`
-        select u.user_id::text as user_id,
-               u.organization_id::text as organization_id
-        from public.users u
-        where lower(u.email) = ${email}
-          and u.role = 'RECRUITER'
-          and u.is_active = true
-        limit 1
-      `)
-    }
+    recruiterRows = await prisma.$queryRaw<RecruiterLookupRow[]>(Prisma.sql`
+      select u.user_id::text as user_id,
+             u.organization_id::text as organization_id
+      from public.users u
+      where lower(u.email) = ${email}
+        and u.role = 'RECRUITER'
+        and u.is_active = true
+      limit 1
+    `)
 
     const recruiter = recruiterRows?.[0]
 
@@ -352,38 +313,26 @@ async function reactivateAuthSessionIfNeeded(session: AuthSessionRow) {
   }
 }
 
-async function lookupRecruiterByParams(
-  hintedUserId: string | null,
-  hintedOrganizationId: string | null
-): Promise<RecruiterLookupRow | null> {
-  if (!hintedUserId || !hintedOrganizationId) {
-    return null
-  }
-
+async function lookupDevBypassRecruiter(): Promise<RecruiterLookupRow | null> {
   try {
     const recruiterRows = await prisma.$queryRaw<RecruiterLookupRow[]>(Prisma.sql`
       select u.user_id::text as user_id,
              u.organization_id::text as organization_id
       from public.users u
-      where u.user_id::text = ${hintedUserId}
-        and u.organization_id::text = ${hintedOrganizationId}
-        and u.role = 'RECRUITER'
+      where u.role = 'RECRUITER'
         and u.is_active = true
+      order by u.created_at asc
       limit 1
     `)
 
     return recruiterRows[0] ?? null
   } catch (error) {
-    console.error("Recruiter param lookup failed", error)
+    console.error("Recruiter dev bypass lookup failed", error)
     throw new ApiError(500, "RECRUITER_LOOKUP_FAILED", `Could not validate recruiter access: ${getErrorMessage(error)}`)
   }
 }
 
 export async function getRecruiterRequestContext(request: Request): Promise<RecruiterRequestContext> {
-  const url = new URL(request.url)
-  const hintedUserId = toUuidOrNull(String(url.searchParams.get("userId") ?? "").trim())
-  const hintedOrganizationId = toUuidOrNull(String(url.searchParams.get("organizationId") ?? "").trim())
-
   const cookieMap = parseCookieHeader(request.headers.get("cookie"))
   const sessionCookie = cookieMap.hireveri_session
   const sessionId = toUuidOrNull(sessionCookie)
@@ -392,7 +341,7 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
 
   if ((!sessionCookie || !sessionId) && !jwtSub) {
     if (DEV_AUTH_BYPASS) {
-      const recruiter = await lookupRecruiterByParams(hintedUserId, hintedOrganizationId)
+      const recruiter = await lookupDevBypassRecruiter()
       if (recruiter?.user_id && recruiter.organization_id) {
         return {
           userId: recruiter.user_id,
@@ -445,7 +394,7 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
 
   if (!identityId) {
     if (DEV_AUTH_BYPASS) {
-      const recruiter = await lookupRecruiterByParams(hintedUserId, hintedOrganizationId)
+      const recruiter = await lookupDevBypassRecruiter()
       if (recruiter?.user_id && recruiter.organization_id) {
         return {
           userId: recruiter.user_id,
@@ -460,10 +409,10 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
     throw new ApiError(401, "INVALID_SESSION", "Authenticated recruiter session is invalid or expired")
   }
 
-  let recruiter = await lookupRecruiterByIdentity(identityId, hintedUserId, hintedOrganizationId)
+  let recruiter = await lookupRecruiterByIdentity(identityId)
 
   if (!recruiter) {
-    recruiter = await reconcileRecruiterIdentity(identityId, hintedUserId, hintedOrganizationId)
+    recruiter = await reconcileRecruiterIdentity(identityId)
   }
 
   if (!recruiter?.user_id || !recruiter.organization_id) {
