@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { decideNextQuestion, generateFollowUpWithAI } from "@/lib/server/ai/interview-flow"
-import { fetchSkillState } from "@/lib/server/ai/skill-state"
+import { fetchSkillState, upsertSkillState } from "@/lib/server/ai/skill-state"
 import { errorResponse } from "@/lib/server/response"
 
 export async function POST(request: Request) {
@@ -9,10 +9,10 @@ export async function POST(request: Request) {
     const body = await request.json()
 
     const attemptId = body.attempt_id ?? body.attemptId
+    const state = attemptId ? await fetchSkillState(attemptId) : null
     let skillsRemaining = body.skills_remaining ?? body.skillsRemaining
 
-    if ((!skillsRemaining || skillsRemaining.length === 0) && attemptId) {
-      const state = await fetchSkillState(attemptId)
+    if ((!skillsRemaining || skillsRemaining.length === 0) && state) {
       skillsRemaining = state?.skills_remaining ?? []
     }
 
@@ -22,10 +22,21 @@ export async function POST(request: Request) {
       fraudScore: body.fraud_score ?? body.fraudScore,
       skillsRemaining: skillsRemaining ?? [],
       timeRemainingSeconds: body.time_remaining ?? body.timeRemaining,
-      followupCount: body.followup_count ?? body.followupCount,
-      lastQuestion: body.last_question ?? body.lastQuestion,
+      followupCount: body.followup_count ?? body.followupCount ?? state?.followup_count ?? 0,
+      lastQuestion: body.last_question ?? body.lastQuestion ?? state?.last_question ?? undefined,
       criticalSkills: body.critical_skills ?? body.criticalSkills,
       experienceLevel: body.experience_level ?? body.experienceLevel,
+      responseAnalysis: body.response_analysis ?? body.responseAnalysis ?? state?.response_metrics ?? undefined,
+      roleConfidence:
+        body.role_confidence ??
+        body.roleConfidence ??
+        (typeof state?.role_confidence === "number" ? state.role_confidence : undefined),
+      adaptiveMode:
+        body.adaptive_mode ??
+        body.adaptiveMode ??
+        (typeof state?.adaptive_mode === "boolean" ? state.adaptive_mode : undefined),
+      questionMode: body.question_mode ?? body.questionMode,
+      askedQuestions: Array.isArray(state?.asked_questions) ? (state?.asked_questions as string[]) : undefined,
     })
 
     const useAiFollowup =
@@ -35,14 +46,40 @@ export async function POST(request: Request) {
       useAiFollowup &&
       decision.intent === "followup" &&
       decision.followUp &&
-      (body.last_question ?? body.lastQuestion) &&
+      (body.last_question ?? body.lastQuestion ?? state?.last_question) &&
       (body.last_answer ?? body.lastAnswer)
     ) {
       decision.followUp = await generateFollowUpWithAI({
-        lastQuestion: body.last_question ?? body.lastQuestion,
+        lastQuestion: body.last_question ?? body.lastQuestion ?? state?.last_question,
         candidateAnswer: body.last_answer ?? body.lastAnswer,
         skillScore: body.skill_score ?? body.skillScore,
         fraudScore: body.fraud_score ?? body.fraudScore,
+      })
+    }
+
+    if (attemptId && state) {
+      await upsertSkillState({
+        attemptId,
+        interviewId: state.interview_id,
+        organizationId: state.organization_id,
+        skillsCovered: state.skills_covered,
+        skillsRemaining: skillsRemaining ?? [],
+        responseMetrics: decision.updatedEvaluation ?? state.response_metrics,
+        askedQuestions: state.asked_questions,
+        answers: state.answers,
+        followupCount:
+          decision.intent === "followup" || decision.intent === "exploratory"
+            ? (state.followup_count ?? 0) + 1
+            : 0,
+        lastQuestion: body.last_question ?? body.lastQuestion ?? state.last_question,
+        roleConfidence:
+          body.role_confidence ??
+          body.roleConfidence ??
+          state.role_confidence,
+        adaptiveMode:
+          body.adaptive_mode ??
+          body.adaptiveMode ??
+          state.adaptive_mode,
       })
     }
 

@@ -6,8 +6,12 @@ import {
   bucketSkill,
   classifySkillType,
   computeSkillCoverage,
+  getFallbackSkillsForRoleFamily,
+  inferRoleIntelligence,
   mapQuestionToSkill,
   normalizeSkillName,
+  presentSkillName,
+  RoleIntelligence,
   scoreAnswerForSkill,
 } from "@/lib/server/ai/skills"
 
@@ -41,6 +45,13 @@ export type BaseGenerationOutput = {
   questions: InterviewQuestion[]
   skills_covered: string[]
   skills_remaining: string[]
+  meta?: {
+    role_family: string
+    role_subfamily?: string
+    role_confidence: number
+    adaptive_mode: boolean
+    question_mode: string
+  }
 }
 
 export type BaseGenerationOutputWithError = BaseGenerationOutput & {
@@ -57,12 +68,19 @@ export type NextQuestionInput = {
   lastQuestion?: InterviewQuestion
   criticalSkills?: string[]
   experienceLevel?: string
+  responseAnalysis?: ResponseAnalysis
+  roleConfidence?: number
+  adaptiveMode?: boolean
+  questionMode?: string
+  askedQuestions?: string[]
 }
 
 export type NextQuestionDecision = {
-  intent: "followup" | "next_skill" | "contradiction"
+  intent: "followup" | "next_skill" | "contradiction" | "exploratory"
   nextSkill?: string
   followUp?: FollowUpResult
+  difficulty?: "guided" | "scenario" | "strategic"
+  updatedEvaluation?: ResponseAnalysis
 }
 
 export type FollowUpInput = {
@@ -74,7 +92,18 @@ export type FollowUpInput = {
 
 export type FollowUpResult = {
   follow_up_question: string
-  intent: "clarification" | "probe" | "contradiction"
+  intent: "clarification" | "probe" | "contradiction" | "exploratory" | "simplification" | "difficulty_up"
+}
+
+export type ResponseAnalysis = {
+  clarity_score: number
+  confidence_score: number
+  depth_score: number
+  suspicion_score: number
+  skill_score: number
+  role_clarity_score: number
+  question_difficulty: "guided" | "scenario" | "strategic"
+  signals: string[]
 }
 
 type OpenAIResponsesOutputText = {
@@ -115,6 +144,12 @@ const SCENARIO_KEYS = [
   "customer escalation",
   "system outage",
   "performance regression",
+  "schedule conflict",
+  "resource shortage",
+  "part shortage",
+  "service delay",
+  "missed visit",
+  "sla breach",
 ]
 
 const TOOL_KEYS = [
@@ -141,9 +176,103 @@ const EXPERIENCE_KEYS = [
   "optimization",
 ]
 
-const JUNIOR_CRITICAL = ["sql", "database", "api", "debug", "testing", "performance"]
-const MID_CRITICAL = ["performance", "security", "operations", "database", "api"]
-const SENIOR_CRITICAL = ["performance", "security", "operations", "architecture", "scalability", "compliance"]
+const EXPERIENCE_CRITICAL_SKILLS = {
+  technical: {
+    junior: ["testing", "debugging", "api", "database", "security"],
+    mid: ["performance", "security", "operations", "database", "api"],
+    senior: ["architecture", "scalability", "security", "performance", "compliance"],
+  },
+  operations: {
+    junior: ["scheduling", "service delivery", "customer urgency", "rescheduling", "coordination"],
+    mid: ["resource allocation", "capacity planning", "sla management", "service delivery", "supply chain coordination"],
+    senior: ["capacity planning", "resource allocation", "contract execution", "service delivery", "stakeholder management"],
+  },
+  sales: {
+    junior: ["prospecting", "lead management", "crm management", "communication", "negotiation"],
+    mid: ["sales pipeline management", "negotiation", "account management", "forecasting", "deal closing"],
+    senior: ["account planning", "deal closing", "forecasting", "stakeholder management", "strategy"],
+  },
+  customer_success: {
+    junior: ["customer onboarding", "customer support", "communication", "crm management", "customer retention"],
+    mid: ["customer success management", "renewal management", "stakeholder management", "customer retention", "reporting"],
+    senior: ["customer retention", "renewal management", "stakeholder management", "strategy", "service levels"],
+  },
+  hr: {
+    junior: ["candidate sourcing", "candidate screening", "communication", "coordination", "interview management"],
+    mid: ["talent acquisition", "candidate sourcing", "stakeholder management", "reporting", "employee relations"],
+    senior: ["workforce planning", "talent acquisition", "employee relations", "stakeholder management", "strategy"],
+  },
+  finance: {
+    junior: ["accounts payable", "accounts receivable", "invoice management", "accuracy", "reporting"],
+    mid: ["financial reporting", "budgeting", "financial forecasting", "variance analysis", "controls"],
+    senior: ["financial planning analysis", "budgeting", "forecasting", "compliance", "stakeholder management"],
+  },
+  procurement: {
+    junior: ["vendor management", "purchase order management", "inventory management", "coordination", "accuracy"],
+    mid: ["procurement management", "supplier management", "vendor management", "inventory management", "cost control"],
+    senior: ["procurement management", "supplier sourcing", "vendor management", "cost control", "strategy"],
+  },
+  marketing: {
+    junior: ["campaign management", "content strategy", "crm management", "communication", "reporting"],
+    mid: ["campaign management", "demand generation", "brand management", "analytics", "seo"],
+    senior: ["product positioning", "brand management", "demand generation", "strategy", "go to market"],
+  },
+  manufacturing_industrial: {
+    junior: ["production planning", "quality control", "safety compliance", "equipment maintenance", "coordination"],
+    mid: ["process improvement", "quality control", "safety compliance", "production planning", "reporting"],
+    senior: ["process improvement", "capacity planning", "safety compliance", "leadership", "strategy"],
+  },
+  construction_site: {
+    junior: ["site coordination", "timeline management", "safety compliance", "resource allocation", "communication"],
+    mid: ["site coordination", "resource allocation", "contract execution", "timeline management", "risk"],
+    senior: ["contract execution", "resource allocation", "safety compliance", "stakeholder management", "strategy"],
+  },
+  legal_compliance: {
+    junior: ["policy review", "contract review", "regulatory compliance", "communication", "documentation"],
+    mid: ["risk assessment", "regulatory compliance", "contract review", "policy review", "judgment"],
+    senior: ["risk assessment", "governance", "regulatory compliance", "stakeholder management", "strategy"],
+  },
+  healthcare: {
+    junior: ["patient coordination", "clinical documentation", "communication", "care quality", "compliance"],
+    mid: ["care quality", "clinical documentation", "patient coordination", "compliance", "judgment"],
+    senior: ["care quality", "stakeholder management", "compliance", "communication", "strategy"],
+  },
+  education_training: {
+    junior: ["instruction delivery", "learner engagement", "assessment design", "communication", "training coordination"],
+    mid: ["curriculum planning", "assessment design", "learner engagement", "reporting", "stakeholder management"],
+    senior: ["curriculum planning", "strategy", "stakeholder management", "learner engagement", "leadership"],
+  },
+  logistics_warehouse_fleet: {
+    junior: ["dispatch coordination", "inventory management", "route planning", "communication", "coordination"],
+    mid: ["warehouse operations", "fleet coordination", "inventory management", "route planning", "sla management"],
+    senior: ["warehouse operations", "fleet coordination", "cost control", "stakeholder management", "strategy"],
+  },
+  creative_design_content: {
+    junior: ["content strategy", "design reasoning", "communication", "brand management", "feedback"],
+    mid: ["creative strategy", "content strategy", "design reasoning", "stakeholder management", "brand management"],
+    senior: ["creative strategy", "brand management", "product positioning", "stakeholder management", "strategy"],
+  },
+  bpo_call_center: {
+    junior: ["customer support", "communication", "ticket handling", "de escalation", "sla management"],
+    mid: ["customer support", "sla management", "de escalation", "reporting", "quality"],
+    senior: ["stakeholder management", "service levels", "de escalation", "reporting", "leadership"],
+  },
+  banking_financial_services: {
+    junior: ["kyc compliance", "customer advisory", "communication", "documentation", "accuracy"],
+    mid: ["risk assessment", "credit evaluation", "financial reporting", "kyc compliance", "judgment"],
+    senior: ["risk assessment", "stakeholder management", "compliance", "strategy", "financial reporting"],
+  },
+  leadership_management: {
+    junior: ["team leadership", "communication", "coordination", "decision making", "ownership"],
+    mid: ["team leadership", "stakeholder management", "performance management", "decision making", "planning"],
+    senior: ["strategy", "team leadership", "stakeholder management", "performance management", "decision making"],
+  },
+  general_business: {
+    junior: ["workflow", "communication", "prioritization", "coordination", "reporting"],
+    mid: ["stakeholder management", "prioritization", "reporting", "planning", "decision making"],
+    senior: ["strategy", "stakeholder management", "planning", "reporting", "leadership"],
+  },
+} as const
 
 function normalizeText(value: string) {
   return value.toLowerCase().replace(/\s+/g, " ").trim()
@@ -181,15 +310,22 @@ function resolveBaseQuestionCount(input: BaseGenerationInput) {
   return 7
 }
 
-function prioritizeSkillsByExperience(skills: string[], experienceLevel?: string) {
-  const level = normalizeExperienceLevel(experienceLevel)
-  const critical =
-    level === "junior" ? JUNIOR_CRITICAL : level === "senior" ? SENIOR_CRITICAL : MID_CRITICAL
+function prioritizeSkillsByExperience(skills: string[], input: BaseGenerationInput) {
+  const level = normalizeExperienceLevel(input.experienceLevel)
+  const roleIntelligence = inferRoleIntelligence({
+    jobTitle: input.jobTitle,
+    jobDescription: input.jobDescription,
+    coreSkills: input.coreSkills,
+    resumeSkills: input.candidateResumeSkills,
+    resumeText: input.candidateResumeText,
+  })
+  const familyCritical = EXPERIENCE_CRITICAL_SKILLS[roleIntelligence.family] ?? EXPERIENCE_CRITICAL_SKILLS.general_business
+  const critical = level === "junior" ? familyCritical.junior : level === "senior" ? familyCritical.senior : familyCritical.mid
 
-  const normalizedCritical = critical.map((skill) => normalizeText(skill))
+  const normalizedCritical = critical.map((skill: string) => normalizeText(skill))
   return [...skills].sort((a, b) => {
-    const aHit = normalizedCritical.some((crit) => normalizeText(a).includes(crit))
-    const bHit = normalizedCritical.some((crit) => normalizeText(b).includes(crit))
+    const aHit = normalizedCritical.some((crit: string) => normalizeText(presentSkillName(a)).includes(crit))
+    const bHit = normalizedCritical.some((crit: string) => normalizeText(presentSkillName(b)).includes(crit))
     if (aHit === bHit) {
       return 0
     }
@@ -197,8 +333,8 @@ function prioritizeSkillsByExperience(skills: string[], experienceLevel?: string
   })
 }
 
-function deriveCriticalSkills(skills: string[], experienceLevel?: string) {
-  const ordered = prioritizeSkillsByExperience(skills, experienceLevel)
+function deriveCriticalSkills(skills: string[], input: BaseGenerationInput) {
+  const ordered = prioritizeSkillsByExperience(skills, input)
   return ordered.slice(0, Math.min(5, ordered.length))
 }
 
@@ -236,7 +372,7 @@ function pickQuestionTemplate(index: number, skill: string) {
   return templates[index % templates.length]
 }
 
-function buildQuestionsForSkills(skills: string[], offset: number) {
+function buildQuestionsForSkills(skills: string[], offset: number, roleIntelligence?: RoleIntelligence) {
   const technicalTemplates = [
     (skill: string, index: number) => pickQuestionTemplate(index, skill),
     (skill: string) => `How do you troubleshoot a ${skill} regression during a deployment?`,
@@ -245,44 +381,100 @@ function buildQuestionsForSkills(skills: string[], offset: number) {
   ]
 
   const functionalTemplates = [
-    (skill: string) => `How do you prioritize work when ${skill} demands compete?`,
-    (skill: string) => `Walk me through a decision you made that improved ${skill}.`,
-    (skill: string) => `What steps do you follow to keep ${skill} on track?`,
-    (skill: string) => `How do you handle trade-offs while managing ${skill}?`,
+    (skill: string) => `How do you prioritize ${skill} when multiple requests compete for the same window?`,
+    (skill: string) => `Walk me through the process you use to keep ${skill} accurate during day-to-day changes.`,
+    (skill: string) => `What do you do when ${skill} is blocked by missing information or approvals?`,
+    (skill: string) => `How do you balance service urgency with quality while managing ${skill}?`,
   ]
 
   const behavioralTemplates = [
-    (skill: string) => `Walk me through a situation where ${skill} mattered under pressure.`,
-    (skill: string) => `How do you handle conflict when ${skill} is tested?`,
-    (skill: string) => `Walk me through a moment where ${skill} changed the outcome.`,
-    (skill: string) => `How do you build trust through ${skill} in a tight deadline?`,
+    (skill: string) => `Can you walk me through a time ${skill} helped you steady a high-pressure situation?`,
+    (skill: string) => `How do you handle conflict when ${skill} is tested across teams or customers?`,
+    (skill: string) => `Walk me through a moment where strong ${skill} changed the outcome for a customer or colleague.`,
+    (skill: string) => `How do you build trust through ${skill} when timing is tight and expectations are high?`,
   ]
 
   const analyticalTemplates = [
-    (skill: string) => `What signals do you monitor to evaluate ${skill}?`,
+    (skill: string) => `Which signals tell you ${skill} is drifting off target?`,
     (skill: string) => `How do you use data to make decisions about ${skill}?`,
-    (skill: string) => `Walk me through how you validate ${skill} with metrics.`,
+    (skill: string) => `Walk me through how you validate ${skill} with metrics or service levels.`,
     (skill: string) => `Which KPI best reflects success for ${skill}, and why?`,
   ]
 
   const strategicTemplates = [
-    (skill: string) => `How do you plan long-term improvements around ${skill}?`,
-    (skill: string) => `What trade-offs do you consider when setting strategy for ${skill}?`,
-    (skill: string) => `Walk me through a strategic decision you made about ${skill}.`,
-    (skill: string) => `How do you align stakeholders when ${skill} strategy changes?`,
+    (skill: string) => `How would you improve ${skill} over the next quarter?`,
+    (skill: string) => `What trade-offs do you consider when setting direction for ${skill}?`,
+    (skill: string) => `Walk me through a planning decision you made that improved ${skill}.`,
+    (skill: string) => `How do you align stakeholders when the approach to ${skill} needs to change?`,
   ]
 
   const operationalTemplates = [
-    (skill: string) => `How do you keep ${skill} execution on schedule?`,
-    (skill: string) => `What steps help you coordinate ${skill} across teams?`,
-    (skill: string) => `How do you handle resource constraints in ${skill}?`,
-    (skill: string) => `Walk me through your process to maintain ${skill} day to day.`,
+    (skill: string) => `How do you keep ${skill} on schedule when priorities change suddenly?`,
+    (skill: string) => `What steps help you coordinate ${skill} across support, field teams, and customers?`,
+    (skill: string) => `How do you recover ${skill} after a missed visit or part shortage?`,
+    (skill: string) => `Walk me through your day-to-day process for keeping ${skill} accurate and moving.`,
   ]
+
+  const questionModeTemplates: Partial<Record<RoleIntelligence["questionMode"], Array<(skill: string, index: number) => string>>> = {
+    technical_problem_solving: technicalTemplates,
+    sales_objection_handling: [
+      (skill: string) => `How do you handle objections when ${skill} becomes the main concern in a deal?`,
+      (skill: string) => `What do you do when progress stalls and ${skill} is the blocker?`,
+      (skill: string) => `How do you judge whether ${skill} needs education, urgency, or negotiation to move forward?`,
+      (skill: string) => `Walk me through a deal moment where ${skill} changed the outcome.`,
+    ],
+    behavioral_people_judgment: [
+      (skill: string) => `How do you read a difficult situation early when ${skill} is under pressure?`,
+      (skill: string) => `Walk me through a moment where judgment in ${skill} mattered more than process.`,
+      (skill: string) => `How do you balance fairness and speed when ${skill} affects people directly?`,
+      (skill: string) => `What does good ownership look like to you in ${skill}?`,
+    ],
+    operational_scenarios: [
+      (skill: string) => `How do you keep ${skill} moving when the plan changes midstream?`,
+      (skill: string) => `What is your first move when ${skill} is at risk of delay?`,
+      (skill: string) => `How do you re-sequence work when ${skill} collides with capacity or timing constraints?`,
+      (skill: string) => `Walk me through a day where ${skill} required fast reprioritization.`,
+    ],
+    legal_judgment: [
+      (skill: string) => `How do you approach judgment calls when ${skill} involves ambiguity or regulatory risk?`,
+      (skill: string) => `What do you review first when ${skill} could expose the business to risk?`,
+      (skill: string) => `How do you balance business pressure with rigor in ${skill}?`,
+      (skill: string) => `Walk me through a case where ${skill} required a careful interpretation.`,
+    ],
+    creative_reasoning: [
+      (skill: string) => `How do you decide whether an idea is strong enough to move forward in ${skill}?`,
+      (skill: string) => `What do you do when feedback on ${skill} is directionally mixed?`,
+      (skill: string) => `How do you protect clarity and originality at the same time in ${skill}?`,
+      (skill: string) => `Walk me through the reasoning behind a change you made in ${skill}.`,
+    ],
+    communication_service: [
+      (skill: string) => `How do you keep trust steady when ${skill} is tested by pressure or emotion?`,
+      (skill: string) => `What do you do when communication breaks down around ${skill}?`,
+      (skill: string) => `How do you adjust your approach when ${skill} involves frustrated or anxious people?`,
+      (skill: string) => `Walk me through a service moment where ${skill} changed the result.`,
+    ],
+    analytical_business: [
+      (skill: string) => `How do you decide what matters most when ${skill} produces conflicting signals?`,
+      (skill: string) => `Which metric or pattern do you trust most when evaluating ${skill}, and why?`,
+      (skill: string) => `How do you move from data to action in ${skill}?`,
+      (skill: string) => `Walk me through a decision where ${skill} depended on analytical judgment.`,
+    ],
+    leadership_decision_making: [
+      (skill: string) => `How do you make a call on ${skill} when the trade-offs affect multiple teams?`,
+      (skill: string) => `What is your approach when ${skill} needs direction before all facts are available?`,
+      (skill: string) => `How do you balance short-term execution with long-term ownership in ${skill}?`,
+      (skill: string) => `Walk me through a leadership decision where ${skill} shaped the outcome.`,
+    ],
+  }
 
   return skills.map((skill, idx) => {
     const skillType = classifySkillType(skill)
+    const displaySkill = presentSkillName(skill)
+    const modeTemplates = roleIntelligence ? questionModeTemplates[roleIntelligence.questionMode] : undefined
     const templateSet =
-      skillType === "behavioral"
+      modeTemplates && modeTemplates.length > 0
+        ? modeTemplates
+        : skillType === "behavioral"
         ? behavioralTemplates
         : skillType === "functional"
         ? functionalTemplates
@@ -299,7 +491,7 @@ function buildQuestionsForSkills(skills: string[], offset: number) {
 
     return {
       id: `q-${offset + idx}-${skill.replace(/\s+/g, "-")}`,
-      text: template(skill, offset + idx),
+      text: template(displaySkill, offset + idx),
       phase: "MID" as const,
       tags: [skill],
       type: questionType,
@@ -313,9 +505,10 @@ function deriveBehavioralQuestions(count: number, skills: string[], offset: numb
 
   for (let i = 0; i < count; i += 1) {
     const skill = pool[(offset + i) % pool.length]
+    const displaySkill = presentSkillName(skill)
     behavioral.push({
       id: `behavioral-${offset + i}`,
-      text: `Can you walk me through a situation where you owned a ${skill} decision under pressure?`,
+      text: `Can you walk me through a situation where you owned a ${displaySkill} decision under pressure?`,
       phase: "MID",
       tags: [skill],
       type: "BEHAVIORAL",
@@ -325,16 +518,70 @@ function deriveBehavioralQuestions(count: number, skills: string[], offset: numb
   return behavioral
 }
 
+function buildAdaptiveQuestions(role: RoleIntelligence, skills: string[], offset: number) {
+  const primarySkill = presentSkillName(skills[0] ?? "workflow")
+  const secondarySkill = presentSkillName(skills[1] ?? skills[0] ?? "communication")
+
+  const byMode: Record<RoleIntelligence["questionMode"], Array<(skillA: string, skillB: string) => string>> = {
+    technical_problem_solving: [
+      (skillA) => `When a problem lands outside the usual pattern, how do you decide what to check first in ${skillA}?`,
+      (skillA, skillB) => `Which part of your work needs deeper judgment: ${skillA} or ${skillB}, and why?`,
+    ],
+    sales_objection_handling: [
+      (skillA) => `When a prospect hesitates, how do you figure out whether the issue is timing, value, or fit in ${skillA}?`,
+      (skillA, skillB) => `Which part of your sales work depends more on judgment: ${skillA} or ${skillB}, and how do you handle it?`,
+    ],
+    behavioral_people_judgment: [
+      (skillA) => `Which part of this role depends most on people judgment, and how do you usually approach it through ${skillA}?`,
+      (skillA, skillB) => `When expectations conflict, how do you decide where to focus first between ${skillA} and ${skillB}?`,
+    ],
+    operational_scenarios: [
+      (skillA) => `When the day changes suddenly, how do you decide what to reprioritize first in ${skillA}?`,
+      (skillA, skillB) => `Which part of your role is most sensitive to timing: ${skillA} or ${skillB}, and how do you keep it stable?`,
+    ],
+    legal_judgment: [
+      (skillA) => `When the safest answer is not obvious, how do you frame the judgment call in ${skillA}?`,
+      (skillA, skillB) => `Which carries more risk in your work, ${skillA} or ${skillB}, and how do you evaluate that?`,
+    ],
+    creative_reasoning: [
+      (skillA) => `When feedback pulls in different directions, how do you decide what to keep or change in ${skillA}?`,
+      (skillA, skillB) => `How do you balance originality with business fit between ${skillA} and ${skillB}?`,
+    ],
+    communication_service: [
+      (skillA) => `When a conversation starts going off track, how do you bring it back using ${skillA}?`,
+      (skillA, skillB) => `Which matters more in your day-to-day work, clarity in ${skillA} or calm under pressure in ${skillB}?`,
+    ],
+    analytical_business: [
+      (skillA) => `When the numbers and the situation do not tell the same story, how do you investigate ${skillA}?`,
+      (skillA, skillB) => `Which decisions in your role rely more on pattern-reading: ${skillA} or ${skillB}?`,
+    ],
+    leadership_decision_making: [
+      (skillA) => `When the team needs direction but the data is incomplete, how do you decide the next move in ${skillA}?`,
+      (skillA, skillB) => `How do you balance short-term pressure with long-term ownership across ${skillA} and ${skillB}?`,
+    ],
+  }
+
+  const templates = byMode[role.questionMode] ?? byMode.analytical_business
+
+  return templates.map((template, index) => ({
+    id: `adaptive-${offset + index}`,
+    text: template(primarySkill, secondarySkill),
+    phase: "MID" as const,
+    tags: [skills[index] ?? skills[0] ?? "workflow"],
+    type: "BEHAVIORAL" as const,
+  }))
+}
+
 function mapSkillType(bucket: string, type: Question["type"]) {
   if (type === "BEHAVIORAL") {
     return "behavioral"
   }
 
-  if (bucket === "operations" || bucket === "performance" || bucket === "database" || bucket === "security") {
+  if (bucket === "backend" || bucket === "frontend" || bucket === "data") {
     return "technical"
   }
 
-  if (bucket === "backend" || bucket === "frontend" || bucket === "data") {
+  if (bucket === "performance" || bucket === "database" || bucket === "security") {
     return "technical"
   }
 
@@ -361,6 +608,106 @@ function detectSignals(answer: string) {
   const vague = normalized.length < 60 || VAGUE_MARKERS.some((marker) => normalized.includes(marker))
   const strong = STRONG_MARKERS.some((marker) => normalized.includes(marker))
   return { vague, strong }
+}
+
+function clampScore(value: number) {
+  return Number(Math.max(0, Math.min(1, value)).toFixed(2))
+}
+
+function extractDifficultyForExperience(level?: string): ResponseAnalysis["question_difficulty"] {
+  const normalized = normalizeExperienceLevel(level)
+  if (normalized === "junior") {
+    return "guided"
+  }
+  if (normalized === "senior") {
+    return "strategic"
+  }
+  return "scenario"
+}
+
+function detectDepthMarkers(answer: string) {
+  const normalized = normalizeText(answer)
+  const markers = ["because", "so that", "for example", "for instance", "first", "then", "after", "trade off", "trade-off", "decided", "measured"]
+  return markers.filter((marker) => normalized.includes(marker))
+}
+
+function detectSuspicionMarkers(answer: string) {
+  const normalized = normalizeText(answer)
+  const markers = ["honestly", "basically", "trust me", "obviously", "as i said", "i already told", "not sure", "maybe", "kind of"]
+  return markers.filter((marker) => normalized.includes(marker))
+}
+
+export function analyzeCandidateResponse(params: {
+  answer: string
+  skill: string
+  skillType?: InterviewQuestion["skill_type"]
+  fraudScore?: number
+  experienceLevel?: string
+  roleConfidence?: number
+  adaptiveMode?: boolean
+}) : ResponseAnalysis {
+  const answer = params.answer ?? ""
+  const normalized = normalizeText(answer)
+  const words = normalized ? normalized.split(" ").filter(Boolean) : []
+  const signalFlags: string[] = []
+
+  const clarityBase =
+    words.length >= 80 ? 0.92 : words.length >= 45 ? 0.78 : words.length >= 24 ? 0.62 : words.length >= 12 ? 0.44 : 0.24
+  const fillerPenalty = VAGUE_MARKERS.filter((marker) => normalized.includes(marker)).length * 0.08
+  const clarityScore = clampScore(clarityBase - fillerPenalty)
+  if (clarityScore < 0.5) {
+    signalFlags.push("low_clarity")
+  }
+
+  const depthMarkers = detectDepthMarkers(answer)
+  const depthScore = clampScore(
+    (words.length >= 120 ? 0.8 : words.length >= 60 ? 0.62 : words.length >= 30 ? 0.42 : 0.2) +
+      Math.min(0.25, depthMarkers.length * 0.06)
+  )
+  if (depthScore < 0.5) {
+    signalFlags.push("low_depth")
+  }
+
+  const confidenceBoost = STRONG_MARKERS.filter((marker) => normalized.includes(marker)).length * 0.06
+  const confidenceScore = clampScore(
+    (clarityScore * 0.45 + depthScore * 0.35 + Math.min(0.2, confidenceBoost + (normalized.includes("i ") ? 0.08 : 0))) -
+      Math.max(0, fillerPenalty * 0.5)
+  )
+  if (confidenceScore > 0.75) {
+    signalFlags.push("high_confidence")
+  }
+
+  const suspicionMarkers = detectSuspicionMarkers(answer)
+  const suspicionScore = clampScore(
+    (params.fraudScore ?? 0) * 0.55 +
+      suspicionMarkers.length * 0.08 +
+      (clarityScore < 0.35 ? 0.08 : 0) +
+      (confidenceScore > 0.85 && depthScore < 0.35 ? 0.14 : 0)
+  )
+  if (suspicionScore > 0.55) {
+    signalFlags.push("high_suspicion")
+  }
+
+  const roleClarityScore = clampScore(
+    params.adaptiveMode ? ((params.roleConfidence ?? 0.35) * 0.7 + (depthScore + clarityScore) * 0.15) : Math.max(params.roleConfidence ?? 0.65, 0.65)
+  )
+  if (roleClarityScore < 0.45) {
+    signalFlags.push("role_unclear")
+  }
+
+  const skillScore = clampScore(scoreAnswerForSkill(answer, params.skill) / 5)
+  const questionDifficulty = extractDifficultyForExperience(params.experienceLevel)
+
+  return {
+    clarity_score: clarityScore,
+    confidence_score: confidenceScore,
+    depth_score: depthScore,
+    suspicion_score: suspicionScore,
+    skill_score: skillScore,
+    role_clarity_score: roleClarityScore,
+    question_difficulty: questionDifficulty,
+    signals: signalFlags,
+  }
 }
 
 function pickUniqueSkills(pool: string[], count: number, used: Set<string>) {
@@ -424,14 +771,23 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
   const requested = resolveBaseQuestionCount(input) ?? DEFAULT_TOTAL
   const total = Math.min(MAX_BASE_QUESTIONS, Math.max(MIN_BASE_QUESTIONS, requested))
   const seed = `${input.jobDescription ?? ""}-${input.candidateResumeText ?? ""}`.slice(0, 120)
+  const roleIntelligence = inferRoleIntelligence({
+    jobTitle: input.jobTitle,
+    jobDescription: input.jobDescription,
+    coreSkills: input.coreSkills,
+    resumeSkills: input.candidateResumeSkills,
+    resumeText: input.candidateResumeText,
+  })
 
   const jobSkills = input.coreSkills ?? []
   const resumeSkills = input.candidateResumeSkills ?? []
 
   const skillUniverse = buildSkillUniverse({
+    jobTitle: input.jobTitle,
     jobDescription: input.jobDescription,
     coreSkills: jobSkills,
     resumeSkills,
+    resumeText: input.candidateResumeText,
   })
 
   const normalizedJob = new Set(jobSkills.map(normalizeText))
@@ -442,7 +798,7 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
   const missingSkills = jobSkills.filter((skill) => !normalizedResume.has(normalizeText(skill)))
   const jobCoverageSkills = jobSkills.filter((skill) => normalizedResume.has(normalizeText(skill)))
 
-  const prioritizedSkills = prioritizeSkillsByExperience(skillUniverse, input.experienceLevel)
+  const prioritizedSkills = prioritizeSkillsByExperience(skillUniverse, input)
   const shuffledSkills = shuffleWithSeed(prioritizedSkills, seed)
   const resumeCount = Math.max(1, Math.round(total * RESUME_RATIO))
   const jobCount = Math.max(1, Math.round(total * JOB_RATIO))
@@ -453,12 +809,18 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
   const jobPool = missingSkills.length > 0 ? [...missingSkills, ...jobCoverageSkills] : jobSkills
   const jobBasedSkills = pickUniqueSkills(jobPool, jobCount, usedSkills)
   const behavioralSkills = pickUniqueSkills(shuffledSkills, behavioralCount, usedSkills)
+  const adaptiveQuestions = roleIntelligence.adaptiveMode ? buildAdaptiveQuestions(roleIntelligence, shuffledSkills, 0) : []
+  const adaptiveCount = adaptiveQuestions.length
 
-  const resumeQuestions = buildQuestionsForSkills(resumeBasedSkills, 0)
-  const jobQuestions = buildQuestionsForSkills(jobBasedSkills, resumeQuestions.length)
-  const behavioralQuestions = deriveBehavioralQuestions(behavioralCount, behavioralSkills, resumeQuestions.length + jobQuestions.length)
+  const resumeQuestions = buildQuestionsForSkills(resumeBasedSkills, adaptiveCount, roleIntelligence)
+  const jobQuestions = buildQuestionsForSkills(jobBasedSkills, adaptiveCount + resumeQuestions.length, roleIntelligence)
+  const behavioralQuestions = deriveBehavioralQuestions(
+    behavioralCount,
+    behavioralSkills,
+    adaptiveCount + resumeQuestions.length + jobQuestions.length
+  )
 
-  const combined = [...resumeQuestions, ...jobQuestions, ...behavioralQuestions]
+  const combined = [...adaptiveQuestions, ...resumeQuestions, ...jobQuestions, ...behavioralQuestions].slice(0, total)
   const regenerated = combined.map((question) => {
     const quality = validateQuestionQuality({
       question: question.text,
@@ -487,10 +849,8 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
   const output: InterviewQuestion[] = withSkills.map((question) => ({
     id: question.id,
     question: question.text,
-    skill: normalizeSkillName(question.skill ?? mapQuestionToSkill(question.text, skillUniverse).skill),
-    skill_type: normalizeInterviewSkillType(
-      mapSkillType(question.skillBucket ?? bucketSkill(question.skill ?? "general"), question.type)
-    ),
+    skill: presentSkillName(question.skill ?? mapQuestionToSkill(question.text, skillUniverse).skill),
+    skill_type: normalizeInterviewSkillType(classifySkillType(question.skill ?? mapQuestionToSkill(question.text, skillUniverse).skill)),
     skill_bucket: question.skillBucket,
   }))
 
@@ -498,6 +858,13 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
     questions: output,
     skills_covered: coverage.covered,
     skills_remaining: coverage.remaining,
+    meta: {
+      role_family: roleIntelligence.family,
+      role_subfamily: roleIntelligence.subfamily,
+      role_confidence: roleIntelligence.confidence,
+      adaptive_mode: roleIntelligence.adaptiveMode,
+      question_mode: roleIntelligence.questionMode,
+    },
   }
 }
 
@@ -507,10 +874,29 @@ export async function generateBaseInterviewQuestionsAI(
 ): Promise<BaseGenerationOutputWithError> {
   const apiKey = (process.env.OPENAI_API_KEY ?? "").trim().replace(/^"|"$/g, "")
   const model = process.env.OPENAI_QUESTION_MODEL ?? OPENAI_QUESTION_MODEL
+  const roleIntelligence = inferRoleIntelligence({
+    jobTitle: input.jobTitle,
+    jobDescription: input.jobDescription,
+    coreSkills: input.coreSkills,
+    resumeSkills: input.candidateResumeSkills,
+    resumeText: input.candidateResumeText,
+  })
 
   if (!apiKey) {
     return options?.requireAi
-      ? { questions: [], skills_covered: [], skills_remaining: [], error_message: "Missing OPENAI_API_KEY" }
+      ? {
+          questions: [],
+          skills_covered: [],
+          skills_remaining: [],
+          error_message: "Missing OPENAI_API_KEY",
+          meta: {
+            role_family: roleIntelligence.family,
+            role_subfamily: roleIntelligence.subfamily,
+            role_confidence: roleIntelligence.confidence,
+            adaptive_mode: roleIntelligence.adaptiveMode,
+            question_mode: roleIntelligence.questionMode,
+          },
+        }
       : generateBaseInterviewQuestions(input)
   }
 
@@ -522,9 +908,11 @@ export async function generateBaseInterviewQuestionsAI(
   const previousQuestions = input.previousQuestions ?? []
 
   const skillUniverse = buildSkillUniverse({
+    jobTitle: input.jobTitle,
     jobDescription: input.jobDescription,
     coreSkills: jobSkills,
     resumeSkills,
+    resumeText: input.candidateResumeText,
   })
   if (skillUniverse.length === 0) {
     skillUniverse.push("general")
@@ -538,7 +926,7 @@ export async function generateBaseInterviewQuestionsAI(
   const missingSkills = jobSkills.filter((skill) => !normalizedResume.has(normalizeText(skill)))
   const jobCoverageSkills = jobSkills.filter((skill) => normalizedResume.has(normalizeText(skill)))
 
-  const prioritizedSkills = prioritizeSkillsByExperience(skillUniverse, input.experienceLevel)
+  const prioritizedSkills = prioritizeSkillsByExperience(skillUniverse, input)
   const shuffledSkills = shuffleWithSeed(prioritizedSkills, `${Date.now()}-${Math.random()}`)
   const resumeCount = Math.max(1, Math.round(total * RESUME_RATIO))
   const jobCount = Math.max(1, Math.round(total * JOB_RATIO))
@@ -551,12 +939,19 @@ export async function generateBaseInterviewQuestionsAI(
   const behavioralSkills = pickUniqueSkills(shuffledSkills, behavioralCount, usedSkills)
 
   const requiredSkills = [...resumeBasedSkills, ...jobBasedSkills, ...behavioralSkills]
-  const baseCandidates = requiredSkills.length > 0 ? requiredSkills : skillUniverse
+  const roleFallbackSkills = getFallbackSkillsForRoleFamily({
+    jobTitle: input.jobTitle,
+    jobDescription: input.jobDescription,
+    coreSkills: input.coreSkills,
+    resumeSkills,
+    resumeText: input.candidateResumeText,
+  })
+  const baseCandidates = requiredSkills.length > 0 ? requiredSkills : [...skillUniverse, ...roleFallbackSkills]
   const skillCandidates = baseCandidates.length >= total
     ? baseCandidates
     : [
         ...baseCandidates,
-        ...Array.from({ length: total - baseCandidates.length }, (_, index) => `general-skill-${index + 1}`),
+        ...roleFallbackSkills.filter((skill) => !baseCandidates.includes(skill)).slice(0, total - baseCandidates.length),
       ]
 
   const accepted: InterviewQuestion[] = []
@@ -626,16 +1021,25 @@ export async function generateBaseInterviewQuestionsAI(
   }) {
     const promptPayload = {
       job_description: input.jobDescription ?? "",
+      job_title: input.jobTitle ?? "",
       job_skills: jobSkills,
       resume_skills: resumeSkills,
+      resume_summary: (input.candidateResumeText ?? "").slice(0, 4000),
+      role_intelligence: {
+        family: roleIntelligence.family,
+        subfamily: roleIntelligence.subfamily ?? null,
+        confidence: roleIntelligence.confidence,
+        adaptive_mode: roleIntelligence.adaptiveMode,
+        question_mode: roleIntelligence.questionMode,
+      },
       common_skills: commonSkills,
       missing_skills: missingSkills,
       resume_target_skills: resumeBasedSkills,
       job_target_skills: jobBasedSkills,
       behavioral_target_skills: behavioralSkills,
-      required_skills: params.requiredSkills,
+      required_skills: params.requiredSkills.map((skill) => presentSkillName(skill)),
       skill_type_map: Object.fromEntries(
-        params.requiredSkills.map((skill) => [skill, classifySkillType(skill)])
+        params.requiredSkills.map((skill) => [presentSkillName(skill), classifySkillType(skill)])
       ),
       existing_questions: prev,
       total_questions: params.count,
@@ -652,6 +1056,14 @@ export async function generateBaseInterviewQuestionsAI(
         "latency",
         "deployment",
       ],
+      question_style_rules: {
+        technical: "use tools, systems, debugging, validation, and incident recovery",
+        functional: "use workflow, prioritization, SLA handling, process control, and customer coordination",
+        behavioral: "use real scenarios, ownership, communication, urgency handling, and cross-team tension",
+        analytical: "use metrics, forecasting, service levels, trend reading, and decision support",
+        strategic: "use planning, trade-offs, scaling the process, and long-term improvements",
+        operational: "use execution, dispatch, scheduling, resource allocation, field coordination, and recovery from disruption",
+      },
     }
 
     const response = await fetch("https://api.openai.com/v1/responses", {
@@ -669,7 +1081,7 @@ export async function generateBaseInterviewQuestionsAI(
               {
                 type: "input_text",
                 text:
-                  "Generate interview questions based on the provided skills. Rules: one question per skill, no job titles, no locations, no generic phrases. Use varied structures (scenario, tool, troubleshooting, decision). Avoid repeating phrasing. Use variation_nonce to diversify output across runs but never mention it. Use skill_type_map to shape each question's style. For functional/behavioral/analytical/strategic/operational skills avoid technical phrases listed in non_technical_forbidden_phrases. Output only JSON.",
+                  "Generate interview questions based on the provided skills and resume context. Rules: one question per skill, no job titles inside the question body, no locations, no generic phrases. Use structures appropriate to each skill type from question_style_rules. Follow the role_intelligence.question_mode when choosing the questioning style for this role family. Technical questions may use tools/debugging; non-technical questions must focus on workflow, scheduling, coordination, service urgency, resource allocation, stakeholders, metrics, planning, judgment, communication, or reasoning as appropriate. Use common_skills for resume-validation questions, missing_skills for coverage/probe questions, and variation_nonce to diversify phrasing across runs without mentioning it. If role_intelligence.adaptive_mode is true, make the first one or two questions exploratory and role-family-aware so the interview can refine what the candidate actually owns. For functional/behavioral/analytical/strategic/operational skills avoid technical phrases listed in non_technical_forbidden_phrases. Output only JSON.",
               },
             ],
           },
@@ -702,7 +1114,7 @@ export async function generateBaseInterviewQuestionsAI(
                       skill: { type: "string" },
                       skill_type: {
                         type: "string",
-                        enum: ["technical", "functional", "behavioral"],
+                        enum: ["technical", "functional", "behavioral", "analytical", "strategic", "operational"],
                       },
                     },
                     required: ["question", "skill", "skill_type"],
@@ -771,14 +1183,8 @@ export async function generateBaseInterviewQuestionsAI(
         accepted.push({
           id: buildInterviewQuestionId("ai", accepted.length, skillMatch),
           question: item.question,
-          skill: normalizeSkillName(skillMatch),
-          skill_type: normalizeInterviewSkillType(
-            item.skill_type === "behavioral" ||
-            item.skill_type === "functional" ||
-            item.skill_type === "technical"
-              ? item.skill_type
-              : classifySkillType(skillMatch)
-          ),
+          skill: presentSkillName(skillMatch),
+          skill_type: normalizeInterviewSkillType(item.skill_type || classifySkillType(skillMatch)),
           skill_bucket: bucketSkill(skillMatch),
         })
       }
@@ -826,14 +1232,8 @@ export async function generateBaseInterviewQuestionsAI(
         accepted.push({
           id: buildInterviewQuestionId("ai", accepted.length, skillMatch),
           question: item.question,
-          skill: normalizeSkillName(skillMatch),
-          skill_type: normalizeInterviewSkillType(
-            item.skill_type === "behavioral" ||
-            item.skill_type === "functional" ||
-            item.skill_type === "technical"
-              ? item.skill_type
-              : classifySkillType(skillMatch)
-          ),
+          skill: presentSkillName(skillMatch),
+          skill_type: normalizeInterviewSkillType(item.skill_type || classifySkillType(skillMatch)),
           skill_bucket: bucketSkill(skillMatch),
         })
       }
@@ -864,7 +1264,7 @@ export async function generateBaseInterviewQuestionsAI(
         accepted.push({
           id: buildInterviewQuestionId("ai", accepted.length, skill),
           question: item.question,
-          skill: normalizeSkillName(skill),
+          skill: presentSkillName(skill),
           skill_type: normalizeInterviewSkillType(classifySkillType(skill)),
           skill_bucket: bucketSkill(skill),
         })
@@ -874,7 +1274,7 @@ export async function generateBaseInterviewQuestionsAI(
   if (accepted.length < total) {
     if (options?.requireAi) {
       const remainingSkills = skillCandidates.filter((skill) => !used.has(normalizeText(skill)))
-      const filler = buildQuestionsForSkills(remainingSkills, accepted.length)
+      const filler = buildQuestionsForSkills(remainingSkills, accepted.length, roleIntelligence)
       const fillerWithSkills = assignSkillsToQuestions(filler, skillUniverse)
       for (const question of fillerWithSkills) {
         if (accepted.length >= total) {
@@ -889,10 +1289,8 @@ export async function generateBaseInterviewQuestionsAI(
         accepted.push({
           id: question.id,
           question: question.text,
-          skill: normalizeSkillName(question.skill ?? normalizedSkill),
-          skill_type: normalizeInterviewSkillType(
-            mapSkillType(question.skillBucket ?? bucketSkill(normalizedSkill), question.type)
-          ),
+          skill: presentSkillName(question.skill ?? normalizedSkill),
+          skill_type: normalizeInterviewSkillType(classifySkillType(question.skill ?? normalizedSkill)),
           skill_bucket: question.skillBucket,
         })
       }
@@ -912,22 +1310,63 @@ export async function generateBaseInterviewQuestionsAI(
     questions: accepted,
     skills_covered: coverage.covered,
     skills_remaining: coverage.remaining,
+    meta: {
+      role_family: roleIntelligence.family,
+      role_subfamily: roleIntelligence.subfamily,
+      role_confidence: roleIntelligence.confidence,
+      adaptive_mode: roleIntelligence.adaptiveMode,
+      question_mode: roleIntelligence.questionMode,
+    },
   }
 }
 
 export function decideNextQuestion(input: NextQuestionInput): NextQuestionDecision {
   const fraudScore = input.fraudScore ?? 0
-  const skillScore = input.skillScore ?? 1
+  const analysis =
+    input.responseAnalysis ??
+    (input.lastQuestion && input.lastAnswer
+      ? analyzeCandidateResponse({
+          answer: input.lastAnswer,
+          skill: input.lastQuestion.skill,
+          skillType: input.lastQuestion.skill_type,
+          fraudScore,
+          experienceLevel: input.experienceLevel,
+          roleConfidence: input.roleConfidence,
+          adaptiveMode: input.adaptiveMode,
+        })
+      : undefined)
+  const skillScore = input.skillScore ?? analysis?.skill_score ?? 1
   const followupCount = input.followupCount ?? 0
   const remaining = input.skillsRemaining ?? []
+  const difficulty = analysis?.question_difficulty ?? extractDifficultyForExperience(input.experienceLevel)
 
-  if (fraudScore >= 0.7 && input.lastQuestion) {
+  if ((analysis?.suspicion_score ?? fraudScore) >= 0.7 && input.lastQuestion) {
     return {
       intent: "contradiction",
       followUp: {
         follow_up_question: "You mentioned earlier a different detail. Can you clarify what actually happened?",
         intent: "contradiction",
       },
+      difficulty,
+      updatedEvaluation: analysis,
+    }
+  }
+
+  if ((analysis?.role_clarity_score ?? 1) < 0.45 && followupCount < 2 && input.lastQuestion) {
+    return {
+      intent: "exploratory",
+      followUp: generateFollowUp({
+        lastQuestion: input.lastQuestion,
+        candidateAnswer: input.lastAnswer ?? "",
+        skillScore,
+        fraudScore,
+        responseAnalysis: analysis,
+        experienceLevel: input.experienceLevel,
+        adaptiveMode: true,
+        questionMode: input.questionMode,
+      }),
+      difficulty,
+      updatedEvaluation: analysis,
     }
   }
 
@@ -939,52 +1378,141 @@ export function decideNextQuestion(input: NextQuestionInput): NextQuestionDecisi
         candidateAnswer: input.lastAnswer,
         skillScore,
         fraudScore,
+        responseAnalysis: analysis,
+        experienceLevel: input.experienceLevel,
+        adaptiveMode: input.adaptiveMode,
+        questionMode: input.questionMode,
       }),
+      difficulty,
+      updatedEvaluation: analysis,
+    }
+  }
+
+  if (analysis && analysis.clarity_score < 0.5 && followupCount < 3 && input.lastQuestion && input.lastAnswer) {
+    return {
+      intent: "followup",
+      followUp: generateFollowUp({
+        lastQuestion: input.lastQuestion,
+        candidateAnswer: input.lastAnswer,
+        skillScore,
+        fraudScore,
+        responseAnalysis: analysis,
+        experienceLevel: input.experienceLevel,
+        adaptiveMode: input.adaptiveMode,
+        questionMode: input.questionMode,
+      }),
+      difficulty,
+      updatedEvaluation: analysis,
+    }
+  }
+
+  if (analysis && analysis.depth_score < 0.5 && followupCount < 3 && input.lastQuestion && input.lastAnswer) {
+    return {
+      intent: "followup",
+      followUp: generateFollowUp({
+        lastQuestion: input.lastQuestion,
+        candidateAnswer: input.lastAnswer,
+        skillScore,
+        fraudScore,
+        responseAnalysis: analysis,
+        experienceLevel: input.experienceLevel,
+        adaptiveMode: input.adaptiveMode,
+        questionMode: input.questionMode,
+      }),
+      difficulty,
+      updatedEvaluation: analysis,
     }
   }
 
   if (remaining.length === 0) {
-    return { intent: "next_skill", nextSkill: undefined }
+    return { intent: "next_skill", nextSkill: undefined, difficulty, updatedEvaluation: analysis }
   }
 
   const timeRemaining = input.timeRemainingSeconds ?? Number.POSITIVE_INFINITY
-  const critical = input.criticalSkills ?? deriveCriticalSkills(remaining, input.experienceLevel)
+  const critical =
+    input.criticalSkills ??
+    deriveCriticalSkills(remaining, {
+      experienceLevel: input.experienceLevel,
+      coreSkills: remaining,
+    })
 
   if (timeRemaining < remaining.length * 90 && critical.length > 0) {
-    return { intent: "next_skill", nextSkill: critical[0] }
+    return { intent: "next_skill", nextSkill: critical[0], difficulty, updatedEvaluation: analysis }
   }
 
-  return { intent: "next_skill", nextSkill: remaining[0] }
+  if (analysis && analysis.confidence_score > 0.78 && analysis.depth_score > 0.6 && critical.length > 0) {
+    return { intent: "next_skill", nextSkill: critical[0], difficulty, updatedEvaluation: analysis }
+  }
+
+  return { intent: "next_skill", nextSkill: remaining[0], difficulty, updatedEvaluation: analysis }
 }
 
-export function generateFollowUp(input: FollowUpInput): FollowUpResult {
+export function generateFollowUp(
+  input: FollowUpInput & {
+    responseAnalysis?: ResponseAnalysis
+    experienceLevel?: string
+    adaptiveMode?: boolean
+    questionMode?: string
+  }
+): FollowUpResult {
   const answer = input.candidateAnswer ?? ""
   const signals = detectSignals(answer)
+  const analysis =
+    input.responseAnalysis ??
+    analyzeCandidateResponse({
+      answer,
+      skill: input.lastQuestion.skill,
+      skillType: input.lastQuestion.skill_type,
+      fraudScore: input.fraudScore,
+      experienceLevel: input.experienceLevel,
+      adaptiveMode: input.adaptiveMode,
+    })
   const fraudScore = input.fraudScore ?? 0
+  const skillLabel = presentSkillName(input.lastQuestion.skill)
 
-  if (fraudScore >= 0.7) {
+  if (fraudScore >= 0.7 || analysis.suspicion_score >= 0.7) {
     return {
       follow_up_question: "Can you walk me through that step-by-step so the timeline is clear?",
       intent: "contradiction",
     }
   }
 
-  if (signals.vague) {
+  if (analysis.role_clarity_score < 0.45) {
     return {
-      follow_up_question: `Can you share a specific example of how you handled ${input.lastQuestion.skill}?`,
+      follow_up_question: `Which part of ${skillLabel} do you personally own most often, and how does it usually show up in your day-to-day work?`,
+      intent: "exploratory",
+    }
+  }
+
+  if (analysis.clarity_score < 0.5 || signals.vague) {
+    return {
+      follow_up_question:
+        input.experienceLevel && normalizeExperienceLevel(input.experienceLevel) === "junior"
+          ? `Could you explain that in a simpler step-by-step way using one recent example from ${skillLabel}?`
+          : `Could you restate that more clearly and walk me through the sequence you followed in ${skillLabel}?`,
+      intent: "simplification",
+    }
+  }
+
+  if (analysis.depth_score < 0.5) {
+    return {
+      follow_up_question: `Can you give me one concrete example where ${skillLabel} made the outcome better or worse?`,
       intent: "clarification",
     }
   }
 
-  if (signals.strong) {
+  if (analysis.confidence_score > 0.78 && analysis.depth_score > 0.6) {
     return {
-      follow_up_question: `What is an edge case where your approach to ${input.lastQuestion.skill} failed, and how did you recover?`,
-      intent: "probe",
+      follow_up_question:
+        normalizeExperienceLevel(input.experienceLevel) === "senior"
+          ? `What ambiguity or strategic trade-off makes ${skillLabel} hard at your level, and how do you make the call?`
+          : `What is an edge case where your approach to ${skillLabel} failed, and how did you recover?`,
+      intent: "difficulty_up",
     }
   }
 
   return {
-    follow_up_question: `What would you do differently next time you faced a ${input.lastQuestion.skill} issue?`,
+    follow_up_question: `What would you do differently next time you faced a ${skillLabel} issue?`,
     intent: "probe",
   }
 }
@@ -1021,7 +1549,7 @@ export async function generateFollowUpWithAI(input: FollowUpInput): Promise<Foll
               {
                 type: "input_text",
                 text:
-                  "You are generating one interview follow-up question. Be specific to the candidate answer, skill-focused, concise, and professional. Avoid job titles, locations, and generic phrases like 'tell me about a time'. Return JSON only.",
+                  "You are generating one adaptive interview follow-up question. Be specific to the candidate answer, skill-focused, concise, and professional. Avoid job titles, locations, and generic phrases like 'tell me about a time'. Use simplification if clarity is low, exploratory if role ownership is still unclear, contradiction if suspicion is high, difficulty_up when the answer is strong and should be stretched, and probe for deeper detail when needed. Return JSON only.",
               },
             ],
           },
@@ -1038,6 +1566,7 @@ export async function generateFollowUpWithAI(input: FollowUpInput): Promise<Foll
                   skill_score: input.skillScore ?? null,
                   fraud_score: fraudScore,
                   signals,
+                  response_analysis: fallback,
                 }),
               },
             ],
@@ -1055,7 +1584,7 @@ export async function generateFollowUpWithAI(input: FollowUpInput): Promise<Foll
                 follow_up_question: { type: "string" },
                 intent: {
                   type: "string",
-                  enum: ["clarification", "probe", "contradiction"],
+                  enum: ["clarification", "probe", "contradiction", "exploratory", "simplification", "difficulty_up"],
                 },
               },
               required: ["follow_up_question", "intent"],
@@ -1079,7 +1608,7 @@ export async function generateFollowUpWithAI(input: FollowUpInput): Promise<Foll
     if (
       !parsed ||
       typeof parsed.follow_up_question !== "string" ||
-      (parsed.intent !== "clarification" && parsed.intent !== "probe" && parsed.intent !== "contradiction")
+      !["clarification", "probe", "contradiction", "exploratory", "simplification", "difficulty_up"].includes(parsed.intent)
     ) {
       return fallback
     }
@@ -1112,6 +1641,26 @@ export function updateSkillState(params: {
     skills_covered: Array.from(covered),
     skills_remaining: remaining,
   }
+}
+
+export function evaluateCandidateResponse(params: {
+  skill: string
+  answer: string
+  skillType?: InterviewQuestion["skill_type"]
+  fraudScore?: number
+  experienceLevel?: string
+  roleConfidence?: number
+  adaptiveMode?: boolean
+}) {
+  return analyzeCandidateResponse({
+    answer: params.answer,
+    skill: params.skill,
+    skillType: params.skillType,
+    fraudScore: params.fraudScore,
+    experienceLevel: params.experienceLevel,
+    roleConfidence: params.roleConfidence,
+    adaptiveMode: params.adaptiveMode,
+  })
 }
 
 export function scoreAnswer(skill: string, answer: string) {

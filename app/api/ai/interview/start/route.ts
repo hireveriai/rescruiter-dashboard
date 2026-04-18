@@ -73,6 +73,10 @@ export async function POST(request: Request) {
         organizationId,
         skillsCovered: output.skills_covered,
         skillsRemaining: output.skills_remaining,
+        roleConfidence:
+          typeof output.meta?.role_confidence === "number" ? output.meta.role_confidence : null,
+        adaptiveMode:
+          typeof output.meta?.adaptive_mode === "boolean" ? output.meta.adaptive_mode : null,
       })
     }
 

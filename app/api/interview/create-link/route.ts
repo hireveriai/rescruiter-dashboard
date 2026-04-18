@@ -108,6 +108,14 @@ export async function POST(request: Request) {
           {
             jobDescription: job.jobDescription ?? undefined,
             coreSkills: job.coreSkills ?? [],
+            candidateResumeText:
+              String(
+                payload.candidate_resume_text ??
+                  payload.candidateResumeText ??
+                  payload.resume_text ??
+                  payload.resumeText ??
+                  ""
+              ) || undefined,
             candidateResumeSkills: resumeSkills,
             experienceLevel: String(job.experienceLevelId ?? ""),
             totalQuestions: payload.total_questions ?? payload.totalQuestions,

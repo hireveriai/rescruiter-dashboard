@@ -32,6 +32,10 @@ export async function POST(request: Request) {
           candidateAnswer,
           skillScore: body.skill_score ?? body.skillScore,
           fraudScore: body.fraud_score ?? body.fraudScore,
+          responseAnalysis: body.response_analysis ?? body.responseAnalysis,
+          experienceLevel: body.experience_level ?? body.experienceLevel,
+          adaptiveMode: body.adaptive_mode ?? body.adaptiveMode,
+          questionMode: body.question_mode ?? body.questionMode,
         })
 
     return NextResponse.json({ success: true, data: followUp })
