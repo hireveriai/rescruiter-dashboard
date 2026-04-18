@@ -241,7 +241,7 @@ async function revokeInterviewInviteFallback(input: RevokeInterviewInviteInput) 
 
   const reason = input.reason?.trim() ? input.reason.trim() : null
   const columnSupport = await getInviteColumnSupport()
-  const updateClauses = [Prisma.sql`status = 'INACTIVE'`]
+  const updateClauses = [Prisma.sql`expires_at = now()`]
 
   if (columnSupport.has_revoked_at) {
     updateClauses.push(Prisma.sql`revoked_at = now()`)
@@ -265,7 +265,7 @@ async function revokeInterviewInviteFallback(input: RevokeInterviewInviteInput) 
     select
       ii.invite_id,
       ii.interview_id,
-      coalesce(ii.status, 'INACTIVE') as status,
+      coalesce(ii.status, 'EXPIRED') as status,
       ${columnSupport.has_revoked_at ? Prisma.raw("ii.revoked_at") : Prisma.raw("null::timestamptz")} as revoked_at,
       ${columnSupport.has_revoked_reason ? Prisma.raw("ii.revoked_reason") : Prisma.raw("null::text")} as revoked_reason
     from public.interview_invites ii

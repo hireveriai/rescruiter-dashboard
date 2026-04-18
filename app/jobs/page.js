@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
@@ -9,6 +9,25 @@ import { buildAuthUrl } from "@/lib/client/auth-query"
 import Navbar from "../../components/Navbar"
 import SendInterviewModal from "../../components/SendInterviewModal"
 import CreateJobModal from "../../components/CreateJobModal"
+
+function KebabIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="5" r="1.5" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="19" r="1.5" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
 
 function getDifficultyTone(profile) {
   const normalized = String(profile ?? "MID").toUpperCase()
@@ -63,6 +82,8 @@ export default function JobsPage() {
   const [openEditJob, setOpenEditJob] = useState(false)
   const [selectedJob, setSelectedJob] = useState(null)
   const [pendingJobId, setPendingJobId] = useState("")
+  const [openActionMenuJobId, setOpenActionMenuJobId] = useState("")
+  const actionMenuRef = useRef(null)
 
   useEffect(() => {
     let isMounted = true
@@ -93,6 +114,28 @@ export default function JobsPage() {
     }
   }, [searchParams])
 
+  useEffect(() => {
+    function handlePointerDown(event) {
+      if (actionMenuRef.current && !actionMenuRef.current.contains(event.target)) {
+        setOpenActionMenuJobId("")
+      }
+    }
+
+    function handleEscape(event) {
+      if (event.key === "Escape") {
+        setOpenActionMenuJobId("")
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown)
+    document.addEventListener("keydown", handleEscape)
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown)
+      document.removeEventListener("keydown", handleEscape)
+    }
+  }, [])
+
   const stats = useMemo(() => {
     const total = jobs.length
     const totalInterviews = jobs.reduce((sum, job) => sum + (job._count?.interviews ?? 0), 0)
@@ -103,6 +146,7 @@ export default function JobsPage() {
   }, [jobs])
 
   const handleEdit = (job) => {
+    setOpenActionMenuJobId("")
     setSelectedJob(job)
     setOpenEditJob(true)
   }
@@ -112,6 +156,7 @@ export default function JobsPage() {
 
     try {
       setPendingJobId(job.jobId)
+      setOpenActionMenuJobId("")
 
       const response = await fetch(buildAuthUrl(`/api/jobs/${job.jobId}`, searchParams), {
         method: "PATCH",
@@ -208,7 +253,7 @@ export default function JobsPage() {
                   <th className="p-5 text-left font-medium">Timeline</th>
                   <th className="p-5 text-left font-medium">Core Skills</th>
                   <th className="p-5 text-left font-medium">Open Interviews</th>
-                  <th className="p-5 text-left font-medium">Actions</th>
+                  <th className="p-5 text-right font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -250,29 +295,73 @@ export default function JobsPage() {
                       </td>
                       <td className="p-5 text-slate-300">{job._count?.interviews ?? 0}</td>
                       <td className="p-5">
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleEdit(job)}
-                            className="rounded-xl border border-blue-400/30 bg-blue-500/10 px-3 py-2 text-xs font-medium text-blue-200 transition hover:border-blue-300/50 hover:bg-blue-500/15 hover:text-white"
+                        <div className="flex justify-end">
+                          <div
+                            className="flex items-center justify-end gap-2 md:gap-3"
+                            ref={openActionMenuJobId === job.jobId ? actionMenuRef : null}
                           >
-                            Edit
-                          </button>
+                            {supportsJobActiveState ? (
+                              <button
+                                type="button"
+                                onClick={() => handleToggleActive(job)}
+                                disabled={pendingJobId === job.jobId}
+                                className="hidden min-w-[132px] items-center justify-center rounded-xl border border-cyan-400/30 bg-[linear-gradient(135deg,rgba(34,211,238,0.2),rgba(59,130,246,0.18))] px-3.5 py-2 text-xs font-semibold text-cyan-100 shadow-[0_10px_24px_rgba(8,145,178,0.16)] transition hover:border-cyan-300/50 hover:text-white hover:shadow-[0_14px_28px_rgba(8,145,178,0.24)] disabled:cursor-not-allowed disabled:opacity-60 md:inline-flex"
+                              >
+                                {pendingJobId === job.jobId
+                                  ? "Saving..."
+                                  : job.isActive !== false
+                                    ? "Mark Inactive"
+                                    : "Mark Active"}
+                              </button>
+                            ) : null}
 
-                          {supportsJobActiveState ? (
-                            <button
-                              type="button"
-                              onClick={() => handleToggleActive(job)}
-                              disabled={pendingJobId === job.jobId}
-                              className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-200 transition hover:border-amber-300/50 hover:bg-amber-500/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {pendingJobId === job.jobId
-                                ? "Saving..."
-                                : job.isActive !== false
-                                  ? "Mark Inactive"
-                                  : "Mark Active"}
-                            </button>
-                          ) : null}
+                            <div className="relative">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setOpenActionMenuJobId((current) =>
+                                    current === job.jobId ? "" : job.jobId
+                                  )
+                                }
+                                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-700 bg-slate-900/85 text-slate-300 transition hover:border-slate-500 hover:bg-slate-800 hover:text-white"
+                                aria-label={`Open actions for ${job.jobTitle}`}
+                                aria-expanded={openActionMenuJobId === job.jobId}
+                              >
+                                <KebabIcon />
+                              </button>
+
+                              {openActionMenuJobId === job.jobId ? (
+                                <div className="absolute right-0 top-[calc(100%+10px)] z-30 w-44 overflow-hidden rounded-2xl border border-slate-800 bg-[#111a2d]/98 p-2 shadow-[0_20px_60px_rgba(2,6,23,0.42)]">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleEdit(job)}
+                                    className="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm text-slate-200 transition hover:bg-slate-800/80 hover:text-white"
+                                  >
+                                    Edit
+                                  </button>
+
+                                  {supportsJobActiveState ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleToggleActive(job)}
+                                      disabled={pendingJobId === job.jobId}
+                                      className="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm text-slate-200 transition hover:bg-slate-800/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-60 md:hidden"
+                                    >
+                                      {pendingJobId === job.jobId
+                                        ? "Saving..."
+                                        : job.isActive !== false
+                                          ? "Mark Inactive"
+                                          : "Mark Active"}
+                                    </button>
+                                  ) : null}
+
+                                  <div className="mt-1 rounded-xl px-3 py-2 text-xs text-slate-500">
+                                    More actions coming soon
+                                  </div>
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
                         </div>
                       </td>
                     </tr>
