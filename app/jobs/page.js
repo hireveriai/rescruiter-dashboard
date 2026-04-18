@@ -82,8 +82,33 @@ function JobDescriptionCell({ description }) {
       </div>
 
       {value ? (
-        <div className="pointer-events-none absolute left-0 top-full z-30 mt-2 hidden w-[640px] max-w-[70vw] rounded-2xl border border-slate-700 bg-[#1f2937] px-4 py-3 text-sm leading-7 text-slate-100 shadow-[0_18px_48px_rgba(2,6,23,0.45)] group-hover:block">
-          <div className="whitespace-pre-wrap break-words">
+        <div className="pointer-events-none absolute left-0 top-full z-30 mt-2 hidden w-[520px] max-w-[42vw] rounded-2xl border border-slate-700 bg-[#1f2937] px-4 py-3 text-sm leading-7 text-slate-100 shadow-[0_18px_48px_rgba(2,6,23,0.45)] group-hover:block">
+          <div className="line-clamp-[20] whitespace-pre-wrap break-words">
+            {value}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function JobSkillsCell({ skills }) {
+  const items = Array.isArray(skills) ? skills.filter(Boolean) : []
+  const value = items.join(", ")
+  const preview =
+    value.length > 46
+      ? `${value.slice(0, 46).trimEnd()}...`
+      : value || "-"
+
+  return (
+    <div className="group relative max-w-[260px]">
+      <div className="cursor-help leading-6 text-slate-300">
+        {preview}
+      </div>
+
+      {value ? (
+        <div className="pointer-events-none absolute left-0 top-full z-30 mt-2 hidden w-[460px] max-w-[38vw] rounded-2xl border border-slate-700 bg-[#1f2937] px-4 py-3 text-sm leading-7 text-slate-100 shadow-[0_18px_48px_rgba(2,6,23,0.45)] group-hover:block">
+          <div className="line-clamp-[20] whitespace-pre-wrap break-words">
             {value}
           </div>
         </div>
@@ -260,7 +285,19 @@ export default function JobsPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1200px] text-sm">
+            <table className="w-full min-w-[1040px] table-fixed text-sm">
+              <colgroup>
+                <col className="w-[64px]" />
+                <col className="w-[180px]" />
+                <col className="w-[220px]" />
+                <col className="w-[120px]" />
+                <col className="w-[120px]" />
+                <col className="w-[110px]" />
+                <col className="w-[120px]" />
+                <col className="w-[190px]" />
+                <col className="w-[110px]" />
+                <col className="w-[170px]" />
+              </colgroup>
               <thead className="bg-slate-950/20 text-slate-400">
                 <tr>
                   <th className="w-[56px] p-5 text-left font-medium"></th>
@@ -310,17 +347,7 @@ export default function JobsPage() {
                       <td className="p-5 text-slate-300">{job.experienceLevelId ?? "-"}</td>
                       <td className="p-5 text-slate-300">{job.interviewDurationMinutes ?? 30} min</td>
                       <td className="p-5 text-slate-300">
-                        <div className="flex max-w-[260px] flex-wrap gap-2">
-                          {(job.coreSkills ?? []).length > 0 ? (
-                            job.coreSkills.map((skill) => (
-                              <span key={skill} className="rounded-full border border-slate-700 bg-slate-900/80 px-2.5 py-1 text-xs text-slate-300">
-                                {skill}
-                              </span>
-                            ))
-                          ) : (
-                            <span className="text-slate-500">-</span>
-                          )}
-                        </div>
+                        <JobSkillsCell skills={job.coreSkills} />
                       </td>
                       <td className="p-5 text-slate-300">{job._count?.interviews ?? 0}</td>
                       <td className="w-[1%] whitespace-nowrap p-5 text-right">
