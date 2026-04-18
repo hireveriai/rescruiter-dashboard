@@ -285,31 +285,31 @@ export default function JobsPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1040px] table-fixed text-sm">
+            <table className="w-full min-w-[980px] table-fixed text-sm">
               <colgroup>
-                <col className="w-[64px]" />
-                <col className="w-[180px]" />
-                <col className="w-[220px]" />
-                <col className="w-[120px]" />
-                <col className="w-[120px]" />
-                <col className="w-[110px]" />
-                <col className="w-[120px]" />
-                <col className="w-[190px]" />
-                <col className="w-[110px]" />
+                <col className="w-[56px]" />
                 <col className="w-[170px]" />
+                <col className="w-[190px]" />
+                <col className="w-[108px]" />
+                <col className="w-[108px]" />
+                <col className="w-[92px]" />
+                <col className="w-[92px]" />
+                <col className="w-[170px]" />
+                <col className="w-[88px]" />
+                <col className="w-[150px]" />
               </colgroup>
               <thead className="bg-slate-950/20 text-slate-400">
                 <tr>
-                  <th className="w-[56px] p-5 text-left font-medium"></th>
-                  <th className="p-5 text-left font-medium">Job Title</th>
-                  <th className="p-5 text-left font-medium">Description</th>
-                  <th className="p-5 text-left font-medium">Status</th>
-                  <th className="p-5 text-left font-medium">Difficulty</th>
-                  <th className="p-5 text-left font-medium">Experience Level</th>
-                  <th className="p-5 text-left font-medium">Timeline</th>
-                  <th className="p-5 text-left font-medium">Core Skills</th>
-                  <th className="p-5 text-left font-medium">Open Interviews</th>
-                  <th className="w-[1%] whitespace-nowrap p-5 text-right font-medium">Actions</th>
+                  <th className="w-[56px] px-4 py-4 text-left font-medium"></th>
+                  <th className="px-4 py-4 text-left font-medium">Job Title</th>
+                  <th className="px-4 py-4 text-left font-medium">Description</th>
+                  <th className="px-4 py-4 text-left font-medium">Status</th>
+                  <th className="px-4 py-4 text-left font-medium">Difficulty</th>
+                  <th className="px-4 py-4 text-left font-medium">Experience Level</th>
+                  <th className="px-4 py-4 text-left font-medium">Timeline</th>
+                  <th className="px-4 py-4 text-left font-medium">Core Skills</th>
+                  <th className="px-4 py-4 text-left font-medium">Open Interviews</th>
+                  <th className="w-[1%] whitespace-nowrap px-4 py-4 text-right font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -320,7 +320,7 @@ export default function JobsPage() {
                 ) : (
                   jobs.map((job) => (
                     <tr key={job.jobId} className="border-t border-slate-800/80 align-top text-slate-200">
-                      <td className="p-5">
+                      <td className="px-4 py-4">
                         <button
                           type="button"
                           onClick={() => handleEdit(job)}
@@ -330,27 +330,27 @@ export default function JobsPage() {
                           <EditIcon />
                         </button>
                       </td>
-                      <td className="p-5 font-medium text-white">{job.jobTitle}</td>
-                      <td className="p-5 text-slate-400">
+                      <td className="px-4 py-4 font-medium text-white">{job.jobTitle}</td>
+                      <td className="px-4 py-4 text-slate-400">
                         <JobDescriptionCell description={job.jobDescription} />
                       </td>
-                      <td className="p-5">
+                      <td className="px-4 py-4">
                         <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] ${getStatusTone(job.isActive !== false)}`}>
                           {job.isActive !== false ? "ACTIVE" : "INACTIVE"}
                         </span>
                       </td>
-                      <td className="p-5">
+                      <td className="px-4 py-4">
                         <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] ${getDifficultyTone(job.difficultyProfile)}`}>
                           {job.difficultyProfile ?? "MID"}
                         </span>
                       </td>
-                      <td className="p-5 text-slate-300">{job.experienceLevelId ?? "-"}</td>
-                      <td className="p-5 text-slate-300">{job.interviewDurationMinutes ?? 30} min</td>
-                      <td className="p-5 text-slate-300">
+                      <td className="px-4 py-4 text-slate-300">{job.experienceLevelId ?? "-"}</td>
+                      <td className="px-4 py-4 text-slate-300">{job.interviewDurationMinutes ?? 30} min</td>
+                      <td className="px-4 py-4 text-slate-300">
                         <JobSkillsCell skills={job.coreSkills} />
                       </td>
-                      <td className="p-5 text-slate-300">{job._count?.interviews ?? 0}</td>
-                      <td className="w-[1%] whitespace-nowrap p-5 text-right">
+                      <td className="px-4 py-4 text-slate-300">{job._count?.interviews ?? 0}</td>
+                      <td className="w-[1%] whitespace-nowrap px-4 py-4 text-right">
                         <div className="flex justify-end">
                           <div
                             className="flex items-center justify-end gap-2 md:gap-3"
