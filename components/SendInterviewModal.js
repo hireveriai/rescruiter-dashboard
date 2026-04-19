@@ -61,6 +61,28 @@ function formatFileSize(size) {
   return `${Math.round(size / (1024 * 102.4)) / 10} MB`
 }
 
+function getFileExtension(fileName) {
+  const normalized = String(fileName ?? "").trim()
+  const parts = normalized.split(".")
+  if (parts.length < 2) {
+    return null
+  }
+
+  return parts.pop()?.toUpperCase() ?? null
+}
+
+function getResumeSourceLabel(file) {
+  if (!file) {
+    return "Uploaded from device"
+  }
+
+  const extension = getFileExtension(file.name)
+  const typeLabel = extension || (file.type ? file.type.split("/").pop()?.toUpperCase() : null) || "FILE"
+  const sizeLabel = file.size ? formatFileSize(file.size) : null
+
+  return ["Uploaded from device", typeLabel, sizeLabel].filter(Boolean).join(" · ")
+}
+
 export default function SendInterviewModal({ isOpen, onClose }) {
   const searchParams = useAuthSearchParams()
   const primaryFileInputRef = useRef(null)
@@ -349,8 +371,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-white">{resumeFile.name}</p>
                         <p className="mt-1 text-xs text-slate-400">
-                          {resumeFile.type || "Selected file"}
-                          {resumeFile.size ? ` - ${formatFileSize(resumeFile.size)}` : ""}
+                          {getResumeSourceLabel(resumeFile)}
                         </p>
                       </div>
 

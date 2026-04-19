@@ -161,6 +161,21 @@ export async function POST(req: Request) {
       throw new Error("Failed to create candidate")
     }
 
+    if (resumeUrl || resumeText) {
+      try {
+        await prisma.$executeRaw(Prisma.sql`
+          update public.candidates
+          set
+            resume_url = coalesce(${resumeUrl}, resume_url),
+            resume_text = coalesce(${resumeText}, resume_text)
+          where candidate_id = ${result.candidate_id}::uuid
+            and organization_id = ${auth.organizationId}::uuid
+        `)
+      } catch (persistError) {
+        console.error("Failed to persist resume data on candidate row", persistError)
+      }
+    }
+
     return NextResponse.json({
       success: true,
       candidateId: result.candidate_id,
