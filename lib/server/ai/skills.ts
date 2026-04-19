@@ -876,22 +876,96 @@ function extractSkillsFromText(text?: string) {
   return Array.from(new Set([...matchedKeywords, ...matchedPhrases]))
 }
 
+function looksLikeSentenceSkill(raw: string) {
+  const normalized = normalizeText(raw)
+  if (!normalized) {
+    return false
+  }
+
+  const words = normalized.split(" ").filter(Boolean)
+  if (words.length > 7) {
+    return true
+  }
+
+  if (/[.:;!?]/.test(raw)) {
+    return true
+  }
+
+  const sentenceMarkers = [
+    "responsible for",
+    "works closely with",
+    "manage the",
+    "update and",
+    "optimize",
+    "drive efficiency",
+    "ensure",
+    "monitoring the",
+    "in a timely",
+  ]
+
+  return sentenceMarkers.some((marker) => normalized.includes(marker))
+}
+
+function isTooGenericSkill(raw: string, jobTitle?: string) {
+  const normalized = normalizeSkillName(raw)
+  const normalizedJobTitle = normalizeText(jobTitle ?? "")
+
+  if (!normalized) {
+    return true
+  }
+
+  if (normalized === "general" || normalized === "workflow") {
+    return true
+  }
+
+  if (normalizedJobTitle && normalizeText(raw).includes(normalizedJobTitle)) {
+    return true
+  }
+
+  const genericTerms = [
+    "team player",
+    "hardworking",
+    "responsible",
+    "multitasking",
+    "good communication",
+    "dynamic",
+    "self motivated",
+  ]
+
+  return genericTerms.some((term) => normalizeText(raw).includes(term))
+}
+
+function normalizeSkillCandidate(raw: string, context?: { jobTitle?: string; jobDescription?: string }) {
+  const trimmed = String(raw ?? "").trim()
+  if (!trimmed) {
+    return []
+  }
+
+  const extracted = looksLikeSentenceSkill(trimmed) ? extractSkillsFromText(trimmed) : []
+  const candidates = extracted.length > 0 ? extracted : [trimmed]
+
+  return candidates
+    .map((candidate) => normalizeSkillName(candidate))
+    .filter((candidate) => !isTooGenericSkill(candidate, context?.jobTitle))
+}
+
+export function sanitizeSkillList(skills: string[] | undefined, context?: { jobTitle?: string; jobDescription?: string }) {
+  const sanitized = new Set<string>()
+
+  ;(skills ?? []).forEach((skill) => {
+    normalizeSkillCandidate(skill, context).forEach((candidate) => {
+      sanitized.add(candidate)
+    })
+  })
+
+  return Array.from(sanitized)
+}
+
 export function buildSkillUniverse(input: SkillUniverseInput) {
   const skills = new Set<string>()
 
-  input.coreSkills?.forEach((skill) => {
-    const normalized = normalizeSkillName(skill)
-    if (normalized) {
-      skills.add(normalized)
-    }
-  })
-
-  input.resumeSkills?.forEach((skill) => {
-    const normalized = normalizeSkillName(skill)
-    if (normalized) {
-      skills.add(normalized)
-    }
-  })
+  sanitizeSkillList(input.coreSkills, input).forEach((skill) => skills.add(skill))
+  sanitizeSkillList(input.resumeSkills, input).forEach((skill) => skills.add(skill))
 
   extractSkillsFromText(input.jobDescription).forEach((skill) => {
     skills.add(normalizeSkillName(skill))

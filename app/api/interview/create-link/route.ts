@@ -8,6 +8,7 @@ import { errorResponse, successResponse } from "@/lib/server/response"
 import { generateBaseInterviewQuestionsAI } from "@/lib/server/ai/interview-flow"
 import { jobPositionsSupportIsActive } from "@/lib/server/services/jobs"
 import { createInterviewLink } from "@/lib/server/services/interview.service"
+import { sanitizeSkillList } from "@/lib/server/ai/skills"
 import {
   fetchExistingInterviewQuestions,
   replaceInterviewQuestions,
@@ -17,6 +18,7 @@ import { sendInterviewEmail } from "@/lib/services/email.service"
 type CandidateEmailRow = {
   full_name: string | null
   email: string
+  resume_text: string | null
 }
 
 type JobDurationRow = {
@@ -27,14 +29,30 @@ type JobStatusRow = {
   is_active: boolean
 }
 
+function areSkillListsEquivalent(left: string[], right: string[]) {
+  if (left.length !== right.length) {
+    return false
+  }
+
+  const leftSorted = [...left].map((item) => item.trim().toLowerCase()).sort()
+  const rightSorted = [...right].map((item) => item.trim().toLowerCase()).sort()
+
+  return leftSorted.every((value, index) => value === rightSorted[index])
+}
+
 export async function POST(request: Request) {
   try {
     const auth = await getRecruiterRequestContext(request)
     const payload = await request.json()
     const jobId = String(payload.jobId ?? payload.job_id ?? "").trim()
+    const candidateId = String(payload.candidateId ?? payload.candidate_id ?? "").trim()
 
     if (!jobId) {
       throw new ApiError(400, "INVALID_JOB_ID", "jobId is required")
+    }
+
+    if (!candidateId) {
+      throw new ApiError(400, "INVALID_CANDIDATE_ID", "candidateId is required")
     }
 
     const hasIsActive = await jobPositionsSupportIsActive()
@@ -55,6 +73,34 @@ export async function POST(request: Request) {
 
     if (!job) {
       throw new ApiError(404, "JOB_NOT_FOUND", "Job not found for this organization")
+    }
+
+    const candidateRows = await prisma.$queryRaw<CandidateEmailRow[]>(Prisma.sql`
+      select c.full_name, c.email, c.resume_text
+      from public.candidates c
+      where c.candidate_id = ${candidateId}::uuid
+        and c.organization_id = ${auth.organizationId}::uuid
+      limit 1
+    `)
+
+    const candidate = candidateRows[0]
+
+    if (!candidate?.email) {
+      throw new ApiError(404, "CANDIDATE_NOT_FOUND", "Candidate not found for this organization")
+    }
+
+    const sanitizedJobSkills = sanitizeSkillList(job.coreSkills ?? [], {
+      jobTitle: job.jobTitle ?? undefined,
+      jobDescription: job.jobDescription ?? undefined,
+    })
+
+    if (!areSkillListsEquivalent(job.coreSkills ?? [], sanitizedJobSkills)) {
+      await prisma.$executeRaw(Prisma.sql`
+        update public.job_positions
+        set core_skills = ${sanitizedJobSkills}::text[]
+        where job_id = ${jobId}::uuid
+          and organization_id = ${auth.organizationId}::uuid
+      `)
     }
 
     if (hasIsActive) {
@@ -103,19 +149,21 @@ export async function POST(request: Request) {
         const resumeSkills = Array.isArray(payload.resume_skills ?? payload.resumeSkills)
           ? (payload.resume_skills ?? payload.resumeSkills)
           : []
+        const candidateResumeText =
+          String(
+            payload.candidate_resume_text ??
+              payload.candidateResumeText ??
+              payload.resume_text ??
+              payload.resumeText ??
+              candidate.resume_text ??
+              ""
+          ) || undefined
 
         const generated = await generateBaseInterviewQuestionsAI(
           {
             jobDescription: job.jobDescription ?? undefined,
-            coreSkills: job.coreSkills ?? [],
-            candidateResumeText:
-              String(
-                payload.candidate_resume_text ??
-                  payload.candidateResumeText ??
-                  payload.resume_text ??
-                  payload.resumeText ??
-                  ""
-              ) || undefined,
+            coreSkills: sanitizedJobSkills,
+            candidateResumeText,
             candidateResumeSkills: resumeSkills,
             experienceLevel: String(job.experienceLevelId ?? ""),
             totalQuestions: payload.total_questions ?? payload.totalQuestions,
@@ -155,31 +203,15 @@ export async function POST(request: Request) {
     let emailError: string | null = null
 
     try {
-      const candidateId = String(payload.candidateId ?? payload.candidate_id ?? "").trim()
-
-      if (!candidateId) {
-        emailError = "Candidate ID missing for email delivery"
+      if (!candidate?.email) {
+        emailError = "Candidate email not found"
       } else {
-        const candidates = await prisma.$queryRaw<CandidateEmailRow[]>`
-          select c.full_name, c.email
-          from public.candidates c
-          where c.candidate_id = ${candidateId}::uuid
-            and c.organization_id = ${auth.organizationId}::uuid
-          limit 1
-        `
-
-        const candidate = candidates[0]
-
-        if (!candidate?.email) {
-          emailError = "Candidate email not found"
-        } else {
-          await sendInterviewEmail({
-            to: candidate.email,
-            name: candidate.full_name || "Candidate",
-            link: result.link,
-          })
-          emailSent = true
-        }
+        await sendInterviewEmail({
+          to: candidate.email,
+          name: candidate.full_name || "Candidate",
+          link: result.link,
+        })
+        emailSent = true
       }
     } catch (emailFailure) {
       console.error("Failed to send interview email", emailFailure)

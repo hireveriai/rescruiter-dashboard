@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/server/prisma"
 import { ApiError } from "@/lib/server/errors"
 import { toFunctionApiError } from "@/lib/server/function-errors"
+import { sanitizeSkillList } from "@/lib/server/ai/skills"
 import { createJobSchema, updateJobSchema } from "@/lib/server/validators"
 
 type CreateJobInput = z.infer<typeof createJobSchema>
@@ -23,6 +24,11 @@ type ColumnExistsRow = {
 
 export async function createJob(input: CreateJobInput) {
   try {
+    const sanitizedCoreSkills = sanitizeSkillList(input.core_skills, {
+      jobTitle: input.job_title,
+      jobDescription: input.job_description ?? undefined,
+    })
+
     const rows = await prisma.$queryRaw<CreatedJobRow[]>(Prisma.sql`
       select *
       from public.fn_create_job(
@@ -30,7 +36,7 @@ export async function createJob(input: CreateJobInput) {
         ${input.job_title},
         ${input.job_description ?? null},
         ${input.experience_level_id}::smallint,
-        ${input.core_skills}::text[],
+        ${sanitizedCoreSkills}::text[],
         ${input.difficulty_profile},
         ${JSON.stringify(input.skill_baseline)}::jsonb,
         ${input.coding_required},
@@ -87,13 +93,18 @@ export async function jobPositionsSupportIsActive() {
 
 export async function updateJob(input: UpdateJobInput) {
   try {
+    const sanitizedCoreSkills = sanitizeSkillList(input.core_skills, {
+      jobTitle: input.job_title,
+      jobDescription: input.job_description ?? undefined,
+    })
+
     await prisma.$executeRaw(Prisma.sql`
       update public.job_positions
       set
         job_title = ${input.job_title},
         job_description = ${input.job_description ?? null},
         experience_level_id = ${input.experience_level_id}::smallint,
-        core_skills = ${input.core_skills}::text[],
+        core_skills = ${sanitizedCoreSkills}::text[],
         difficulty_profile = ${input.difficulty_profile}::difficulty_profile,
         interview_duration_minutes = ${input.interview_duration_minutes}::integer
       where job_id = ${input.job_id}::uuid

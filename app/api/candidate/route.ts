@@ -17,6 +17,13 @@ function isPdfFile(file: File) {
   return file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")
 }
 
+function isDocxFile(file: File) {
+  return (
+    file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    file.name.toLowerCase().endsWith(".docx")
+  )
+}
+
 type PdfParseResult = {
   text?: string
 }
@@ -26,19 +33,28 @@ type PdfParseFn = (input: Buffer) => Promise<PdfParseResult>
 async function extractResumeText(file: File) {
   const resumeBuffer = Buffer.from(await file.arrayBuffer())
 
-  if (!isPdfFile(file)) {
-    return null
-  }
-
   try {
-    const pdfParseModule = await import("pdf-parse")
-    const pdfParse = (("default" in pdfParseModule ? pdfParseModule.default : pdfParseModule) as unknown) as PdfParseFn
-    const parsed = await pdfParse(resumeBuffer)
-    const text = parsed.text?.trim()
+    if (isPdfFile(file)) {
+      const pdfParseModule = await import("pdf-parse")
+      const pdfParse = (("default" in pdfParseModule ? pdfParseModule.default : pdfParseModule) as unknown) as PdfParseFn
+      const parsed = await pdfParse(resumeBuffer)
+      const text = parsed.text?.trim()
 
-    return text || null
+      return text || null
+    }
+
+    if (isDocxFile(file)) {
+      const mammothModule = await import("mammoth")
+      const mammoth = "default" in mammothModule ? mammothModule.default : mammothModule
+      const parsed = await mammoth.extractRawText({ buffer: resumeBuffer })
+      const text = parsed.value?.trim()
+
+      return text || null
+    }
+
+    return null
   } catch (error) {
-    console.error("Failed to parse resume PDF", error)
+    console.error("Failed to parse resume file", error)
     return null
   }
 }

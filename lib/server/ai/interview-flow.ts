@@ -11,6 +11,7 @@ import {
   mapQuestionToSkill,
   normalizeSkillName,
   presentSkillName,
+  sanitizeSkillList,
   RoleIntelligence,
   scoreAnswerForSkill,
 } from "@/lib/server/ai/skills"
@@ -779,8 +780,14 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
     resumeText: input.candidateResumeText,
   })
 
-  const jobSkills = input.coreSkills ?? []
-  const resumeSkills = input.candidateResumeSkills ?? []
+  const jobSkills = sanitizeSkillList(input.coreSkills, {
+    jobTitle: input.jobTitle,
+    jobDescription: input.jobDescription,
+  })
+  const resumeSkills = sanitizeSkillList(input.candidateResumeSkills, {
+    jobTitle: input.jobTitle,
+    jobDescription: input.jobDescription,
+  })
 
   const skillUniverse = buildSkillUniverse({
     jobTitle: input.jobTitle,
@@ -903,8 +910,14 @@ export async function generateBaseInterviewQuestionsAI(
   const requested = resolveBaseQuestionCount(input) ?? DEFAULT_TOTAL
   const total = Math.min(MAX_BASE_QUESTIONS, Math.max(MIN_BASE_QUESTIONS, requested))
 
-  const jobSkills = input.coreSkills ?? []
-  const resumeSkills = input.candidateResumeSkills ?? []
+  const jobSkills = sanitizeSkillList(input.coreSkills, {
+    jobTitle: input.jobTitle,
+    jobDescription: input.jobDescription,
+  })
+  const resumeSkills = sanitizeSkillList(input.candidateResumeSkills, {
+    jobTitle: input.jobTitle,
+    jobDescription: input.jobDescription,
+  })
   const previousQuestions = input.previousQuestions ?? []
 
   const skillUniverse = buildSkillUniverse({
@@ -982,7 +995,34 @@ export async function generateBaseInterviewQuestionsAI(
     attempt: number
   }) {
     if (strictMode) {
-      return basicDedupCheck(params.question)
+      if (!basicDedupCheck(params.question)) {
+        return false
+      }
+
+      const quality = validateQuestionQuality({
+        question: params.question,
+        jobTitle: input.jobTitle,
+        jobSkills: skillUniverse.length > 0 ? skillUniverse : [params.skill],
+        previousQuestions: prev,
+        similarityThreshold,
+      })
+
+      if (quality.status !== "accepted" && !quality.reason.includes("missing real-world scenario")) {
+        return false
+      }
+
+      const normalizedQuestion = normalizeText(params.question)
+      const skillType = classifySkillType(params.skill)
+      if (
+        skillType !== "technical" &&
+        ["troubleshoot", "production", "deployment", "latency", "rollback"].some((term) =>
+          normalizedQuestion.includes(term)
+        )
+      ) {
+        return false
+      }
+
+      return true
     }
 
     const skillType = classifySkillType(params.skill)
