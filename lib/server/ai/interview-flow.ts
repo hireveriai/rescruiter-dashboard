@@ -177,6 +177,27 @@ const EXPERIENCE_KEYS = [
   "optimization",
 ]
 
+const AI_BAD_PREFIXES = [
+  "you highlighted",
+  "your background includes",
+  "worked as",
+  "awarded as",
+  "when aug",
+  "when sep",
+  "when oct",
+  "when nov",
+  "when dec",
+  "when jan",
+  "when feb",
+  "when mar",
+  "when apr",
+  "when may",
+  "when jun",
+  "when jul",
+]
+
+const NON_TECHNICAL_FORBIDDEN_PHRASES = ["troubleshoot", "production", "deployment", "latency", "rollback", "regression"]
+
 const EXPERIENCE_CRITICAL_SKILLS = {
   technical: {
     junior: ["testing", "debugging", "api", "database", "security"],
@@ -373,6 +394,32 @@ function pickQuestionTemplate(index: number, skill: string) {
   return templates[index % templates.length]
 }
 
+function looksLikeResumeLine(question: string) {
+  const normalized = normalizeText(question)
+  if (!normalized) {
+    return false
+  }
+
+  if (AI_BAD_PREFIXES.some((prefix) => normalized.startsWith(prefix))) {
+    return true
+  }
+
+  if (question.includes(" · ")) {
+    return true
+  }
+
+  if (/\b(19|20)\d{2}\b/.test(question) && /(worked as|award|awarded|employee of the month|from .* to)/i.test(question)) {
+    return true
+  }
+
+  return false
+}
+
+function containsForbiddenNonTechnicalPhrase(question: string) {
+  const normalized = normalizeText(question)
+  return NON_TECHNICAL_FORBIDDEN_PHRASES.some((phrase) => normalized.includes(phrase))
+}
+
 function buildQuestionsForSkills(skills: string[], offset: number, roleIntelligence?: RoleIntelligence) {
   const technicalTemplates = [
     (skill: string, index: number) => pickQuestionTemplate(index, skill),
@@ -414,6 +461,13 @@ function buildQuestionsForSkills(skills: string[], offset: number, roleIntellige
     (skill: string) => `What steps help you coordinate ${skill} across support, field teams, and customers?`,
     (skill: string) => `How do you recover ${skill} after a missed visit or part shortage?`,
     (skill: string) => `Walk me through your day-to-day process for keeping ${skill} accurate and moving.`,
+  ]
+
+  const fieldServiceOperationalTemplates = [
+    (skill: string) => `A field engineer becomes unavailable and two urgent visits now overlap. How would you reprioritize ${skill}?`,
+    (skill: string) => `A customer visit is planned, but the required part is not available. How do you adjust ${skill} and manage the customer impact?`,
+    (skill: string) => `A preventive maintenance visit is due, but a higher-severity corrective issue comes in. How do you rebalance ${skill}?`,
+    (skill: string) => `How do you keep ${skill} accurate when customer urgency, field availability, and SLA commitments pull in different directions?`,
   ]
 
   const questionModeTemplates: Partial<Record<RoleIntelligence["questionMode"], Array<(skill: string, index: number) => string>>> = {
@@ -472,8 +526,14 @@ function buildQuestionsForSkills(skills: string[], offset: number, roleIntellige
     const skillType = classifySkillType(skill)
     const displaySkill = presentSkillName(skill)
     const modeTemplates = roleIntelligence ? questionModeTemplates[roleIntelligence.questionMode] : undefined
+    const subfamilyTemplates =
+      roleIntelligence?.family === "operations" && roleIntelligence.subfamily === "field_service"
+        ? fieldServiceOperationalTemplates
+        : undefined
     const templateSet =
-      modeTemplates && modeTemplates.length > 0
+      subfamilyTemplates && subfamilyTemplates.length > 0
+        ? subfamilyTemplates
+        : modeTemplates && modeTemplates.length > 0
         ? modeTemplates
         : skillType === "behavioral"
         ? behavioralTemplates
@@ -994,6 +1054,15 @@ export async function generateBaseInterviewQuestionsAI(
     skill: string
     attempt: number
   }) {
+    if (looksLikeResumeLine(params.question)) {
+      return false
+    }
+
+    const skillType = classifySkillType(params.skill)
+    if (skillType !== "technical" && containsForbiddenNonTechnicalPhrase(params.question)) {
+      return false
+    }
+
     if (strictMode) {
       if (!basicDedupCheck(params.question)) {
         return false
@@ -1011,21 +1080,9 @@ export async function generateBaseInterviewQuestionsAI(
         return false
       }
 
-      const normalizedQuestion = normalizeText(params.question)
-      const skillType = classifySkillType(params.skill)
-      if (
-        skillType !== "technical" &&
-        ["troubleshoot", "production", "deployment", "latency", "rollback"].some((term) =>
-          normalizedQuestion.includes(term)
-        )
-      ) {
-        return false
-      }
-
       return true
     }
 
-    const skillType = classifySkillType(params.skill)
     const allowMissingScenario = skillType !== "technical"
     const allowSimilarityRelax = params.attempt >= 2
     const jobSkillsForValidation = skillUniverse.length > 0 ? skillUniverse : [params.skill]
@@ -1095,6 +1152,8 @@ export async function generateBaseInterviewQuestionsAI(
         "optimize performance",
         "latency",
         "deployment",
+        "rollback",
+        "regression",
       ],
       question_style_rules: {
         technical: "use tools, systems, debugging, validation, and incident recovery",
@@ -1121,7 +1180,7 @@ export async function generateBaseInterviewQuestionsAI(
               {
                 type: "input_text",
                 text:
-                  "Generate interview questions based on the provided skills and resume context. Rules: one question per skill, no job titles inside the question body, no locations, no generic phrases. Use structures appropriate to each skill type from question_style_rules. Follow the role_intelligence.question_mode when choosing the questioning style for this role family. Technical questions may use tools/debugging; non-technical questions must focus on workflow, scheduling, coordination, service urgency, resource allocation, stakeholders, metrics, planning, judgment, communication, or reasoning as appropriate. Use common_skills for resume-validation questions, missing_skills for coverage/probe questions, and variation_nonce to diversify phrasing across runs without mentioning it. If role_intelligence.adaptive_mode is true, make the first one or two questions exploratory and role-family-aware so the interview can refine what the candidate actually owns. For functional/behavioral/analytical/strategic/operational skills avoid technical phrases listed in non_technical_forbidden_phrases. Output only JSON.",
+                  "Generate interview questions based on the provided skills and resume context. Rules: one question per skill, no job titles inside the question body, no locations, no generic phrases. Use structures appropriate to each skill type from question_style_rules. Follow the role_intelligence.question_mode when choosing the questioning style for this role family. Technical questions may use tools/debugging; non-technical questions must focus on workflow, scheduling, coordination, service urgency, resource allocation, stakeholders, metrics, planning, judgment, communication, or reasoning as appropriate. Use common_skills for resume-validation questions, missing_skills for coverage/probe questions, and variation_nonce to diversify phrasing across runs without mentioning it. If role_intelligence.adaptive_mode is true, make the first one or two questions exploratory and role-family-aware so the interview can refine what the candidate actually owns. For functional/behavioral/analytical/strategic/operational skills avoid technical phrases listed in non_technical_forbidden_phrases. Never quote the resume directly. Never mention awards, dates, date ranges, employer names, pasted bullet text, or sentence fragments from the resume. Convert resume context into a natural interview question about real work, judgment, ownership, planning, coordination, or execution. Output only JSON.",
               },
             ],
           },

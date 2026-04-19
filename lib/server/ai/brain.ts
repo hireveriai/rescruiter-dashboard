@@ -123,6 +123,16 @@ const LOCATION_TERMS = [
   "san francisco",
 ]
 
+const RESUME_LEAK_PATTERNS = [
+  /\byou highlighted\b/i,
+  /\byour background includes\b/i,
+  /\bworked as\b/i,
+  /\bawarded as\b/i,
+  /\bemployee of the month\b/i,
+  /\bfrom .* to\b/i,
+  /\b(19|20)\d{2}\b/,
+]
+
 const SCENARIO_KEYWORDS = [
   "production",
   "incident",
@@ -308,6 +318,14 @@ function containsScenario(text: string) {
   return SCENARIO_KEYWORDS.some((keyword) => normalizedText.includes(keyword))
 }
 
+function looksLikeResumeLeak(text: string) {
+  if (text.includes(" · ")) {
+    return true
+  }
+
+  return RESUME_LEAK_PATTERNS.some((pattern) => pattern.test(text))
+}
+
 function isGenericOrVague(text: string) {
   return GENERIC_PATTERNS.some((pattern) => pattern.test(text))
 }
@@ -393,6 +411,10 @@ export function validateQuestionQuality(input: QuestionQualityInput): QuestionQu
 
   if (isGenericOrVague(trimmed)) {
     return { status: "rejected", reason: "generic or vague", score: scoreQuestion(trimmed, jobSkills) }
+  }
+
+  if (looksLikeResumeLeak(trimmed)) {
+    return { status: "rejected", reason: "resume text leaked into question", score: scoreQuestion(trimmed, jobSkills) }
   }
 
   if (!containsSkillTag(trimmed, jobSkills)) {

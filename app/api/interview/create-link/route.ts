@@ -8,6 +8,7 @@ import { errorResponse, successResponse } from "@/lib/server/response"
 import { generateBaseInterviewQuestionsAI } from "@/lib/server/ai/interview-flow"
 import { jobPositionsSupportIsActive } from "@/lib/server/services/jobs"
 import { createInterviewLink } from "@/lib/server/services/interview.service"
+import { repairInterviewQuestions } from "@/lib/server/services/interview-question-repair"
 import { sanitizeSkillList } from "@/lib/server/ai/skills"
 import {
   fetchExistingInterviewQuestions,
@@ -192,10 +193,35 @@ export async function POST(request: Request) {
         }
       }
 
+      const runAutoRepair = async () => {
+        try {
+          await repairInterviewQuestions({
+            organizationId: auth.organizationId,
+            jobId,
+            interviewId: result.interviewId,
+            limit: 1,
+            force: false,
+          })
+
+          // Self-heal a small recent set of legacy interviews for the same job in background
+          // so recruiters do not need to run manual repair actions.
+          await repairInterviewQuestions({
+            organizationId: auth.organizationId,
+            jobId,
+            limit: 12,
+            force: false,
+          })
+        } catch (repairError) {
+          console.error("Automatic interview question repair failed", repairError)
+        }
+      }
+
       if (asyncAi) {
         void runAiGeneration()
+        void runAutoRepair()
       } else {
         await runAiGeneration()
+        await runAutoRepair()
       }
     }
 

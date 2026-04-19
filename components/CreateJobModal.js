@@ -122,13 +122,20 @@ export default function CreateJobModal({
   const actionLabel = isEditMode ? "Save Changes" : "Create Job";
   const loadingLabel = isEditMode ? "Saving..." : "Creating...";
 
+  const resetModalState = () => {
+    setForm(createDefaultForm());
+    setLoading(false);
+    setNotice({ open: false, title: "", message: "", tone: "error" });
+  };
+
   useEffect(() => {
     if (!open) {
+      resetModalState();
       return;
     }
 
-    setForm(mapJobToForm(initialJob));
-  }, [initialJob, open]);
+    setForm(mapJobToForm(isEditMode ? initialJob : null));
+  }, [initialJob, isEditMode, open]);
 
   useEffect(() => {
     if (!open) {
@@ -166,6 +173,11 @@ export default function CreateJobModal({
 
   const resetForm = () => {
     setForm(createDefaultForm());
+  };
+
+  const handleClose = () => {
+    resetModalState();
+    setOpen(false);
   };
 
   const handleSubmit = async () => {
@@ -225,7 +237,7 @@ export default function CreateJobModal({
       }
 
       onSuccess?.();
-      setOpen(false);
+      handleClose();
     } catch (err) {
       console.error(err);
       setNotice({
@@ -261,7 +273,7 @@ export default function CreateJobModal({
                 </p>
               </div>
               <button
-                onClick={() => setOpen(false)}
+                onClick={handleClose}
                 className="rounded-full border border-slate-700/80 bg-slate-900/80 px-3 py-1 text-sm text-slate-300 transition hover:border-violet-400/60 hover:text-white"
               >
                 Close
@@ -358,7 +370,7 @@ export default function CreateJobModal({
 
             <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
               <button
-                onClick={() => setOpen(false)}
+                onClick={handleClose}
                 className="rounded-2xl border border-slate-700 bg-slate-900/80 px-5 py-3 text-sm text-slate-200 transition hover:border-slate-500 hover:bg-slate-800"
               >
                 Cancel

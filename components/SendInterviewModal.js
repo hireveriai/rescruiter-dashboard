@@ -103,8 +103,28 @@ export default function SendInterviewModal({ isOpen, onClose }) {
   const [emailError, setEmailError] = useState("")
   const [copyStatus, setCopyStatus] = useState("idle")
 
+  const resetModalState = () => {
+    setJobId("")
+    setName("")
+    setEmail("")
+    setResumeFile(null)
+    setAccessType("FLEXIBLE")
+    setStartTime("")
+    setEndTime("")
+    setLoading(false)
+    setLink("")
+    setError("")
+    setEmailStatus(null)
+    setEmailError("")
+    setCopyStatus("idle")
+    resetFileInputs()
+  }
+
   useEffect(() => {
-    if (!isOpen) return
+    if (!isOpen) {
+      resetModalState()
+      return
+    }
 
     setJobsLoading(true)
     fetch(buildAuthUrl("/api/jobs", searchParams), {
@@ -255,12 +275,17 @@ export default function SendInterviewModal({ isOpen, onClose }) {
     resetFileInputs()
   }
 
+  const handleClose = () => {
+    resetModalState()
+    onClose?.()
+  }
+
   const openCreateJobFlow = () => {
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("hireveri:open-create-job"))
     }
 
-    onClose?.()
+    handleClose()
   }
 
   if (!isOpen) return null
@@ -280,7 +305,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
               </p>
             </div>
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="rounded-full border border-slate-700/80 bg-slate-900/80 px-3 py-1 text-sm text-slate-300 transition hover:border-cyan-400/60 hover:text-white"
             >
               Close
@@ -305,13 +330,13 @@ export default function SendInterviewModal({ isOpen, onClose }) {
                 <Link
                   href={buildAuthUrl("/jobs", searchParams)}
                   className="rounded-2xl border border-slate-700 bg-slate-900/70 px-4 py-2.5 text-sm text-slate-200 transition hover:border-slate-500 hover:text-white"
-                  onClick={onClose}
+                  onClick={handleClose}
                 >
                   Go to Jobs Page
                 </Link>
                 <button
                   type="button"
-                  onClick={onClose}
+                  onClick={handleClose}
                   className="rounded-2xl border border-slate-700 bg-slate-900/70 px-4 py-2.5 text-sm text-slate-200 transition hover:border-slate-500 hover:text-white"
                 >
                   Close
