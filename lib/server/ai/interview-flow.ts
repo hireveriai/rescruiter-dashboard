@@ -197,6 +197,17 @@ const AI_BAD_PREFIXES = [
 ]
 
 const NON_TECHNICAL_FORBIDDEN_PHRASES = ["troubleshoot", "production", "deployment", "latency", "rollback", "regression"]
+const QUESTION_VARIATION_STARTERS = ["How do you", "Walk me through", "Tell me about a time when", "What signals tell you"]
+
+type QuestionIntent =
+  | "troubleshooting"
+  | "optimization"
+  | "execution"
+  | "behavioral"
+  | "prioritization"
+  | "coordination"
+  | "judgment"
+  | "analysis"
 
 const EXPERIENCE_CRITICAL_SKILLS = {
   technical: {
@@ -420,139 +431,158 @@ function containsForbiddenNonTechnicalPhrase(question: string) {
   return NON_TECHNICAL_FORBIDDEN_PHRASES.some((phrase) => normalized.includes(phrase))
 }
 
-function buildQuestionsForSkills(skills: string[], offset: number, roleIntelligence?: RoleIntelligence) {
-  const technicalTemplates = [
-    (skill: string, index: number) => pickQuestionTemplate(index, skill),
-    (skill: string) => `How do you troubleshoot a ${skill} regression during a deployment?`,
-    (skill: string) => `What metrics would you monitor to validate ${skill} after a release?`,
-    (skill: string) => `How do you decide between rollback and hotfix when ${skill} causes an incident?`,
-  ]
+function cleanQuestionText(question: string) {
+  return question
+    .replace(/[Â·•]/g, " ")
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/[?!]{2,}/g, "?")
+    .replace(/\s+([?.!,])/g, "$1")
+    .trim()
+}
 
-  const functionalTemplates = [
-    (skill: string) => `How do you prioritize ${skill} when multiple requests compete for the same window?`,
-    (skill: string) => `Walk me through the process you use to keep ${skill} accurate during day-to-day changes.`,
-    (skill: string) => `What do you do when ${skill} is blocked by missing information or approvals?`,
-    (skill: string) => `How do you balance service urgency with quality while managing ${skill}?`,
-  ]
+function inferQuestionIntent(skill: string, skillType: ReturnType<typeof classifySkillType>, roleIntelligence?: RoleIntelligence): QuestionIntent {
+  const normalizedSkill = normalizeText(skill)
 
-  const behavioralTemplates = [
-    (skill: string) => `Can you walk me through a time ${skill} helped you steady a high-pressure situation?`,
-    (skill: string) => `How do you handle conflict when ${skill} is tested across teams or customers?`,
-    (skill: string) => `Walk me through a moment where strong ${skill} changed the outcome for a customer or colleague.`,
-    (skill: string) => `How do you build trust through ${skill} when timing is tight and expectations are high?`,
-  ]
+  if (skillType === "behavioral") {
+    return "behavioral"
+  }
 
-  const analyticalTemplates = [
-    (skill: string) => `Which signals tell you ${skill} is drifting off target?`,
-    (skill: string) => `How do you use data to make decisions about ${skill}?`,
-    (skill: string) => `Walk me through how you validate ${skill} with metrics or service levels.`,
-    (skill: string) => `Which KPI best reflects success for ${skill}, and why?`,
-  ]
+  if (roleIntelligence?.family === "operations" && roleIntelligence.subfamily === "field_service") {
+    if (/(scheduling|schedule|dispatch|rescheduling|allocation|capacity)/.test(normalizedSkill)) {
+      return "prioritization"
+    }
+    if (/(coordination|service delivery|field|supply chain|parts|sla)/.test(normalizedSkill)) {
+      return "coordination"
+    }
+  }
 
-  const strategicTemplates = [
-    (skill: string) => `How would you improve ${skill} over the next quarter?`,
-    (skill: string) => `What trade-offs do you consider when setting direction for ${skill}?`,
-    (skill: string) => `Walk me through a planning decision you made that improved ${skill}.`,
-    (skill: string) => `How do you align stakeholders when the approach to ${skill} needs to change?`,
-  ]
+  if (/(optimi|improv|efficien|capacity|performance)/.test(normalizedSkill)) {
+    return "optimization"
+  }
 
-  const operationalTemplates = [
-    (skill: string) => `How do you keep ${skill} on schedule when priorities change suddenly?`,
-    (skill: string) => `What steps help you coordinate ${skill} across support, field teams, and customers?`,
-    (skill: string) => `How do you recover ${skill} after a missed visit or part shortage?`,
-    (skill: string) => `Walk me through your day-to-day process for keeping ${skill} accurate and moving.`,
-  ]
+  if (/(troubleshoot|incident|failure|problem|issue|debug|root cause)/.test(normalizedSkill)) {
+    return "troubleshooting"
+  }
 
-  const fieldServiceOperationalTemplates = [
-    (skill: string) => `A field engineer becomes unavailable and two urgent visits now overlap. How would you reprioritize ${skill}?`,
-    (skill: string) => `A customer visit is planned, but the required part is not available. How do you adjust ${skill} and manage the customer impact?`,
-    (skill: string) => `A preventive maintenance visit is due, but a higher-severity corrective issue comes in. How do you rebalance ${skill}?`,
-    (skill: string) => `How do you keep ${skill} accurate when customer urgency, field availability, and SLA commitments pull in different directions?`,
-  ]
+  if (/(schedule|dispatch|allocation|priorit|queue|timeline|deadline)/.test(normalizedSkill)) {
+    return "prioritization"
+  }
 
-  const questionModeTemplates: Partial<Record<RoleIntelligence["questionMode"], Array<(skill: string, index: number) => string>>> = {
-    technical_problem_solving: technicalTemplates,
-    sales_objection_handling: [
-      (skill: string) => `How do you handle objections when ${skill} becomes the main concern in a deal?`,
-      (skill: string) => `What do you do when progress stalls and ${skill} is the blocker?`,
-      (skill: string) => `How do you judge whether ${skill} needs education, urgency, or negotiation to move forward?`,
-      (skill: string) => `Walk me through a deal moment where ${skill} changed the outcome.`,
+  if (/(coordination|stakeholder|communication|service delivery|customer|support|field)/.test(normalizedSkill)) {
+    return "coordination"
+  }
+
+  if (/(risk|compliance|judgment|policy|governance|decision)/.test(normalizedSkill)) {
+    return "judgment"
+  }
+
+  if (/(metric|analysis|forecast|report|data|trend|kpi)/.test(normalizedSkill)) {
+    return "analysis"
+  }
+
+  return skillType === "technical" ? "troubleshooting" : "execution"
+}
+
+function buildIntentQuestion(
+  displaySkill: string,
+  intent: QuestionIntent,
+  index: number,
+  roleIntelligence?: RoleIntelligence
+) {
+  const starter = QUESTION_VARIATION_STARTERS[index % QUESTION_VARIATION_STARTERS.length]
+  const isFieldService = roleIntelligence?.family === "operations" && roleIntelligence.subfamily === "field_service"
+
+  const scenarioByIntent: Record<QuestionIntent, string[]> = {
+    troubleshooting: isFieldService
+      ? [
+          `a schedule starts slipping across multiple field visits`,
+          `a planned visit cannot go ahead because the required part is missing`,
+          `customer urgency and engineer availability point in different directions`,
+        ]
+      : [
+          `a workflow starts failing unexpectedly`,
+          `results begin drifting off target`,
+          `a key handoff breaks down under pressure`,
+        ],
+    optimization: isFieldService
+      ? [
+          `improve schedule reliability without hurting customer commitments`,
+          `reduce reschedules while still protecting SLA performance`,
+          `improve field planning when demand becomes unpredictable`,
+        ]
+      : [
+          `improve consistency in ${displaySkill}`,
+          `make ${displaySkill} more efficient without losing quality`,
+          `improve outcomes in ${displaySkill} over time`,
+        ],
+    execution: [
+      `delivered ${displaySkill} in a real situation`,
+      `kept ${displaySkill} moving when the day changed unexpectedly`,
+      `handled ${displaySkill} from plan to completion`,
     ],
-    behavioral_people_judgment: [
-      (skill: string) => `How do you read a difficult situation early when ${skill} is under pressure?`,
-      (skill: string) => `Walk me through a moment where judgment in ${skill} mattered more than process.`,
-      (skill: string) => `How do you balance fairness and speed when ${skill} affects people directly?`,
-      (skill: string) => `What does good ownership look like to you in ${skill}?`,
+    behavioral: [
+      `${displaySkill} was tested under pressure`,
+      `${displaySkill} became critical in a difficult situation`,
+      `you had to rely on ${displaySkill} to steady a team or customer situation`,
     ],
-    operational_scenarios: [
-      (skill: string) => `How do you keep ${skill} moving when the plan changes midstream?`,
-      (skill: string) => `What is your first move when ${skill} is at risk of delay?`,
-      (skill: string) => `How do you re-sequence work when ${skill} collides with capacity or timing constraints?`,
-      (skill: string) => `Walk me through a day where ${skill} required fast reprioritization.`,
+    prioritization: isFieldService
+      ? [
+          `two urgent customer visits compete for the same engineer`,
+          `preventive work collides with a higher-severity corrective issue`,
+          `you need to rebalance schedules after a missed visit`,
+        ]
+      : [
+          `multiple priorities compete for the same window`,
+          `you have to decide what moves first when time is tight`,
+          `the plan changes and not everything can be handled at once`,
+        ],
+    coordination: isFieldService
+      ? [
+          `you need to align support, field teams, and parts availability for a visit`,
+          `a customer update depends on input from multiple internal teams`,
+          `a planned intervention needs to be rescheduled without losing trust`,
+        ]
+      : [
+          `different teams depend on your handling of ${displaySkill}`,
+          `${displaySkill} requires alignment across multiple stakeholders`,
+          `communication around ${displaySkill} starts breaking down`,
+        ],
+    judgment: [
+      `the right decision is not obvious in ${displaySkill}`,
+      `${displaySkill} involves ambiguity and risk at the same time`,
+      `you have to make a call in ${displaySkill} before all facts are available`,
     ],
-    legal_judgment: [
-      (skill: string) => `How do you approach judgment calls when ${skill} involves ambiguity or regulatory risk?`,
-      (skill: string) => `What do you review first when ${skill} could expose the business to risk?`,
-      (skill: string) => `How do you balance business pressure with rigor in ${skill}?`,
-      (skill: string) => `Walk me through a case where ${skill} required a careful interpretation.`,
-    ],
-    creative_reasoning: [
-      (skill: string) => `How do you decide whether an idea is strong enough to move forward in ${skill}?`,
-      (skill: string) => `What do you do when feedback on ${skill} is directionally mixed?`,
-      (skill: string) => `How do you protect clarity and originality at the same time in ${skill}?`,
-      (skill: string) => `Walk me through the reasoning behind a change you made in ${skill}.`,
-    ],
-    communication_service: [
-      (skill: string) => `How do you keep trust steady when ${skill} is tested by pressure or emotion?`,
-      (skill: string) => `What do you do when communication breaks down around ${skill}?`,
-      (skill: string) => `How do you adjust your approach when ${skill} involves frustrated or anxious people?`,
-      (skill: string) => `Walk me through a service moment where ${skill} changed the result.`,
-    ],
-    analytical_business: [
-      (skill: string) => `How do you decide what matters most when ${skill} produces conflicting signals?`,
-      (skill: string) => `Which metric or pattern do you trust most when evaluating ${skill}, and why?`,
-      (skill: string) => `How do you move from data to action in ${skill}?`,
-      (skill: string) => `Walk me through a decision where ${skill} depended on analytical judgment.`,
-    ],
-    leadership_decision_making: [
-      (skill: string) => `How do you make a call on ${skill} when the trade-offs affect multiple teams?`,
-      (skill: string) => `What is your approach when ${skill} needs direction before all facts are available?`,
-      (skill: string) => `How do you balance short-term execution with long-term ownership in ${skill}?`,
-      (skill: string) => `Walk me through a leadership decision where ${skill} shaped the outcome.`,
+    analysis: [
+      `you need to decide what the numbers are really saying about ${displaySkill}`,
+      `metrics around ${displaySkill} point in different directions`,
+      `you need to turn data from ${displaySkill} into a concrete action`,
     ],
   }
 
+  const scenario = scenarioByIntent[intent][index % scenarioByIntent[intent].length]
+
+  const byStarter: Record<string, string> = {
+    "How do you": `${starter} handle ${scenario}?`,
+    "Walk me through": `${starter} how you handled ${scenario}.`,
+    "Tell me about a time when": `${starter} ${scenario}.`,
+    "What signals tell you": `${starter} ${displaySkill} needs attention, and what do you do next?`,
+  }
+
+  return cleanQuestionText(byStarter[starter] ?? `${starter} handle ${scenario}?`)
+}
+
+function buildQuestionsForSkills(skills: string[], offset: number, roleIntelligence?: RoleIntelligence) {
   return skills.map((skill, idx) => {
     const skillType = classifySkillType(skill)
     const displaySkill = presentSkillName(skill)
-    const modeTemplates = roleIntelligence ? questionModeTemplates[roleIntelligence.questionMode] : undefined
-    const subfamilyTemplates =
-      roleIntelligence?.family === "operations" && roleIntelligence.subfamily === "field_service"
-        ? fieldServiceOperationalTemplates
-        : undefined
-    const templateSet =
-      subfamilyTemplates && subfamilyTemplates.length > 0
-        ? subfamilyTemplates
-        : modeTemplates && modeTemplates.length > 0
-        ? modeTemplates
-        : skillType === "behavioral"
-        ? behavioralTemplates
-        : skillType === "functional"
-        ? functionalTemplates
-        : skillType === "analytical"
-        ? analyticalTemplates
-        : skillType === "strategic"
-        ? strategicTemplates
-        : skillType === "operational"
-        ? operationalTemplates
-        : technicalTemplates
-    const template = templateSet[(offset + idx) % templateSet.length]
+    const intent = inferQuestionIntent(skill, skillType, roleIntelligence)
     const questionType: "BEHAVIORAL" | "TECHNICAL" =
       skillType === "behavioral" ? "BEHAVIORAL" : "TECHNICAL"
 
     return {
       id: `q-${offset + idx}-${skill.replace(/\s+/g, "-")}`,
-      text: template(displaySkill, offset + idx),
+      text: buildIntentQuestion(displaySkill, intent, offset + idx, roleIntelligence),
       phase: "MID" as const,
       tags: [skill],
       type: questionType,
@@ -569,7 +599,7 @@ function deriveBehavioralQuestions(count: number, skills: string[], offset: numb
     const displaySkill = presentSkillName(skill)
     behavioral.push({
       id: `behavioral-${offset + i}`,
-      text: `Can you walk me through a situation where you owned a ${displaySkill} decision under pressure?`,
+      text: cleanQuestionText(buildIntentQuestion(displaySkill, "behavioral", offset + i)),
       phase: "MID",
       tags: [skill],
       type: "BEHAVIORAL",

@@ -482,9 +482,9 @@ function validateQuestionText(text: string, jobTitle: string | undefined, skillT
 
 function createFallbackQuestion(skill: string, index: number, scenario: string): Question {
   const templates = [
-    `How do you handle a ${scenario} involving ${skill}?`,
-    `What would you check if ${skill} started failing during a ${scenario}?`,
-    `Can you walk me through diagnosing a ${scenario} related to ${skill}?`,
+    `How do you handle ${scenario} when ${skill} is a key part of the work?`,
+    `Walk me through how you would respond if ${scenario} started affecting ${skill}.`,
+    `Tell me about a time when ${scenario} put pressure on ${skill}, and what you did next.`,
   ]
 
   const text = templates[index % templates.length]
@@ -546,7 +546,7 @@ function enforceUniqueSkills(questions: Question[], skillTags: string[]) {
       const replacementSkill = available[index % available.length]
       output.push({
         ...question,
-        text: `What would you check if ${replacementSkill} caused a production issue?`,
+        text: `How do you handle pressure on ${replacementSkill} when priorities start competing?`,
         tags: [replacementSkill],
       })
       seen.add(replacementSkill)
@@ -568,58 +568,58 @@ function buildRegeneratedQuestion(params: {
 }): Question {
   const { reason, skill, scenario, attempt } = params
   const baseTemplates = [
-    `How do you handle a ${scenario} involving ${skill}?`,
-    `What would you check if ${skill} started failing during a ${scenario}?`,
-    `Can you walk me through diagnosing a ${scenario} related to ${skill}?`,
+    `How do you handle ${scenario} when ${skill} is central to the outcome?`,
+    `Walk me through how you would respond if ${scenario} started affecting ${skill}.`,
+    `Tell me about a time when ${scenario} created pressure around ${skill}.`,
   ]
 
   if (reason === "generic_question") {
-    return {
-      id: `regen-${skill}-${attempt}`,
-      text: `Can you walk me through a recent ${scenario} where ${skill} was the root cause?`,
-      phase: "MID",
-      tags: [skill],
-      type: "TECHNICAL",
+      return {
+        id: `regen-${skill}-${attempt}`,
+      text: `Tell me about a time when ${scenario} made ${skill} harder to manage, and how you handled it.`,
+        phase: "MID",
+        tags: [skill],
+        type: "TECHNICAL",
     }
   }
 
   if (reason === "no_skill_reference") {
-    return {
-      id: `regen-${skill}-${attempt}`,
-      text: `How do you handle a ${scenario} when working with ${skill}?`,
-      phase: "MID",
-      tags: [skill],
-      type: "TECHNICAL",
+      return {
+        id: `regen-${skill}-${attempt}`,
+      text: `How do you handle ${scenario} when ${skill} is a key part of the work?`,
+        phase: "MID",
+        tags: [skill],
+        type: "TECHNICAL",
     }
   }
 
   if (reason === "repetition") {
-    return {
-      id: `regen-${skill}-${attempt}`,
-      text: `What would you check if ${skill} caused unexpected ${scenario} in a core workflow?`,
-      phase: "MID",
-      tags: [skill],
-      type: "TECHNICAL",
+      return {
+        id: `regen-${skill}-${attempt}`,
+      text: `Walk me through a different example where ${scenario} tested your handling of ${skill}.`,
+        phase: "MID",
+        tags: [skill],
+        type: "TECHNICAL",
     }
   }
 
   if (reason === "grammar_issue") {
-    return {
-      id: `regen-${skill}-${attempt}`,
-      text: `What would you check if ${skill} introduced ${scenario} after a deployment?`,
-      phase: "MID",
-      tags: [skill],
-      type: "TECHNICAL",
+      return {
+        id: `regen-${skill}-${attempt}`,
+      text: `Walk me through how you would respond if ${scenario} started affecting ${skill}.`,
+        phase: "MID",
+        tags: [skill],
+        type: "TECHNICAL",
     }
   }
 
   if (reason === "job_title_used") {
-    return {
-      id: `regen-${skill}-${attempt}`,
-      text: `Can you walk me through resolving a ${scenario} tied to ${skill}?`,
-      phase: "MID",
-      tags: [skill],
-      type: "TECHNICAL",
+      return {
+        id: `regen-${skill}-${attempt}`,
+      text: `Tell me about a situation where ${scenario} required strong judgment in ${skill}.`,
+        phase: "MID",
+        tags: [skill],
+        type: "TECHNICAL",
     }
   }
 
