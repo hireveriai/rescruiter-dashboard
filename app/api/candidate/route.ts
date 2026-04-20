@@ -9,6 +9,8 @@ import { parseResumeText } from "@/lib/server/resumeParser"
 import { uploadFileToS3 } from "@/lib/server/s3"
 import { jobPositionsSupportIsActive } from "@/lib/server/services/jobs"
 
+export const runtime = "nodejs"
+
 function getStringValue(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : ""
 }
@@ -57,6 +59,14 @@ async function extractResumeText(file: File) {
     console.error("Failed to parse resume file", error)
     return null
   }
+}
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+
+  return "Unknown error"
 }
 
 type CandidateFunctionRow = {
@@ -123,14 +133,28 @@ export async function POST(req: Request) {
     let resumeUrl: string | null = null
     let resumeText: string | null = null
     let parsedResume: ReturnType<typeof parseResumeText> | null = null
+    let resumeWarning: string | null = null
 
     if (resumeEntry instanceof File && resumeEntry.size > 0) {
-      try {
-        resumeText = await extractResumeText(resumeEntry)
-        resumeUrl = await uploadFileToS3(resumeEntry)
-      } catch (error) {
-        console.error("Failed to upload resume", error)
-        throw new ApiError(500, "RESUME_UPLOAD_FAILED", error instanceof Error ? error.message : "Could not upload resume")
+      const [textResult, uploadResult] = await Promise.allSettled([
+        extractResumeText(resumeEntry),
+        uploadFileToS3(resumeEntry),
+      ])
+
+      if (textResult.status === "fulfilled") {
+        resumeText = textResult.value
+      } else {
+        console.error("Failed to extract resume text", textResult.reason)
+        resumeWarning = "Resume text could not be extracted, but candidate creation will continue."
+      }
+
+      if (uploadResult.status === "fulfilled") {
+        resumeUrl = uploadResult.value
+      } else {
+        console.error("Failed to upload resume file", uploadResult.reason)
+        resumeWarning = resumeWarning
+          ? `${resumeWarning} Resume file upload also failed.`
+          : "Resume file could not be uploaded, but candidate creation will continue."
       }
 
       if (resumeText) {
@@ -180,6 +204,7 @@ export async function POST(req: Request) {
       success: true,
       candidateId: result.candidate_id,
       resumeUrl,
+      warning: resumeWarning,
       parsedData: {
         resumeText,
         extractedSkills: parsedResume?.skills ?? [],
@@ -190,10 +215,12 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error(error)
 
+    const errorMessage = getErrorMessage(error)
+
     const apiError = toFunctionApiError(error, {
       statusCode: 500,
       code: "CANDIDATE_CREATE_FAILED",
-      message: "Failed to create candidate",
+      message: errorMessage || "Failed to create candidate",
     })
 
     return NextResponse.json(
