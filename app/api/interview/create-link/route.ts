@@ -31,6 +31,8 @@ type JobStatusRow = {
   is_active: boolean
 }
 
+const CREATE_LINK_AI_TIMEOUT_MS = 12000
+
 function areSkillListsEquivalent(left: string[], right: string[]) {
   if (left.length !== right.length) {
     return false
@@ -40,6 +42,25 @@ function areSkillListsEquivalent(left: string[], right: string[]) {
   const rightSorted = [...right].map((item) => item.trim().toLowerCase()).sort()
 
   return leftSorted.every((value, index) => value === rightSorted[index])
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+          reject(new Error(timeoutMessage))
+        }, timeoutMs)
+      }),
+    ])
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle)
+    }
+  }
 }
 
 export async function POST(request: Request) {
@@ -162,25 +183,42 @@ export async function POST(request: Request) {
               ""
           ) || undefined
 
-        const generatedAi = await generateBaseInterviewQuestionsAI(
-          {
-            jobDescription: job.jobDescription ?? undefined,
-            coreSkills: sanitizedJobSkills,
-            candidateResumeText,
-            candidateResumeSkills: resumeSkills,
-            experienceLevel: String(job.experienceLevelId ?? ""),
-            totalQuestions: payload.total_questions ?? payload.totalQuestions,
-            interviewDurationMinutes:
-              payload.interview_duration_minutes ??
-              payload.interviewDurationMinutes ??
-              interviewDurationMinutes ??
-              undefined,
-            jobTitle: job.jobTitle ?? undefined,
-            previousQuestions: existingQuestions,
-            similarityThreshold: payload.similarity_threshold ?? payload.similarityThreshold ?? 0.8,
-          },
-          { requireAi: requireAiQuestions }
-        )
+        let generatedAi
+
+        try {
+          generatedAi = await withTimeout(
+            generateBaseInterviewQuestionsAI(
+              {
+                jobDescription: job.jobDescription ?? undefined,
+                coreSkills: sanitizedJobSkills,
+                candidateResumeText,
+                candidateResumeSkills: resumeSkills,
+                experienceLevel: String(job.experienceLevelId ?? ""),
+                totalQuestions: payload.total_questions ?? payload.totalQuestions,
+                interviewDurationMinutes:
+                  payload.interview_duration_minutes ??
+                  payload.interviewDurationMinutes ??
+                  interviewDurationMinutes ??
+                  undefined,
+                jobTitle: job.jobTitle ?? undefined,
+                previousQuestions: existingQuestions,
+                similarityThreshold: payload.similarity_threshold ?? payload.similarityThreshold ?? 0.8,
+              },
+              { requireAi: requireAiQuestions }
+            ),
+            CREATE_LINK_AI_TIMEOUT_MS,
+            "AI question generation timed out"
+          )
+        } catch (generationError) {
+          console.error("AI generation timed out or failed during create-link; using fallback generator", generationError)
+          generatedAi = {
+            questions: [],
+            skills_covered: [],
+            skills_remaining: [],
+            error_message:
+              generationError instanceof Error ? generationError.message : "AI question generation timed out",
+          }
+        }
 
         const generated =
           generatedAi.questions.length > 0
@@ -248,10 +286,10 @@ export async function POST(request: Request) {
 
       if (asyncAi) {
         await runAiGeneration()
-        await runAutoRepair()
+        void runAutoRepair()
       } else {
         await runAiGeneration()
-        await runAutoRepair()
+        void runAutoRepair()
       }
     }
 
