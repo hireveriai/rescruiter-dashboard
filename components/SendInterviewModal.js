@@ -194,6 +194,11 @@ export default function SendInterviewModal({ isOpen, onClose }) {
       return
     }
 
+    if (!resumeFile) {
+      setError("Resume is required")
+      return
+    }
+
     if (accessType === "SCHEDULED" && (!startTime || !endTime)) {
       setError("Start time and end time are required")
       return
@@ -206,10 +211,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
       candidateFormData.append("fullName", name)
       candidateFormData.append("email", email)
       candidateFormData.append("jobId", jobId)
-
-      if (resumeFile) {
-        candidateFormData.append("resume", resumeFile)
-      }
+      candidateFormData.append("resume", resumeFile)
 
       const candidateResponse = await fetch(buildAuthUrl("/api/candidate", searchParams), {
         method: "POST",
@@ -219,6 +221,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
 
       const candidateText = await candidateResponse.text()
       const candidateData = candidateText ? JSON.parse(candidateText) : {}
+
       if (!candidateResponse.ok) {
         throw new Error(candidateData.message || candidateData.error?.message || "Failed to create candidate")
       }
@@ -381,7 +384,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
                 onChange={(e) => setEmail(e.target.value)}
               />
 
-              <label className="text-sm text-gray-400">Resume</label>
+              <label className="text-sm text-gray-400">Resume *</label>
               <div className="mb-4 rounded-2xl border border-dashed border-slate-600 bg-slate-900/70 p-4">
                 <input
                   ref={primaryFileInputRef}
@@ -469,7 +472,6 @@ export default function SendInterviewModal({ isOpen, onClose }) {
               </div>
 
               {error && <p className="mb-2 text-sm text-red-400">{error}</p>}
-
               <button
                 onClick={handleSubmit}
                 disabled={loading || jobsLoading}

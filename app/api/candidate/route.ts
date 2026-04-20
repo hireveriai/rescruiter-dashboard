@@ -6,7 +6,7 @@ import { ApiError } from "@/lib/server/errors"
 import { prisma } from "@/lib/server/prisma"
 import { toFunctionApiError } from "@/lib/server/function-errors"
 import { parseResumeText } from "@/lib/server/resumeParser"
-import { uploadFileToS3 } from "@/lib/server/s3"
+import { uploadBufferToS3 } from "@/lib/server/s3"
 import { jobPositionsSupportIsActive } from "@/lib/server/services/jobs"
 
 export const runtime = "nodejs"
@@ -32,9 +32,7 @@ type PdfParseResult = {
 
 type PdfParseFn = (input: Buffer) => Promise<PdfParseResult>
 
-async function extractResumeText(file: File) {
-  const resumeBuffer = Buffer.from(await file.arrayBuffer())
-
+async function extractResumeText(file: File, resumeBuffer: Buffer) {
   try {
     if (isPdfFile(file)) {
       const pdfParseModule = await import("pdf-parse")
@@ -133,38 +131,57 @@ export async function POST(req: Request) {
     let resumeUrl: string | null = null
     let resumeText: string | null = null
     let parsedResume: ReturnType<typeof parseResumeText> | null = null
-    let resumeWarning: string | null = null
+    if (!(resumeEntry instanceof File) || resumeEntry.size <= 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Resume is required",
+        },
+        { status: 400 }
+      )
+    }
 
-    if (resumeEntry instanceof File && resumeEntry.size > 0) {
-      const [textResult, uploadResult] = await Promise.allSettled([
-        extractResumeText(resumeEntry),
-        uploadFileToS3(resumeEntry),
-      ])
+    const resumeBuffer = Buffer.from(await resumeEntry.arrayBuffer())
 
-      if (textResult.status === "fulfilled") {
-        resumeText = textResult.value
-      } else {
-        console.error("Failed to extract resume text", textResult.reason)
-        resumeWarning = "Resume text could not be extracted, but candidate creation will continue."
-      }
+    try {
+      resumeText = await extractResumeText(resumeEntry, resumeBuffer)
+    } catch (error) {
+      console.error("Failed to extract resume text", error)
+      throw new ApiError(
+        500,
+        "RESUME_PARSE_FAILED",
+        "Could not read resume text from the uploaded file"
+      )
+    }
 
-      if (uploadResult.status === "fulfilled") {
-        resumeUrl = uploadResult.value
-      } else {
-        console.error("Failed to upload resume file", uploadResult.reason)
-        resumeWarning = resumeWarning
-          ? `${resumeWarning} Resume file upload also failed.`
-          : "Resume file could not be uploaded, but candidate creation will continue."
-      }
+    if (!resumeText) {
+      throw new ApiError(
+        400,
+        "RESUME_TEXT_EMPTY",
+        "The uploaded resume could not be read. Please upload a valid PDF or DOCX resume."
+      )
+    }
 
-      if (resumeText) {
-        try {
-          parsedResume = parseResumeText(resumeText)
-        } catch (error) {
-          console.error("Failed to parse extracted resume text", error)
-          parsedResume = null
-        }
-      }
+    try {
+      resumeUrl = await uploadBufferToS3({
+        fileName: resumeEntry.name,
+        contentType: resumeEntry.type,
+        buffer: resumeBuffer,
+      })
+    } catch (error) {
+      console.error("Failed to upload resume file", error)
+      throw new ApiError(
+        500,
+        "RESUME_UPLOAD_FAILED",
+        "Could not upload the resume file"
+      )
+    }
+
+    try {
+      parsedResume = parseResumeText(resumeText)
+    } catch (error) {
+      console.error("Failed to parse extracted resume text", error)
+      parsedResume = null
     }
 
     const rows = (await prisma.$queryRaw`
@@ -204,7 +221,6 @@ export async function POST(req: Request) {
       success: true,
       candidateId: result.candidate_id,
       resumeUrl,
-      warning: resumeWarning,
       parsedData: {
         resumeText,
         extractedSkills: parsedResume?.skills ?? [],

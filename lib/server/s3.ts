@@ -67,14 +67,31 @@ export async function uploadFileToS3(file: File) {
 
   const arrayBuffer = await file.arrayBuffer()
   const buffer = Buffer.from(arrayBuffer)
-  const key = buildObjectKey(file.name)
+  return uploadBufferToS3({
+    fileName: file.name,
+    contentType: file.type || "application/octet-stream",
+    buffer,
+  })
+}
+
+export async function uploadBufferToS3(input: {
+  fileName: string
+  contentType?: string | null
+  buffer: Buffer
+}) {
+  if (!s3Configured || !s3Client || !bucketName || !region) {
+    return null
+  }
+
+  const { fileName, contentType, buffer } = input
+  const key = buildObjectKey(fileName)
 
   await s3Client.send(
     new PutObjectCommand({
       Bucket: bucketName,
       Key: key,
       Body: buffer,
-      ContentType: file.type || "application/octet-stream",
+      ContentType: contentType || "application/octet-stream",
     })
   )
 
