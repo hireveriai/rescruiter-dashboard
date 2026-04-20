@@ -11,7 +11,6 @@ import { createInterviewLink } from "@/lib/server/services/interview.service"
 import { repairInterviewQuestions } from "@/lib/server/services/interview-question-repair"
 import { sanitizeSkillList } from "@/lib/server/ai/skills"
 import {
-  fetchExistingInterviewQuestions,
   replaceInterviewQuestions,
   verifyInterviewQuestionsPersisted,
 } from "@/lib/server/services/interview-questions"
@@ -170,7 +169,7 @@ export async function POST(request: Request) {
         payload.async_ai_generation ?? payload.asyncAiGeneration ?? payload.async_ai ?? payload.asyncAi ?? false
 
       const runAiGeneration = async () => {
-        const existingQuestions = await fetchExistingInterviewQuestions(result.interviewId)
+        const existingQuestions: string[] = []
         const resumeSkills = Array.isArray(payload.resume_skills ?? payload.resumeSkills)
           ? (payload.resume_skills ?? payload.resumeSkills)
           : []
@@ -278,13 +277,18 @@ export async function POST(request: Request) {
         if (!replaced) {
           console.error("AI questions generated but could not be saved.")
           aiStatus = "save_failed"
-          return
+          throw new ApiError(500, "INTERVIEW_QUESTIONS_SAVE_FAILED", "Generated interview questions could not be saved")
         }
 
         const verified = await verifyInterviewQuestionsPersisted(result.interviewId, finalGenerated.questions)
         if (!verified) {
           console.error("Interview questions were replaced but verification failed.")
           aiStatus = "verification_failed"
+          throw new ApiError(
+            500,
+            "INTERVIEW_QUESTIONS_VERIFY_FAILED",
+            "Interview questions were generated but could not be verified after saving"
+          )
         }
       }
 

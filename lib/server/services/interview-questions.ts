@@ -54,12 +54,12 @@ export async function fetchExistingInterviewQuestions(interviewId: string) {
       return []
     }
 
-    const rows = await prisma.$queryRaw<{ question_text: string }[]>(Prisma.sql`
+    const rows = await prisma.$queryRawUnsafe<{ question_text: string }[]>(`
       select question_text
-      from public.${Prisma.raw(QUESTION_TABLE)}
-      where interview_id = ${interviewId}::uuid
+      from public."${QUESTION_TABLE}"
+      where interview_id = $1::uuid
       order by created_at asc nulls last
-    `)
+    `, interviewId)
 
     return rows.map((row) => row.question_text).filter(Boolean)
   } catch (error) {
@@ -196,6 +196,10 @@ function buildInsertStatement(
       const placeholderIndex = values.length
       if (column === "interview_id") {
         placeholders.push(`$${placeholderIndex}::uuid`)
+      } else if (column === "reference_context") {
+        placeholders.push(`$${placeholderIndex}::jsonb`)
+      } else if (column === "target_skill_id") {
+        placeholders.push(`$${placeholderIndex}::uuid`)
       } else {
         placeholders.push(`$${placeholderIndex}`)
       }
@@ -224,10 +228,13 @@ export async function replaceInterviewQuestions(
       return false
     }
 
-    await prisma.$executeRaw(Prisma.sql`
-      delete from public.${Prisma.raw(QUESTION_TABLE)}
-      where interview_id = ${interviewId}::uuid
-    `)
+    await prisma.$executeRawUnsafe(
+      `
+        delete from public."${QUESTION_TABLE}"
+        where interview_id = $1::uuid
+      `,
+      interviewId
+    )
 
     const insert = buildInsertStatement(columns, interviewId, questions)
     if (!insert) {
