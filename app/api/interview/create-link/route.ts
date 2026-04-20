@@ -5,7 +5,7 @@ import { ApiError } from "@/lib/server/errors"
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
 import { prisma } from "@/lib/server/prisma"
 import { errorResponse, successResponse } from "@/lib/server/response"
-import { generateBaseInterviewQuestionsAI } from "@/lib/server/ai/interview-flow"
+import { generateBaseInterviewQuestions, generateBaseInterviewQuestionsAI } from "@/lib/server/ai/interview-flow"
 import { jobPositionsSupportIsActive } from "@/lib/server/services/jobs"
 import { createInterviewLink } from "@/lib/server/services/interview.service"
 import { repairInterviewQuestions } from "@/lib/server/services/interview-question-repair"
@@ -13,6 +13,7 @@ import { sanitizeSkillList } from "@/lib/server/ai/skills"
 import {
   fetchExistingInterviewQuestions,
   replaceInterviewQuestions,
+  verifyInterviewQuestionsPersisted,
 } from "@/lib/server/services/interview-questions"
 import { sendInterviewEmail } from "@/lib/services/email.service"
 
@@ -140,10 +141,11 @@ export async function POST(request: Request) {
       payload.require_ai ??
       payload.requireAi ??
       (Boolean(normalizedApiKey) && useAiQuestions)
+    let aiStatus = useAiQuestions ? "completed" : "disabled"
 
     if (useAiQuestions && result.interviewId) {
       const asyncAi =
-        payload.async_ai_generation ?? payload.asyncAiGeneration ?? payload.async_ai ?? payload.asyncAi ?? true
+        payload.async_ai_generation ?? payload.asyncAiGeneration ?? payload.async_ai ?? payload.asyncAi ?? false
 
       const runAiGeneration = async () => {
         const existingQuestions = await fetchExistingInterviewQuestions(result.interviewId)
@@ -160,7 +162,7 @@ export async function POST(request: Request) {
               ""
           ) || undefined
 
-        const generated = await generateBaseInterviewQuestionsAI(
+        const generatedAi = await generateBaseInterviewQuestionsAI(
           {
             jobDescription: job.jobDescription ?? undefined,
             coreSkills: sanitizedJobSkills,
@@ -180,16 +182,44 @@ export async function POST(request: Request) {
           { requireAi: requireAiQuestions }
         )
 
-        if (generated.questions.length === 0) {
-          console.error("AI generation failed during create-link", {
-            error: generated.error_message ?? "unknown",
+        const generated =
+          generatedAi.questions.length > 0
+            ? generatedAi
+            : generateBaseInterviewQuestions({
+                jobDescription: job.jobDescription ?? undefined,
+                coreSkills: sanitizedJobSkills,
+                candidateResumeText,
+                candidateResumeSkills: resumeSkills,
+                experienceLevel: String(job.experienceLevelId ?? ""),
+                totalQuestions: payload.total_questions ?? payload.totalQuestions,
+                interviewDurationMinutes:
+                  payload.interview_duration_minutes ??
+                  payload.interviewDurationMinutes ??
+                  interviewDurationMinutes ??
+                  undefined,
+                jobTitle: job.jobTitle ?? undefined,
+                previousQuestions: existingQuestions,
+                similarityThreshold: payload.similarity_threshold ?? payload.similarityThreshold ?? 0.8,
+              })
+
+        if (generatedAi.questions.length === 0) {
+          console.error("AI generation failed during create-link; used fallback generator", {
+            error: generatedAi.error_message ?? "unknown",
           })
-          return
+          aiStatus = "fallback"
         }
 
         const replaced = await replaceInterviewQuestions(result.interviewId, generated.questions)
         if (!replaced) {
           console.error("AI questions generated but could not be saved.")
+          aiStatus = "save_failed"
+          return
+        }
+
+        const verified = await verifyInterviewQuestionsPersisted(result.interviewId, generated.questions)
+        if (!verified) {
+          console.error("Interview questions were replaced but verification failed.")
+          aiStatus = "verification_failed"
         }
       }
 
@@ -217,8 +247,8 @@ export async function POST(request: Request) {
       }
 
       if (asyncAi) {
-        void runAiGeneration()
-        void runAutoRepair()
+        await runAiGeneration()
+        await runAutoRepair()
       } else {
         await runAiGeneration()
         await runAutoRepair()
@@ -244,7 +274,6 @@ export async function POST(request: Request) {
       emailError = emailFailure instanceof Error ? emailFailure.message : "Unknown email delivery error"
     }
 
-    const aiStatus = useAiQuestions ? "completed" : "disabled"
     return successResponse(
       {
         ...result,

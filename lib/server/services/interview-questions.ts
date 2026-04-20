@@ -60,6 +60,23 @@ export async function fetchExistingInterviewQuestions(interviewId: string) {
   }
 }
 
+export async function verifyInterviewQuestionsPersisted(
+  interviewId: string,
+  questions: InterviewQuestion[]
+) {
+  try {
+    const saved = await fetchExistingInterviewQuestions(interviewId)
+    if (saved.length !== questions.length) {
+      return false
+    }
+
+    return questions.every((question, index) => (saved[index] ?? "").trim() === question.question.trim())
+  } catch (error) {
+    console.error("Failed to verify persisted interview questions", error)
+    return false
+  }
+}
+
 function buildColumnValues(question: InterviewQuestion, orderIndex: number): QuestionColumnMap {
   return {
     interview_id: undefined,
