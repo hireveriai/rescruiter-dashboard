@@ -11,6 +11,7 @@ type ColumnInfo = {
 
 type QuestionColumnMap = {
   interview_id?: string
+  question_id?: string | null
   question_text?: string
   question_order?: number
   order?: number
@@ -24,6 +25,7 @@ type QuestionColumnMap = {
   difficulty?: number
   difficulty_level?: number
   is_mandatory?: boolean
+  allow_follow_up?: boolean
   allow_followups?: boolean
   allow_follow_ups?: boolean
   target_skill?: string
@@ -86,13 +88,19 @@ export async function verifyInterviewQuestionsPersisted(
 function buildColumnValues(question: InterviewQuestion, orderIndex: number): QuestionColumnMap {
   const phaseHint = question.phase_hint ?? "core"
   const questionType = question.question_type ?? (question.skill_type === "behavioral" ? "behavioral" : "open_ended")
+  const sourceType = question.source_type === "resume" || question.source_type === "job" || question.source_type === "behavioral"
+    ? question.source_type
+    : question.skill_type === "behavioral"
+      ? "behavioral"
+      : "job"
 
   return {
     interview_id: undefined,
+    question_id: null,
     question_text: question.question,
     question_order: orderIndex,
     order: orderIndex,
-    source_type: question.source_type ?? "job",
+    source_type: sourceType,
     reference_context: question.reference_context ? JSON.stringify(question.reference_context) : null,
     is_dynamic: question.is_dynamic ?? true,
     phase: "core",
@@ -102,6 +110,7 @@ function buildColumnValues(question: InterviewQuestion, orderIndex: number): Que
     difficulty: 3,
     difficulty_level: 3,
     is_mandatory: true,
+    allow_follow_up: question.allow_followups ?? true,
     allow_followups: true,
     allow_follow_ups: true,
     target_skill: question.skill,
@@ -127,6 +136,10 @@ function buildInsertStatement(
       return true
     }
 
+    if (name === "question_id") {
+      return true
+    }
+
     if (name === "question_order" || name === "order") {
       return true
     }
@@ -147,7 +160,7 @@ function buildInsertStatement(
       return true
     }
 
-    if (name === "is_mandatory" || name === "allow_followups" || name === "allow_follow_ups") {
+    if (name === "is_mandatory" || name === "allow_follow_up" || name === "allow_followups" || name === "allow_follow_ups") {
       return true
     }
 
