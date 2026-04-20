@@ -14,15 +14,21 @@ type QuestionColumnMap = {
   question_text?: string
   question_order?: number
   order?: number
+  source_type?: string
+  reference_context?: string | null
+  is_dynamic?: boolean
   phase?: string
   phase_label?: string
   phase_type?: string
+  phase_hint?: string
   difficulty?: number
   difficulty_level?: number
   is_mandatory?: boolean
   allow_followups?: boolean
+  allow_follow_ups?: boolean
   target_skill?: string
   target_skill_id?: string | null
+  question_type?: string
 }
 
 const QUESTION_TABLE = "interview_questions"
@@ -78,20 +84,29 @@ export async function verifyInterviewQuestionsPersisted(
 }
 
 function buildColumnValues(question: InterviewQuestion, orderIndex: number): QuestionColumnMap {
+  const phaseHint = question.phase_hint ?? "core"
+  const questionType = question.question_type ?? (question.skill_type === "behavioral" ? "behavioral" : "open_ended")
+
   return {
     interview_id: undefined,
     question_text: question.question,
     question_order: orderIndex,
     order: orderIndex,
+    source_type: question.source_type ?? "job",
+    reference_context: question.reference_context ? JSON.stringify(question.reference_context) : null,
+    is_dynamic: question.is_dynamic ?? true,
     phase: "core",
     phase_label: "core",
     phase_type: "core",
+    phase_hint: phaseHint,
     difficulty: 3,
     difficulty_level: 3,
     is_mandatory: true,
     allow_followups: true,
+    allow_follow_ups: true,
     target_skill: question.skill,
     target_skill_id: null,
+    question_type: questionType,
   }
 }
 
@@ -116,7 +131,15 @@ function buildInsertStatement(
       return true
     }
 
+    if (name === "source_type" || name === "reference_context" || name === "is_dynamic") {
+      return true
+    }
+
     if (name === "phase" || name === "phase_label" || name === "phase_type") {
+      return true
+    }
+
+    if (name === "phase_hint" || name === "question_type") {
       return true
     }
 
@@ -124,7 +147,7 @@ function buildInsertStatement(
       return true
     }
 
-    if (name === "is_mandatory" || name === "allow_followups") {
+    if (name === "is_mandatory" || name === "allow_followups" || name === "allow_follow_ups") {
       return true
     }
 

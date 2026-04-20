@@ -35,6 +35,15 @@ export type InterviewQuestion = {
   skill: string
   skill_type: "technical" | "functional" | "behavioral"
   skill_bucket?: string
+  source_type?: "resume" | "job" | "behavioral" | "adaptive"
+  reference_context?: {
+    anchor: string
+    source?: string
+  }
+  is_dynamic?: boolean
+  allow_followups?: boolean
+  question_type?: "open_ended" | "behavioral"
+  phase_hint?: "warmup" | "core" | "probe" | "closing"
 }
 
 type EnrichedGeneratedQuestion = Question & {
@@ -439,6 +448,61 @@ function cleanQuestionText(question: string) {
     .replace(/[?!]{2,}/g, "?")
     .replace(/\s+([?.!,])/g, "$1")
     .trim()
+}
+
+function buildPhaseHint(index: number, total: number): InterviewQuestion["phase_hint"] {
+  if (index === 0) {
+    return "warmup"
+  }
+
+  if (index >= Math.max(1, total - 1)) {
+    return "closing"
+  }
+
+  if (index >= Math.max(2, total - 3)) {
+    return "probe"
+  }
+
+  return "core"
+}
+
+function buildQuestionMetadata(params: {
+  id: string
+  skill: string
+  skillType: InterviewQuestion["skill_type"]
+  total: number
+  index: number
+  roleIntelligence?: RoleIntelligence
+  resumeSkillSet?: Set<string>
+  jobSkillSet?: Set<string>
+}) {
+  const normalizedSkill = normalizeText(params.skill)
+  const sourceType: InterviewQuestion["source_type"] = params.id.startsWith("adaptive-")
+    ? "adaptive"
+    : params.id.startsWith("behavioral-") || params.skillType === "behavioral"
+      ? "behavioral"
+      : params.resumeSkillSet?.has(normalizedSkill)
+        ? "resume"
+        : params.jobSkillSet?.has(normalizedSkill)
+          ? "job"
+          : params.roleIntelligence?.adaptiveMode
+            ? "adaptive"
+            : "job"
+
+  return {
+    source_type: sourceType,
+    reference_context: {
+      anchor: presentSkillName(params.skill),
+      source: sourceType,
+    },
+    is_dynamic: true,
+    allow_followups: true,
+    question_type: params.skillType === "behavioral" ? "behavioral" : "open_ended",
+    phase_hint: buildPhaseHint(params.index, params.total),
+  } satisfies Pick<
+    InterviewQuestion,
+    "source_type" | "reference_context" | "is_dynamic" | "allow_followups" | "question_type" | "phase_hint"
+  >
 }
 
 function inferQuestionIntent(skill: string, skillType: ReturnType<typeof classifySkillType>, roleIntelligence?: RoleIntelligence): QuestionIntent {
@@ -942,14 +1006,31 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
 
   const withSkills: EnrichedGeneratedQuestion[] = assignSkillsToQuestions(regenerated, skillUniverse)
   const coverage = computeSkillCoverage(withSkills, skillUniverse)
+  const resumeSkillSet = new Set(resumeBasedSkills.map(normalizeText))
+  const jobSkillSet = new Set(jobBasedSkills.map(normalizeText))
 
-  const output: InterviewQuestion[] = withSkills.map((question) => ({
-    id: question.id,
-    question: question.text,
-    skill: presentSkillName(question.skill ?? mapQuestionToSkill(question.text, skillUniverse).skill),
-    skill_type: normalizeInterviewSkillType(classifySkillType(question.skill ?? mapQuestionToSkill(question.text, skillUniverse).skill)),
-    skill_bucket: question.skillBucket,
-  }))
+  const output: InterviewQuestion[] = withSkills.map((question, index) => {
+    const mappedSkill = question.skill ?? mapQuestionToSkill(question.text, skillUniverse).skill
+    const normalizedSkillType = normalizeInterviewSkillType(classifySkillType(mappedSkill))
+
+    return {
+      id: question.id,
+      question: question.text,
+      skill: presentSkillName(mappedSkill),
+      skill_type: normalizedSkillType,
+      skill_bucket: question.skillBucket,
+      ...buildQuestionMetadata({
+        id: question.id,
+        skill: mappedSkill,
+        skillType: normalizedSkillType,
+        total: withSkills.length,
+        index,
+        roleIntelligence,
+        resumeSkillSet,
+        jobSkillSet,
+      }),
+    }
+  })
 
   return {
     questions: output,
@@ -1040,6 +1121,8 @@ export async function generateBaseInterviewQuestionsAI(
   const jobPool = missingSkills.length > 0 ? [...missingSkills, ...jobCoverageSkills] : jobSkills
   const jobBasedSkills = pickUniqueSkills(jobPool, jobCount, usedSkills)
   const behavioralSkills = pickUniqueSkills(shuffledSkills, behavioralCount, usedSkills)
+  const resumeSkillSet = new Set(resumeBasedSkills.map(normalizeText))
+  const jobSkillSet = new Set(jobBasedSkills.map(normalizeText))
 
   const requiredSkills = [...resumeBasedSkills, ...jobBasedSkills, ...behavioralSkills]
   const roleFallbackSkills = getFallbackSkillsForRoleFamily({
@@ -1309,12 +1392,24 @@ export async function generateBaseInterviewQuestionsAI(
 
         used.add(normalizedSkill)
         prev.push(item.question)
+        const id = buildInterviewQuestionId("ai", accepted.length, skillMatch)
+        const normalizedSkillType = normalizeInterviewSkillType(item.skill_type || classifySkillType(skillMatch))
         accepted.push({
-          id: buildInterviewQuestionId("ai", accepted.length, skillMatch),
+          id,
           question: item.question,
           skill: presentSkillName(skillMatch),
-          skill_type: normalizeInterviewSkillType(item.skill_type || classifySkillType(skillMatch)),
+          skill_type: normalizedSkillType,
           skill_bucket: bucketSkill(skillMatch),
+          ...buildQuestionMetadata({
+            id,
+            skill: skillMatch,
+            skillType: normalizedSkillType,
+            total,
+            index: accepted.length,
+            roleIntelligence,
+            resumeSkillSet,
+            jobSkillSet,
+          }),
         })
       }
     } catch (error) {
@@ -1358,12 +1453,24 @@ export async function generateBaseInterviewQuestionsAI(
 
         used.add(normalizedSkill)
         prev.push(item.question)
+        const id = buildInterviewQuestionId("ai", accepted.length, skillMatch)
+        const normalizedSkillType = normalizeInterviewSkillType(item.skill_type || classifySkillType(skillMatch))
         accepted.push({
-          id: buildInterviewQuestionId("ai", accepted.length, skillMatch),
+          id,
           question: item.question,
           skill: presentSkillName(skillMatch),
-          skill_type: normalizeInterviewSkillType(item.skill_type || classifySkillType(skillMatch)),
+          skill_type: normalizedSkillType,
           skill_bucket: bucketSkill(skillMatch),
+          ...buildQuestionMetadata({
+            id,
+            skill: skillMatch,
+            skillType: normalizedSkillType,
+            total,
+            index: accepted.length,
+            roleIntelligence,
+            resumeSkillSet,
+            jobSkillSet,
+          }),
         })
       }
     }
@@ -1390,12 +1497,24 @@ export async function generateBaseInterviewQuestionsAI(
         }
         used.add(normalizedSkill)
         prev.push(item.question)
+        const id = buildInterviewQuestionId("ai", accepted.length, skill)
+        const normalizedSkillType = normalizeInterviewSkillType(classifySkillType(skill))
         accepted.push({
-          id: buildInterviewQuestionId("ai", accepted.length, skill),
+          id,
           question: item.question,
           skill: presentSkillName(skill),
-          skill_type: normalizeInterviewSkillType(classifySkillType(skill)),
+          skill_type: normalizedSkillType,
           skill_bucket: bucketSkill(skill),
+          ...buildQuestionMetadata({
+            id,
+            skill,
+            skillType: normalizedSkillType,
+            total,
+            index: accepted.length,
+            roleIntelligence,
+            resumeSkillSet,
+            jobSkillSet,
+          }),
         })
       }
     }
@@ -1415,12 +1534,23 @@ export async function generateBaseInterviewQuestionsAI(
         }
         used.add(normalizedSkill)
         prev.push(question.text)
+        const normalizedSkillType = normalizeInterviewSkillType(classifySkillType(question.skill ?? normalizedSkill))
         accepted.push({
           id: question.id,
           question: question.text,
           skill: presentSkillName(question.skill ?? normalizedSkill),
-          skill_type: normalizeInterviewSkillType(classifySkillType(question.skill ?? normalizedSkill)),
+          skill_type: normalizedSkillType,
           skill_bucket: question.skillBucket,
+          ...buildQuestionMetadata({
+            id: question.id,
+            skill: question.skill ?? normalizedSkill,
+            skillType: normalizedSkillType,
+            total,
+            index: accepted.length,
+            roleIntelligence,
+            resumeSkillSet,
+            jobSkillSet,
+          }),
         })
       }
     }

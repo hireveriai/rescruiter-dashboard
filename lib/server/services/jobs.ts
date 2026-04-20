@@ -65,6 +65,7 @@ export async function createJob(input: CreateJobInput) {
 }
 
 let hasJobIsActiveColumnCache: boolean | null = null
+let hasJobCodingColumnsCache: boolean | null = null
 
 export async function jobPositionsSupportIsActive() {
   if (hasJobIsActiveColumnCache !== null) {
@@ -91,6 +92,39 @@ export async function jobPositionsSupportIsActive() {
   }
 }
 
+export async function jobPositionsSupportCodingConfig() {
+  if (hasJobCodingColumnsCache !== null) {
+    return hasJobCodingColumnsCache
+  }
+
+  try {
+    const rows = await prisma.$queryRaw<ColumnExistsRow[]>(Prisma.sql`
+      select exists (
+        select 1
+        from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'job_positions'
+          and column_name in (
+            'coding_required',
+            'coding_assessment_type',
+            'coding_difficulty',
+            'coding_duration_minutes',
+            'coding_languages'
+          )
+        group by table_schema, table_name
+        having count(*) = 5
+      )
+    `)
+
+    hasJobCodingColumnsCache = Boolean(rows[0]?.exists)
+    return hasJobCodingColumnsCache
+  } catch (error) {
+    console.warn("Job position coding capability lookup failed", error)
+    hasJobCodingColumnsCache = false
+    return false
+  }
+}
+
 export async function updateJob(input: UpdateJobInput) {
   try {
     const sanitizedCoreSkills = sanitizeSkillList(input.core_skills, {
@@ -110,6 +144,20 @@ export async function updateJob(input: UpdateJobInput) {
       where job_id = ${input.job_id}::uuid
         and organization_id = ${input.organization_id}::uuid
     `)
+
+    if (await jobPositionsSupportCodingConfig()) {
+      await prisma.$executeRaw(Prisma.sql`
+        update public.job_positions
+        set
+          coding_required = ${input.coding_required},
+          coding_assessment_type = ${input.coding_assessment_type ?? null},
+          coding_difficulty = ${input.coding_difficulty ?? null},
+          coding_duration_minutes = ${input.coding_duration_minutes ?? null}::integer,
+          coding_languages = ${input.coding_languages}::text[]
+        where job_id = ${input.job_id}::uuid
+          and organization_id = ${input.organization_id}::uuid
+      `)
+    }
 
     if (await jobPositionsSupportIsActive()) {
       await prisma.$executeRaw(Prisma.sql`

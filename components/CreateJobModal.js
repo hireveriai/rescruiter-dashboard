@@ -31,7 +31,7 @@ function createDefaultForm() {
     difficulty_profile: "MID",
     core_skills: "",
     interview_duration_minutes: 30,
-    coding_required: "AUTO",
+    coding_required: "NO",
     coding_assessment_type: "",
     coding_difficulty: "MEDIUM",
     coding_duration_minutes: 15,
@@ -56,11 +56,15 @@ function mapJobToForm(job) {
     interview_duration_minutes: Number(
       job.interviewDurationMinutes ?? job.interview_duration_minutes ?? 30
     ),
-    coding_required: "AUTO",
-    coding_assessment_type: "",
-    coding_difficulty: "MEDIUM",
-    coding_duration_minutes: 15,
-    coding_languages: "",
+    coding_required: job.codingRequired ?? job.coding_required ?? "NO",
+    coding_assessment_type: job.codingAssessmentType ?? job.coding_assessment_type ?? "",
+    coding_difficulty: job.codingDifficulty ?? job.coding_difficulty ?? "MEDIUM",
+    coding_duration_minutes: Number(
+      job.codingDurationMinutes ?? job.coding_duration_minutes ?? 15
+    ),
+    coding_languages: Array.isArray(job.codingLanguages ?? job.coding_languages)
+      ? (job.codingLanguages ?? job.coding_languages).join(", ")
+      : "",
     is_active: job.isActive ?? job.is_active ?? true,
   };
 }
@@ -121,6 +125,7 @@ export default function CreateJobModal({
   const isEditMode = mode === "edit";
   const actionLabel = isEditMode ? "Save Changes" : "Create Job";
   const loadingLabel = isEditMode ? "Saving..." : "Creating...";
+  const showCodingDetails = form.coding_required !== "NO";
 
   const resetModalState = () => {
     setForm(createDefaultForm());
@@ -359,12 +364,102 @@ export default function CreateJobModal({
               <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 px-4 py-3 text-sm text-cyan-100">
                 Every interview link created for this job will inherit the same interview duration.
               </div>
+
+              <div className="md:col-span-2 rounded-[24px] border border-slate-800 bg-slate-950/40 p-5">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-white">Coding Assessment</p>
+                    <p className="mt-1 text-sm text-slate-400">
+                      Control whether this role should include a coding round and how that round should be shaped.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-5 grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-sm text-slate-300">Coding Required</label>
+                    <select
+                      value={form.coding_required}
+                      onChange={(e) => handleChange("coding_required", e.target.value)}
+                      className="w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition focus:border-violet-400/60 focus:shadow-[0_0_0_3px_rgba(139,92,246,0.08)]"
+                    >
+                      <option value="AUTO">Auto Recommend</option>
+                      <option value="YES">Yes</option>
+                      <option value="NO">No</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm text-slate-300">Assessment Type</label>
+                    {showCodingDetails ? (
+                      <select
+                        value={form.coding_assessment_type}
+                        onChange={(e) => handleChange("coding_assessment_type", e.target.value)}
+                        className="w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition focus:border-violet-400/60 focus:shadow-[0_0_0_3px_rgba(139,92,246,0.08)]"
+                      >
+                        {CODING_ASSESSMENT_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-950/40 px-4 py-3 text-sm text-slate-500">
+                        Hidden until coding is enabled.
+                      </div>
+                    )}
+                  </div>
+
+                  {showCodingDetails ? (
+                    <>
+                      <div>
+                        <label className="mb-2 block text-sm text-slate-300">Coding Difficulty</label>
+                        <select
+                          value={form.coding_difficulty}
+                          onChange={(e) => handleChange("coding_difficulty", e.target.value)}
+                          className="w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition focus:border-violet-400/60 focus:shadow-[0_0_0_3px_rgba(139,92,246,0.08)]"
+                        >
+                          <option value="EASY">Easy</option>
+                          <option value="MEDIUM">Medium</option>
+                          <option value="HARD">Hard</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-sm text-slate-300">Coding Duration</label>
+                        <select
+                          value={form.coding_duration_minutes}
+                          onChange={(e) => handleChange("coding_duration_minutes", Number(e.target.value))}
+                          className="w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition focus:border-violet-400/60 focus:shadow-[0_0_0_3px_rgba(139,92,246,0.08)]"
+                        >
+                          {[10, 15, 20, 30].map((minutes) => (
+                            <option key={minutes} value={minutes}>
+                              {minutes} minutes
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <label className="mb-2 block text-sm text-slate-300">Coding Languages</label>
+                        <input
+                          value={form.coding_languages}
+                          onChange={(e) => handleChange("coding_languages", e.target.value)}
+                          placeholder="JavaScript, Python, SQL"
+                          className="w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-violet-400/60 focus:shadow-[0_0_0_3px_rgba(139,92,246,0.08)]"
+                        />
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+              </div>
             </div>
 
             <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-300">
               - Job config is created under the authenticated organization
               <br />- Skills are normalized from comma-separated input
               <br />- Timeline applies to every interview generated from this job
+              <br />- Coding round settings stay attached to the job and carry into interview configuration
               <br />- Edit mode updates the role without creating a duplicate
             </div>
 

@@ -133,9 +133,16 @@ export default function SendInterviewModal({ isOpen, onClose }) {
     })
       .then((res) => res.json())
       .then((data) => {
-        const nextJobs = data.jobs || data.data?.jobs || []
+        const nextJobs = (data.jobs || data.data?.jobs || []).filter(
+          (job) => (job.isActive ?? job.is_active ?? true) !== false
+        )
         setJobs(nextJobs)
         if (nextJobs.length === 0) {
+          setJobId("")
+        } else if (
+          jobId &&
+          !nextJobs.some((job) => (job.jobId || job.job_id) === jobId)
+        ) {
           setJobId("")
         }
       })

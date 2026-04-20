@@ -32,6 +32,7 @@ type JobStatusRow = {
 }
 
 const CREATE_LINK_AI_TIMEOUT_MS = 12000
+const MIN_QUESTION_COUNT = 5
 
 function areSkillListsEquivalent(left: string[], right: string[]) {
   if (left.length !== right.length) {
@@ -240,6 +241,32 @@ export async function POST(request: Request) {
                 similarityThreshold: payload.similarity_threshold ?? payload.similarityThreshold ?? 0.8,
               })
 
+        let finalGenerated = generated
+
+        if (generated.questions.length < MIN_QUESTION_COUNT) {
+          finalGenerated = generateBaseInterviewQuestions({
+            jobDescription: job.jobDescription ?? undefined,
+            coreSkills: sanitizedJobSkills,
+            candidateResumeText,
+            candidateResumeSkills: resumeSkills,
+            experienceLevel: String(job.experienceLevelId ?? ""),
+            totalQuestions:
+              Math.max(
+                MIN_QUESTION_COUNT,
+                Number(payload.total_questions ?? payload.totalQuestions ?? 0) || MIN_QUESTION_COUNT
+              ),
+            interviewDurationMinutes:
+              payload.interview_duration_minutes ??
+              payload.interviewDurationMinutes ??
+              interviewDurationMinutes ??
+              undefined,
+            jobTitle: job.jobTitle ?? undefined,
+            previousQuestions: existingQuestions,
+            similarityThreshold: payload.similarity_threshold ?? payload.similarityThreshold ?? 0.8,
+          })
+          aiStatus = "fallback"
+        }
+
         if (generatedAi.questions.length === 0) {
           console.error("AI generation failed during create-link; used fallback generator", {
             error: generatedAi.error_message ?? "unknown",
@@ -247,14 +274,14 @@ export async function POST(request: Request) {
           aiStatus = "fallback"
         }
 
-        const replaced = await replaceInterviewQuestions(result.interviewId, generated.questions)
+        const replaced = await replaceInterviewQuestions(result.interviewId, finalGenerated.questions)
         if (!replaced) {
           console.error("AI questions generated but could not be saved.")
           aiStatus = "save_failed"
           return
         }
 
-        const verified = await verifyInterviewQuestionsPersisted(result.interviewId, generated.questions)
+        const verified = await verifyInterviewQuestionsPersisted(result.interviewId, finalGenerated.questions)
         if (!verified) {
           console.error("Interview questions were replaced but verification failed.")
           aiStatus = "verification_failed"

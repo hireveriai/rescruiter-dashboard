@@ -31,6 +31,18 @@ function formatPercent(value) {
   return `${Number(value).toFixed(1)}%`
 }
 
+function formatMetric(value, options = {}) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) {
+    return options.fallback ?? "-"
+  }
+
+  if (options.percent) {
+    return `${Math.round(Number(value) * 100)}`
+  }
+
+  return String(value)
+}
+
 function getSeverityClass(severity) {
   if (severity === "critical") {
     return "border-rose-500/30 bg-rose-500/12 text-rose-100"
@@ -278,15 +290,17 @@ export default function ReportsPage() {
               >
                 <div className="grid gap-4 lg:grid-cols-5">
                   {[
-                    ["Confidence", report.cognitiveRisk.confidenceScore, "text-cyan-200"],
-                    ["Stress", report.cognitiveRisk.stressIndex, "text-amber-200"],
-                    ["Clarity", report.cognitiveRisk.clarityIndex, "text-emerald-200"],
-                    ["Suspicion", report.cognitiveRisk.suspicionIndex, "text-rose-200"],
-                    ["Anomalies", report.cognitiveRisk.behavioralAnomalies, "text-violet-200"],
-                  ].map(([label, value, tone]) => (
+                    ["Confidence", report.cognitiveRisk.confidenceScore, "text-cyan-200", true, "-"],
+                    ["Stress (coming soon)", report.cognitiveRisk.stressIndex, "text-amber-200", false, "Partial"],
+                    ["Clarity", report.cognitiveRisk.clarityIndex, "text-emerald-200", true, "-"],
+                    ["Suspicion", report.cognitiveRisk.suspicionIndex, "text-rose-200", false, "-"],
+                    ["Anomalies", report.cognitiveRisk.behavioralAnomalies, "text-violet-200", false, "0"],
+                  ].map(([label, value, tone, percent, fallback]) => (
                     <div key={label} className="rounded-2xl border border-slate-800 bg-slate-950/35 p-5">
                       <p className="text-sm text-slate-500">{label}</p>
-                      <p className={`mt-3 text-3xl font-semibold ${tone}`}>{value}</p>
+                      <p className={`mt-3 text-3xl font-semibold ${tone}`}>
+                        {formatMetric(value, { percent, fallback })}
+                      </p>
                     </div>
                   ))}
                 </div>
@@ -349,11 +363,15 @@ export default function ReportsPage() {
                   <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-5">
                     <p className="text-sm font-medium text-white">Suspicious Pattern Brief</p>
                     <div className="mt-4 space-y-3">
-                      {report.fraudDetection.suspiciousPatterns.map((pattern) => (
+                      {report.fraudDetection.suspiciousPatterns.length > 0 ? report.fraudDetection.suspiciousPatterns.map((pattern) => (
                         <div key={pattern} className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-sm leading-6 text-slate-300">
                           {pattern}
                         </div>
-                      ))}
+                      )) : (
+                        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-sm leading-6 text-slate-400">
+                          No suspicious calm-room patterns detected in the current reporting window.
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

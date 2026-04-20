@@ -4,7 +4,7 @@ import { NextResponse } from "next/server"
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
 import { prisma } from "@/lib/server/prisma"
 import { errorResponse } from "@/lib/server/response"
-import { jobPositionsSupportIsActive } from "@/lib/server/services/jobs"
+import { jobPositionsSupportCodingConfig, jobPositionsSupportIsActive } from "@/lib/server/services/jobs"
 
 type JobRow = {
   jobId: string
@@ -14,6 +14,11 @@ type JobRow = {
   difficultyProfile: string
   interviewDurationMinutes: number | null
   coreSkills: string[] | null
+  codingRequired: string | null
+  codingAssessmentType: string | null
+  codingDifficulty: string | null
+  codingDurationMinutes: number | null
+  codingLanguages: string[] | null
   isActive: boolean
   interviewCount: number
 }
@@ -28,6 +33,7 @@ export async function GET(request: Request) {
       url.searchParams.get("includeInactive") === "true" ||
       url.searchParams.get("include_inactive") === "true"
     const hasIsActive = await jobPositionsSupportIsActive()
+    const hasCodingConfig = await jobPositionsSupportCodingConfig()
 
     const rows = await prisma.$queryRaw<JobRow[]>(Prisma.sql`
       select
@@ -38,6 +44,11 @@ export async function GET(request: Request) {
         jp.difficulty_profile::text as "difficultyProfile",
         jp.interview_duration_minutes as "interviewDurationMinutes",
         jp.core_skills as "coreSkills",
+        ${hasCodingConfig ? Prisma.sql`jp.coding_required::text` : Prisma.sql`null`} as "codingRequired",
+        ${hasCodingConfig ? Prisma.sql`jp.coding_assessment_type::text` : Prisma.sql`null`} as "codingAssessmentType",
+        ${hasCodingConfig ? Prisma.sql`jp.coding_difficulty::text` : Prisma.sql`null`} as "codingDifficulty",
+        ${hasCodingConfig ? Prisma.sql`jp.coding_duration_minutes` : Prisma.sql`null`} as "codingDurationMinutes",
+        ${hasCodingConfig ? Prisma.sql`jp.coding_languages` : Prisma.sql`null`} as "codingLanguages",
         ${hasIsActive ? Prisma.sql`jp.is_active` : Prisma.sql`true`} as "isActive",
         count(i.interview_id)::int as "interviewCount"
       from public.job_positions jp
@@ -67,6 +78,11 @@ export async function GET(request: Request) {
         difficultyProfile: row.difficultyProfile,
         interviewDurationMinutes: row.interviewDurationMinutes,
         coreSkills: row.coreSkills ?? [],
+        codingRequired: row.codingRequired,
+        codingAssessmentType: row.codingAssessmentType,
+        codingDifficulty: row.codingDifficulty,
+        codingDurationMinutes: row.codingDurationMinutes,
+        codingLanguages: row.codingLanguages ?? [],
         isActive: row.isActive,
         _count: {
           interviews: row.interviewCount ?? 0,
@@ -74,6 +90,7 @@ export async function GET(request: Request) {
       })),
       meta: {
         supportsJobActiveState: hasIsActive,
+        supportsCodingConfig: hasCodingConfig,
       },
     })
   } catch (error) {

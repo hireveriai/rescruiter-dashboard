@@ -35,6 +35,14 @@ export const updateJobSchema = z.object({
   core_skills: z.array(z.string().trim().min(1)).default([]),
   difficulty_profile: z.enum(["JUNIOR", "MID", "SENIOR"]).default("MID"),
   interview_duration_minutes: z.union([z.literal(30), z.literal(45), z.literal(60)]).default(30),
+  coding_required: z.enum(["NO", "YES", "AUTO"]).default("AUTO"),
+  coding_assessment_type: z
+    .enum(["LIVE_CODING", "DEBUGGING", "SQL", "BACKEND_LOGIC", "DSA"])
+    .optional()
+    .nullable(),
+  coding_difficulty: z.enum(["EASY", "MEDIUM", "HARD"]).optional().nullable(),
+  coding_duration_minutes: z.number().int().optional().nullable(),
+  coding_languages: z.array(z.string().trim().min(1)).default([]),
   is_active: z.boolean().optional(),
 })
 
