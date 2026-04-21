@@ -420,6 +420,86 @@ function mergeUniqueSkills(...groups: string[][]) {
   return merged
 }
 
+function filterResumeSkillsForRoleContext(
+  resumeSkills: string[],
+  roleIntelligence: RoleIntelligence,
+  jobSkills: string[],
+  roleFallbackSkills: string[]
+) {
+  if (!isNonTechnicalRoleFamily(roleIntelligence.family)) {
+    return resumeSkills
+  }
+
+  const normalizedJob = new Set(jobSkills.map(normalizeText))
+  const normalizedFallback = new Set(roleFallbackSkills.map(normalizeText))
+
+  const filtered = resumeSkills.filter((skill) => {
+    const normalizedSkill = normalizeText(skill)
+    const skillType = classifySkillType(skill)
+    const bucket = bucketSkill(skill)
+
+    if (normalizedJob.has(normalizedSkill) || normalizedFallback.has(normalizedSkill)) {
+      return true
+    }
+
+    if (skillType === "technical" || isTechnicalBucket(bucket)) {
+      return false
+    }
+
+    return true
+  })
+
+  return filtered.length > 0 ? filtered : resumeSkills.filter((skill) => classifySkillType(skill) !== "technical")
+}
+
+function normalizeQuestionSignature(question: string) {
+  return normalizeText(question)
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\b(how do you|walk me through|tell me about a time when|what signals tell you|can you walk me through|what would you check if)\b/g, "")
+    .replace(/\b(a|an|the|to|of|in|for|on|at|with|when|where|that|this|your|you|it|is|are)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function dedupeInterviewQuestions(questions: InterviewQuestion[]) {
+  const accepted: InterviewQuestion[] = []
+  const seenText = new Set<string>()
+  const seenSignatures = new Set<string>()
+  const seenAnchorSource = new Set<string>()
+
+  for (const question of questions) {
+    const normalizedText = normalizeText(question.question)
+    const signature = normalizeQuestionSignature(question.question)
+    const anchor = normalizeText(question.reference_context?.anchor ?? question.skill)
+    const source = question.source_type ?? "job"
+    const anchorSourceKey = `${source}:${anchor}`
+
+    if (!normalizedText || seenText.has(normalizedText)) {
+      continue
+    }
+
+    if (signature && seenSignatures.has(signature)) {
+      continue
+    }
+
+    if (anchor && seenAnchorSource.has(anchorSourceKey)) {
+      continue
+    }
+
+    seenText.add(normalizedText)
+    if (signature) {
+      seenSignatures.add(signature)
+    }
+    if (anchor) {
+      seenAnchorSource.add(anchorSourceKey)
+    }
+
+    accepted.push(question)
+  }
+
+  return accepted
+}
+
 function normalizeExperienceLevel(level?: string) {
   const normalized = normalizeText(level ?? "")
   if (!normalized) {
@@ -1127,7 +1207,7 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
     jobTitle: input.jobTitle,
     jobDescription: input.jobDescription,
   })
-  const resumeSkills = buildEffectiveSkills({
+  const rawResumeSkills = buildEffectiveSkills({
     listedSkills: input.candidateResumeSkills,
     text: input.candidateResumeText,
     jobTitle: input.jobTitle,
@@ -1138,16 +1218,17 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
     jobTitle: input.jobTitle,
     jobDescription: input.jobDescription,
     coreSkills: jobSkills,
-    resumeSkills,
+    resumeSkills: rawResumeSkills,
     resumeText: input.candidateResumeText,
   })
   const roleFallbackSkills = getFallbackSkillsForRoleFamily({
     jobTitle: input.jobTitle,
     jobDescription: input.jobDescription,
     coreSkills: input.coreSkills,
-    resumeSkills,
+    resumeSkills: rawResumeSkills,
     resumeText: input.candidateResumeText,
   })
+  const resumeSkills = filterResumeSkillsForRoleContext(rawResumeSkills, roleIntelligence, jobSkills, roleFallbackSkills)
   const skillUniverse = mergeUniqueSkills(
     filterSkillsForRoleFamily(rawSkillUniverse, roleIntelligence, jobSkills, resumeSkills),
     filterSkillsForRoleFamily(roleFallbackSkills, roleIntelligence, jobSkills, resumeSkills)
@@ -1254,6 +1335,7 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
       skillType: classifySkillType(question.skill),
     })
   )
+  output = dedupeInterviewQuestions(output)
 
   if (output.length < total) {
     const outputSkills = new Set(output.map((question) => normalizeText(question.skill)))
@@ -1294,7 +1376,7 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
         skillType: classifySkillType(question.skill),
       })
     )
-    output = [...output, ...supplementalOutput].slice(0, total)
+    output = dedupeInterviewQuestions([...output, ...supplementalOutput]).slice(0, total)
   }
 
   return {
@@ -1352,7 +1434,7 @@ export async function generateBaseInterviewQuestionsAI(
     jobTitle: input.jobTitle,
     jobDescription: input.jobDescription,
   })
-  const resumeSkills = buildEffectiveSkills({
+  const rawResumeSkills = buildEffectiveSkills({
     listedSkills: input.candidateResumeSkills,
     text: input.candidateResumeText,
     jobTitle: input.jobTitle,
@@ -1364,16 +1446,17 @@ export async function generateBaseInterviewQuestionsAI(
     jobTitle: input.jobTitle,
     jobDescription: input.jobDescription,
     coreSkills: jobSkills,
-    resumeSkills,
+    resumeSkills: rawResumeSkills,
     resumeText: input.candidateResumeText,
   })
   const roleFallbackSkills = getFallbackSkillsForRoleFamily({
     jobTitle: input.jobTitle,
     jobDescription: input.jobDescription,
     coreSkills: input.coreSkills,
-    resumeSkills,
+    resumeSkills: rawResumeSkills,
     resumeText: input.candidateResumeText,
   })
+  const resumeSkills = filterResumeSkillsForRoleContext(rawResumeSkills, roleIntelligence, jobSkills, roleFallbackSkills)
   const skillUniverse = mergeUniqueSkills(
     filterSkillsForRoleFamily(rawSkillUniverse, roleIntelligence, jobSkills, resumeSkills),
     filterSkillsForRoleFamily(roleFallbackSkills, roleIntelligence, jobSkills, resumeSkills)
@@ -1889,10 +1972,51 @@ export async function generateBaseInterviewQuestionsAI(
     }
   }
 
-  const coverage = computeSkillCoverage(accepted, skillUniverse)
+  let dedupedAccepted = dedupeInterviewQuestions(accepted).slice(0, total)
+
+  if (dedupedAccepted.length < total) {
+    const usedSkillsAfterDedupe = new Set(dedupedAccepted.map((question) => normalizeText(question.skill)))
+    const refillSkills = mergeUniqueSkills(skillCandidates, roleFallbackSkills, skillUniverse).filter(
+      (skill) => !usedSkillsAfterDedupe.has(normalizeText(skill))
+    )
+    const refillQuestions = buildQuestionsForSkills(refillSkills.slice(0, total - dedupedAccepted.length), dedupedAccepted.length, roleIntelligence)
+    const refillWithSkills: EnrichedGeneratedQuestion[] = assignSkillsToQuestions(refillQuestions, skillUniverse)
+    const refillOutput = refillWithSkills.map((question, index) => {
+      const mappedSkill = question.skill ?? mapQuestionToSkill(question.text, skillUniverse).skill
+      const normalizedSkillType = normalizeInterviewSkillType(classifySkillType(mappedSkill))
+
+      return {
+        id: question.id,
+        question: humanizeQuestion(question.text, normalizedSkillType),
+        skill: presentSkillName(mappedSkill),
+        skill_type: normalizedSkillType,
+        skill_bucket: question.skillBucket,
+        ...buildQuestionMetadata({
+          id: question.id,
+          skill: mappedSkill,
+          skillType: normalizedSkillType,
+          total,
+          index: dedupedAccepted.length + index,
+          roleIntelligence,
+          resumeSkillSet,
+          jobSkillSet,
+        }),
+      }
+    }).filter((question) =>
+      questionMatchesRoleStyle({
+        question: question.question,
+        roleIntelligence,
+        skillType: classifySkillType(question.skill),
+      })
+    )
+
+    dedupedAccepted = dedupeInterviewQuestions([...dedupedAccepted, ...refillOutput]).slice(0, total)
+  }
+
+  const coverage = computeSkillCoverage(dedupedAccepted, skillUniverse)
 
   return {
-    questions: accepted,
+    questions: dedupedAccepted,
     skills_covered: coverage.covered,
     skills_remaining: coverage.remaining,
     meta: {
