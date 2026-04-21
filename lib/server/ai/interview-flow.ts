@@ -1105,6 +1105,63 @@ function buildQuestionsForSkills(
   })
 }
 
+function ensureQuestionCount(params: {
+  questions: InterviewQuestion[]
+  total: number
+  roleIntelligence: RoleIntelligence
+  experienceLevel?: string
+  skillPool: string[]
+  resumeSkillSet: Set<string>
+  jobSkillSet: Set<string>
+}) {
+  let output = [...params.questions]
+  const pool = params.skillPool.length > 0 ? params.skillPool : ["workflow"]
+  const intents = ROLE_FAMILY_INTENTS[params.roleIntelligence.family] ?? ROLE_FAMILY_INTENTS.general_business
+
+  let attempts = 0
+  while (output.length < params.total && attempts < params.total * 12) {
+    const skill = pool[attempts % pool.length] ?? "workflow"
+    const displaySkill = presentSkillName(skill)
+    const intent = intents[attempts % intents.length] ?? "execution"
+    const skillType = normalizeInterviewSkillType(classifySkillType(skill))
+    const id = buildInterviewQuestionId("fill", output.length + attempts, skill)
+    const candidate: InterviewQuestion = {
+      id,
+      question: buildIntentQuestion(displaySkill, intent, output.length + attempts + 1000, params.roleIntelligence, params.experienceLevel),
+      skill: displaySkill,
+      skill_type: skillType,
+      skill_bucket: bucketSkill(skill),
+      ...buildQuestionMetadata({
+        id,
+        skill,
+        skillType,
+        total: params.total,
+        index: output.length,
+        roleIntelligence: params.roleIntelligence,
+        resumeSkillSet: params.resumeSkillSet,
+        jobSkillSet: params.jobSkillSet,
+      }),
+    }
+
+    if (
+      questionMatchesRoleStyle({
+        question: candidate.question,
+        roleIntelligence: params.roleIntelligence,
+        skillType: classifySkillType(skill),
+      })
+    ) {
+      const deduped = dedupeInterviewQuestions([...output, candidate])
+      if (deduped.length > output.length) {
+        output = deduped
+      }
+    }
+
+    attempts += 1
+  }
+
+  return output.slice(0, params.total)
+}
+
 function deriveBehavioralQuestions(
   count: number,
   skills: string[],
@@ -1489,7 +1546,6 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
   })
 
   const withSkills: EnrichedGeneratedQuestion[] = assignSkillsToQuestions(regenerated, skillUniverse)
-  const coverage = computeSkillCoverage(withSkills, skillUniverse)
   const resumeSkillSet = new Set(resumeBasedSkills.map(normalizeText))
   const jobSkillSet = new Set(jobBasedSkills.map(normalizeText))
 
@@ -1565,6 +1621,18 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
     )
     output = dedupeInterviewQuestions([...output, ...supplementalOutput]).slice(0, total)
   }
+
+  output = ensureQuestionCount({
+    questions: output,
+    total,
+    roleIntelligence,
+    experienceLevel: input.experienceLevel,
+    skillPool: mergeUniqueSkills(jobSkills, resumeSkills, roleFallbackSkills, skillUniverse),
+    resumeSkillSet,
+    jobSkillSet,
+  })
+
+  const coverage = computeSkillCoverage(output, skillUniverse)
 
   return {
     questions: output,
@@ -2184,6 +2252,16 @@ export async function generateBaseInterviewQuestionsAI(
 
     dedupedAccepted = dedupeInterviewQuestions([...dedupedAccepted, ...refillOutput]).slice(0, total)
   }
+
+  dedupedAccepted = ensureQuestionCount({
+    questions: dedupedAccepted,
+    total,
+    roleIntelligence,
+    experienceLevel: input.experienceLevel,
+    skillPool: mergeUniqueSkills(jobSkills, resumeSkills, roleFallbackSkills, skillUniverse),
+    resumeSkillSet,
+    jobSkillSet,
+  })
 
   const coverage = computeSkillCoverage(dedupedAccepted, skillUniverse)
 
