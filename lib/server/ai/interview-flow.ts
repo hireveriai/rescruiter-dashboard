@@ -320,6 +320,64 @@ function normalizeText(value: string) {
   return value.toLowerCase().replace(/\s+/g, " ").trim()
 }
 
+function isTechnicalBucket(bucket?: string) {
+  return ["database", "performance", "security", "backend", "frontend", "data"].includes(String(bucket ?? ""))
+}
+
+function isNonTechnicalRoleFamily(family?: RoleIntelligence["family"]) {
+  return family !== "technical"
+}
+
+function filterSkillsForRoleFamily(
+  skills: string[],
+  roleIntelligence: RoleIntelligence,
+  jobSkills: string[],
+  resumeSkills: string[]
+) {
+  const normalizedJob = new Set(jobSkills.map(normalizeText))
+  const normalizedResume = new Set(resumeSkills.map(normalizeText))
+
+  if (!isNonTechnicalRoleFamily(roleIntelligence.family)) {
+    return skills
+  }
+
+  const filtered = skills.filter((skill) => {
+    const normalizedSkill = normalizeText(skill)
+    if (normalizedJob.has(normalizedSkill)) {
+      return true
+    }
+
+    const skillType = classifySkillType(skill)
+    const bucket = bucketSkill(skill)
+
+    if (skillType !== "technical" && !isTechnicalBucket(bucket)) {
+      return true
+    }
+
+    // Keep resume-derived non-technical skills even if the JD is thin.
+    return normalizedResume.has(normalizedSkill) && skillType !== "technical"
+  })
+
+  return filtered.length >= 3 ? filtered : skills
+}
+
+function mergeUniqueSkills(...groups: string[][]) {
+  const merged: string[] = []
+  const seen = new Set<string>()
+
+  groups.flat().forEach((skill) => {
+    const normalizedSkill = normalizeText(skill)
+    if (!normalizedSkill || seen.has(normalizedSkill)) {
+      return
+    }
+
+    seen.add(normalizedSkill)
+    merged.push(skill)
+  })
+
+  return merged
+}
+
 function normalizeExperienceLevel(level?: string) {
   const normalized = normalizeText(level ?? "")
   if (!normalized) {
@@ -943,13 +1001,24 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
     jobDescription: input.jobDescription,
   })
 
-  const skillUniverse = buildSkillUniverse({
+  const rawSkillUniverse = buildSkillUniverse({
     jobTitle: input.jobTitle,
     jobDescription: input.jobDescription,
     coreSkills: jobSkills,
     resumeSkills,
     resumeText: input.candidateResumeText,
   })
+  const roleFallbackSkills = getFallbackSkillsForRoleFamily({
+    jobTitle: input.jobTitle,
+    jobDescription: input.jobDescription,
+    coreSkills: input.coreSkills,
+    resumeSkills,
+    resumeText: input.candidateResumeText,
+  })
+  const skillUniverse = mergeUniqueSkills(
+    filterSkillsForRoleFamily(rawSkillUniverse, roleIntelligence, jobSkills, resumeSkills),
+    filterSkillsForRoleFamily(roleFallbackSkills, roleIntelligence, jobSkills, resumeSkills)
+  )
 
   const normalizedJob = new Set(jobSkills.map(normalizeText))
   const normalizedResume = new Set(resumeSkills.map(normalizeText))
@@ -981,7 +1050,20 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
     adaptiveCount + resumeQuestions.length + jobQuestions.length
   )
 
-  const combined = [...adaptiveQuestions, ...resumeQuestions, ...jobQuestions, ...behavioralQuestions].slice(0, total)
+  let combined = [...adaptiveQuestions, ...resumeQuestions, ...jobQuestions, ...behavioralQuestions].slice(0, total)
+  if (combined.length < total) {
+    const supplementalSkills = pickUniqueSkills(
+      mergeUniqueSkills(prioritizedSkills, roleFallbackSkills),
+      total - combined.length,
+      new Set(usedSkills)
+    )
+    const supplementalQuestions = buildQuestionsForSkills(
+      supplementalSkills,
+      combined.length,
+      roleIntelligence
+    )
+    combined = [...combined, ...supplementalQuestions].slice(0, total)
+  }
   const regenerated = combined.map((question) => {
     const quality = validateQuestionQuality({
       question: question.text,
@@ -1009,7 +1091,7 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
   const resumeSkillSet = new Set(resumeBasedSkills.map(normalizeText))
   const jobSkillSet = new Set(jobBasedSkills.map(normalizeText))
 
-  const output: InterviewQuestion[] = withSkills.map((question, index) => {
+  let output: InterviewQuestion[] = withSkills.map((question, index) => {
     const mappedSkill = question.skill ?? mapQuestionToSkill(question.text, skillUniverse).skill
     const normalizedSkillType = normalizeInterviewSkillType(classifySkillType(mappedSkill))
 
@@ -1031,6 +1113,42 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
       }),
     }
   })
+
+  if (output.length < total) {
+    const outputSkills = new Set(output.map((question) => normalizeText(question.skill)))
+    const supplementalSkills = mergeUniqueSkills(skillUniverse, roleFallbackSkills).filter(
+      (skill) => !outputSkills.has(normalizeText(skill))
+    )
+    const supplementalQuestions = buildQuestionsForSkills(
+      supplementalSkills.slice(0, total - output.length),
+      output.length,
+      roleIntelligence
+    )
+    const supplementalWithSkills: EnrichedGeneratedQuestion[] = assignSkillsToQuestions(supplementalQuestions, skillUniverse)
+    const supplementalOutput = supplementalWithSkills.map((question, index) => {
+      const mappedSkill = question.skill ?? mapQuestionToSkill(question.text, skillUniverse).skill
+      const normalizedSkillType = normalizeInterviewSkillType(classifySkillType(mappedSkill))
+
+      return {
+        id: question.id,
+        question: question.text,
+        skill: presentSkillName(mappedSkill),
+        skill_type: normalizedSkillType,
+        skill_bucket: question.skillBucket,
+        ...buildQuestionMetadata({
+          id: question.id,
+          skill: mappedSkill,
+          skillType: normalizedSkillType,
+          total,
+          index: output.length + index,
+          roleIntelligence,
+          resumeSkillSet,
+          jobSkillSet,
+        }),
+      }
+    })
+    output = [...output, ...supplementalOutput].slice(0, total)
+  }
 
   return {
     questions: output,
@@ -1091,13 +1209,24 @@ export async function generateBaseInterviewQuestionsAI(
   })
   const previousQuestions = input.previousQuestions ?? []
 
-  const skillUniverse = buildSkillUniverse({
+  const rawSkillUniverse = buildSkillUniverse({
     jobTitle: input.jobTitle,
     jobDescription: input.jobDescription,
     coreSkills: jobSkills,
     resumeSkills,
     resumeText: input.candidateResumeText,
   })
+  const roleFallbackSkills = getFallbackSkillsForRoleFamily({
+    jobTitle: input.jobTitle,
+    jobDescription: input.jobDescription,
+    coreSkills: input.coreSkills,
+    resumeSkills,
+    resumeText: input.candidateResumeText,
+  })
+  const skillUniverse = mergeUniqueSkills(
+    filterSkillsForRoleFamily(rawSkillUniverse, roleIntelligence, jobSkills, resumeSkills),
+    filterSkillsForRoleFamily(roleFallbackSkills, roleIntelligence, jobSkills, resumeSkills)
+  )
   if (skillUniverse.length === 0) {
     skillUniverse.push("general")
   }
@@ -1125,13 +1254,6 @@ export async function generateBaseInterviewQuestionsAI(
   const jobSkillSet = new Set(jobBasedSkills.map(normalizeText))
 
   const requiredSkills = [...resumeBasedSkills, ...jobBasedSkills, ...behavioralSkills]
-  const roleFallbackSkills = getFallbackSkillsForRoleFamily({
-    jobTitle: input.jobTitle,
-    jobDescription: input.jobDescription,
-    coreSkills: input.coreSkills,
-    resumeSkills,
-    resumeText: input.candidateResumeText,
-  })
   const baseCandidates = requiredSkills.length > 0 ? requiredSkills : [...skillUniverse, ...roleFallbackSkills]
   const skillCandidates = baseCandidates.length >= total
     ? baseCandidates
@@ -1560,6 +1682,49 @@ export async function generateBaseInterviewQuestionsAI(
       const fallbackNeeded = total - accepted.length
       const fallbackQuestions = fallback.questions.filter((question) => !used.has(normalizeText(question.skill))).slice(0, fallbackNeeded)
       accepted.push(...fallbackQuestions)
+    }
+  }
+
+  if (accepted.length < total) {
+    const supplementalSkillPool = mergeUniqueSkills(skillCandidates, roleFallbackSkills, skillUniverse).filter(
+      (skill) => !used.has(normalizeText(skill))
+    )
+    const supplemental = buildQuestionsForSkills(
+      supplementalSkillPool.slice(0, total - accepted.length),
+      accepted.length,
+      roleIntelligence
+    )
+    const supplementalWithSkills: EnrichedGeneratedQuestion[] = assignSkillsToQuestions(supplemental, skillUniverse)
+    for (const question of supplementalWithSkills) {
+      if (accepted.length >= total) {
+        break
+      }
+
+      const mappedSkill = question.skill ?? mapQuestionToSkill(question.text, skillUniverse).skill
+      const normalizedSkill = normalizeText(mappedSkill)
+      if (!normalizedSkill || used.has(normalizedSkill)) {
+        continue
+      }
+
+      used.add(normalizedSkill)
+      const normalizedSkillType = normalizeInterviewSkillType(classifySkillType(mappedSkill))
+      accepted.push({
+        id: question.id,
+        question: question.text,
+        skill: presentSkillName(mappedSkill),
+        skill_type: normalizedSkillType,
+        skill_bucket: question.skillBucket,
+        ...buildQuestionMetadata({
+          id: question.id,
+          skill: mappedSkill,
+          skillType: normalizedSkillType,
+          total,
+          index: accepted.length,
+          roleIntelligence,
+          resumeSkillSet,
+          jobSkillSet,
+        }),
+      })
     }
   }
 

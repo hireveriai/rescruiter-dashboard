@@ -1019,30 +1019,38 @@ export function getQuestionModeForRoleFamily(family: RoleFamily): QuestionMode {
 }
 
 export function inferRoleIntelligence(input: SkillUniverseInput): RoleIntelligence {
-  const corpus = normalizeText(
-    [input.jobTitle, input.jobDescription, ...(input.coreSkills ?? []), ...(input.resumeSkills ?? []), input.resumeText]
+  const jobCorpus = normalizeText(
+    [input.jobTitle, input.jobDescription, ...(input.coreSkills ?? [])]
+      .filter(Boolean)
+      .join(" ")
+  )
+  const resumeCorpus = normalizeText(
+    [...(input.resumeSkills ?? []), input.resumeText]
       .filter(Boolean)
       .join(" ")
   )
 
   let family: RoleFamily = "general_business"
-  let maxHits = 0
-  let secondBestHits = 0
+  let maxScore = 0
+  let secondBestScore = 0
 
   for (const [candidateFamily, keywords] of Object.entries(ROLE_FAMILY_KEYWORDS) as Array<[RoleFamily, string[]]>) {
-    const hits = keywords.filter((keyword) => corpus.includes(normalizeText(keyword))).length
-    if (hits > maxHits) {
-      secondBestHits = maxHits
-      maxHits = hits
+    const jobHits = keywords.filter((keyword) => jobCorpus.includes(normalizeText(keyword))).length
+    const resumeHits = keywords.filter((keyword) => resumeCorpus.includes(normalizeText(keyword))).length
+    const score = jobHits * 3 + resumeHits
+
+    if (score > maxScore) {
+      secondBestScore = maxScore
+      maxScore = score
       family = candidateFamily
-    } else if (hits > secondBestHits) {
-      secondBestHits = hits
+    } else if (score > secondBestScore) {
+      secondBestScore = score
     }
   }
 
   const familyKeywordCount = ROLE_FAMILY_KEYWORDS[family]?.length ?? 1
-  const hitDensity = familyKeywordCount > 0 ? maxHits / Math.min(6, familyKeywordCount) : 0
-  const margin = maxHits > 0 ? (maxHits - secondBestHits) / Math.max(1, maxHits) : 0
+  const hitDensity = familyKeywordCount > 0 ? maxScore / Math.min(18, familyKeywordCount * 3) : 0
+  const margin = maxScore > 0 ? (maxScore - secondBestScore) / Math.max(1, maxScore) : 0
   const confidence = Number(Math.max(0.18, Math.min(0.98, hitDensity * 0.65 + margin * 0.35)).toFixed(2))
   const subfamily = inferRoleSubfamily(family, input)
   const adaptiveMode = confidence < 0.45
