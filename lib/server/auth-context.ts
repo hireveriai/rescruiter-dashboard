@@ -130,10 +130,24 @@ function parseSupabaseAuthCookieValue(rawValue: string): string | null {
   }
 
   try {
-    const parsed = JSON.parse(decoded) as { access_token?: string }
-    return parsed.access_token ?? null
-  } catch {
+    const parsed = JSON.parse(decoded) as
+      | { access_token?: string; accessToken?: string }
+      | string[]
+      | [string, string, unknown?, unknown?, unknown?]
+
+    if (Array.isArray(parsed)) {
+      const firstString = parsed.find((item) => typeof item === "string" && item.split(".").length >= 2)
+      return typeof firstString === "string" ? firstString : null
+    }
+
+    if (parsed && typeof parsed === "object") {
+      return parsed.access_token ?? parsed.accessToken ?? null
+    }
+
     return null
+  } catch {
+    const trimmed = decoded.trim()
+    return trimmed.split(".").length >= 2 ? trimmed : null
   }
 }
 

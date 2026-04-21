@@ -8,7 +8,10 @@ const INACTIVITY_LIMIT_MS = 4 * 60 * 60 * 1000;
 const STORAGE_KEY = "hireveri:last-activity-at";
 
 function hasSessionCookie() {
-  return document.cookie.split(";").some((entry) => entry.trim().startsWith("hireveri_session="));
+  return document.cookie.split(";").some((entry) => {
+    const name = entry.trim().split("=")[0];
+    return name === "hireveri_session" || (name.startsWith("sb-") && name.includes("-auth-token"));
+  });
 }
 
 function readLastActivity() {
