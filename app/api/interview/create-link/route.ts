@@ -193,6 +193,8 @@ export async function POST(request: Request) {
                 coreSkills: sanitizedJobSkills,
                 candidateResumeText,
                 candidateResumeSkills: resumeSkills,
+                candidateId,
+                jobId,
                 experienceLevel: String(job.experienceLevelId ?? ""),
                 totalQuestions: payload.total_questions ?? payload.totalQuestions,
                 interviewDurationMinutes:
@@ -228,6 +230,8 @@ export async function POST(request: Request) {
                 coreSkills: sanitizedJobSkills,
                 candidateResumeText,
                 candidateResumeSkills: resumeSkills,
+                candidateId,
+                jobId,
                 experienceLevel: String(job.experienceLevelId ?? ""),
                 totalQuestions: payload.total_questions ?? payload.totalQuestions,
                 interviewDurationMinutes:
@@ -248,6 +252,8 @@ export async function POST(request: Request) {
             coreSkills: sanitizedJobSkills,
             candidateResumeText,
             candidateResumeSkills: resumeSkills,
+            candidateId,
+            jobId,
             experienceLevel: String(job.experienceLevelId ?? ""),
             totalQuestions:
               Math.max(

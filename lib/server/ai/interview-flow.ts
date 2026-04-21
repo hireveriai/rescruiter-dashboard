@@ -1,5 +1,7 @@
 import { Question } from "@/lib/server/ai/behavioral"
 import { regenerateQuestionWithValidation, validateQuestionQuality } from "@/lib/server/ai/brain"
+import { SEED_TEMPLATE_LIBRARY, SeedQuestionIntent } from "@/lib/server/ai/question-template-library"
+import { QUESTION_VARIABLE_BANK } from "@/lib/server/ai/question-variable-bank"
 import {
   assignSkillsToQuestions,
   buildSkillUniverse,
@@ -22,6 +24,8 @@ export type BaseGenerationInput = {
   coreSkills?: string[]
   candidateResumeText?: string
   candidateResumeSkills?: string[]
+  candidateId?: string
+  jobId?: string
   experienceLevel?: string
   totalQuestions?: number
   interviewDurationMinutes?: number
@@ -260,6 +264,29 @@ type QuestionIntent =
   | "judgment"
   | "analysis"
 
+type QuestionTemplateVariables = {
+  skill: string
+  system: string
+  problem: string
+  scenario: string
+  constraint: string
+  artifact: string
+}
+
+type RoleQuestionPlan = {
+  roleIntelligence: RoleIntelligence
+  jobSkills: string[]
+  rawResumeSkills: string[]
+  resumeSkills: string[]
+  rawSkillUniverse: string[]
+  roleFallbackSkills: string[]
+  skillUniverse: string[]
+  commonSkills: string[]
+  missingSkills: string[]
+  jobCoverageSkills: string[]
+  prioritizedSkills: string[]
+}
+
 const EXPERIENCE_CRITICAL_SKILLS = {
   technical: {
     junior: ["testing", "debugging", "api", "database", "security"],
@@ -358,6 +385,39 @@ const EXPERIENCE_CRITICAL_SKILLS = {
   },
 } as const
 
+const ROLE_FAMILY_INTENTS: Record<RoleIntelligence["family"], QuestionIntent[]> = {
+  technical: ["execution", "troubleshooting", "optimization", "analysis", "judgment"],
+  operations: ["prioritization", "coordination", "execution", "optimization", "behavioral"],
+  sales: ["coordination", "judgment", "behavioral", "analysis", "execution"],
+  customer_success: ["coordination", "behavioral", "prioritization", "analysis", "execution"],
+  hr: ["behavioral", "coordination", "judgment", "execution", "analysis"],
+  finance: ["analysis", "judgment", "execution", "coordination", "behavioral"],
+  procurement: ["coordination", "judgment", "analysis", "execution", "prioritization"],
+  marketing: ["analysis", "execution", "judgment", "coordination", "behavioral"],
+  manufacturing_industrial: ["execution", "optimization", "prioritization", "coordination", "judgment"],
+  construction_site: ["execution", "prioritization", "coordination", "judgment", "behavioral"],
+  legal_compliance: ["judgment", "analysis", "coordination", "execution", "behavioral"],
+  healthcare: ["execution", "judgment", "coordination", "behavioral", "analysis"],
+  education_training: ["execution", "behavioral", "coordination", "analysis", "judgment"],
+  logistics_warehouse_fleet: ["prioritization", "coordination", "execution", "optimization", "behavioral"],
+  creative_design_content: ["execution", "judgment", "behavioral", "analysis", "coordination"],
+  bpo_call_center: ["behavioral", "coordination", "prioritization", "execution", "analysis"],
+  banking_financial_services: ["judgment", "analysis", "execution", "coordination", "behavioral"],
+  leadership_management: ["judgment", "coordination", "analysis", "behavioral", "execution"],
+  general_business: ["execution", "coordination", "prioritization", "behavioral", "analysis"],
+}
+
+const INTENT_TEMPLATE_KEY: Record<QuestionIntent, SeedQuestionIntent> = {
+  troubleshooting: "TROUBLESHOOTING",
+  optimization: "OPTIMIZATION",
+  execution: "EXECUTION",
+  behavioral: "BEHAVIORAL",
+  prioritization: "PRIORITIZATION",
+  coordination: "COORDINATION",
+  judgment: "JUDGMENT",
+  analysis: "ANALYSIS",
+}
+
 function normalizeText(value: string) {
   return value.toLowerCase().replace(/\s+/g, " ").trim()
 }
@@ -420,6 +480,26 @@ function mergeUniqueSkills(...groups: string[][]) {
   return merged
 }
 
+function createStableHash(value: string) {
+  let hash = 2166136261
+
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+
+  return (hash >>> 0).toString(16)
+}
+
+function seededIndex(length: number, seed: string) {
+  if (length <= 0) {
+    return 0
+  }
+
+  const hash = parseInt(createStableHash(seed).slice(0, 8), 16)
+  return Number.isFinite(hash) ? hash % length : 0
+}
+
 function filterResumeSkillsForRoleContext(
   resumeSkills: string[],
   roleIntelligence: RoleIntelligence,
@@ -466,6 +546,7 @@ function dedupeInterviewQuestions(questions: InterviewQuestion[]) {
   const seenText = new Set<string>()
   const seenSignatures = new Set<string>()
   const seenAnchorSource = new Set<string>()
+  const seenHashes = new Set<string>()
 
   for (const question of questions) {
     const normalizedText = normalizeText(question.question)
@@ -473,8 +554,9 @@ function dedupeInterviewQuestions(questions: InterviewQuestion[]) {
     const anchor = normalizeText(question.reference_context?.anchor ?? question.skill)
     const source = question.source_type ?? "job"
     const anchorSourceKey = `${source}:${anchor}`
+    const questionHash = createStableHash(signature || normalizedText)
 
-    if (!normalizedText || seenText.has(normalizedText)) {
+    if (!normalizedText || seenText.has(normalizedText) || seenHashes.has(questionHash)) {
       continue
     }
 
@@ -487,6 +569,7 @@ function dedupeInterviewQuestions(questions: InterviewQuestion[]) {
     }
 
     seenText.add(normalizedText)
+    seenHashes.add(questionHash)
     if (signature) {
       seenSignatures.add(signature)
     }
@@ -714,6 +797,99 @@ function buildEffectiveSkills(params: {
   )
 }
 
+function buildContextSnippet(text?: string) {
+  const cleaned = (text ?? "")
+    .replace(/\s+/g, " ")
+    .replace(/[•·]/g, " ")
+    .trim()
+
+  if (!cleaned) {
+    return ""
+  }
+
+  const parts = cleaned
+    .split(/(?<=[.!?])\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .slice(0, 2)
+
+  return parts.join(" ").slice(0, 320)
+}
+
+function buildRoleQuestionPlan(input: BaseGenerationInput): RoleQuestionPlan {
+  const roleIntelligence = inferRoleIntelligence({
+    jobTitle: input.jobTitle,
+    jobDescription: input.jobDescription,
+    coreSkills: input.coreSkills,
+    resumeSkills: input.candidateResumeSkills,
+    resumeText: input.candidateResumeText,
+  })
+
+  const jobSkills = buildEffectiveSkills({
+    listedSkills: input.coreSkills,
+    text: input.jobDescription,
+    jobTitle: input.jobTitle,
+    jobDescription: input.jobDescription,
+  })
+
+  const rawResumeSkills = buildEffectiveSkills({
+    listedSkills: input.candidateResumeSkills,
+    text: input.candidateResumeText,
+    jobTitle: input.jobTitle,
+    jobDescription: input.jobDescription,
+  })
+
+  const rawSkillUniverse = buildSkillUniverse({
+    jobTitle: input.jobTitle,
+    jobDescription: input.jobDescription,
+    coreSkills: jobSkills,
+    resumeSkills: rawResumeSkills,
+    resumeText: input.candidateResumeText,
+  })
+
+  const roleFallbackSkills = getFallbackSkillsForRoleFamily({
+    jobTitle: input.jobTitle,
+    jobDescription: input.jobDescription,
+    coreSkills: input.coreSkills,
+    resumeSkills: rawResumeSkills,
+    resumeText: input.candidateResumeText,
+  })
+
+  const resumeSkills = filterResumeSkillsForRoleContext(rawResumeSkills, roleIntelligence, jobSkills, roleFallbackSkills)
+  const skillUniverse = mergeUniqueSkills(
+    filterSkillsForRoleFamily(rawSkillUniverse, roleIntelligence, jobSkills, resumeSkills),
+    filterSkillsForRoleFamily(roleFallbackSkills, roleIntelligence, jobSkills, resumeSkills)
+  )
+
+  if (skillUniverse.length === 0) {
+    skillUniverse.push("general workflow")
+  }
+
+  const normalizedJob = new Set(jobSkills.map(normalizeText))
+  const normalizedResume = new Set(resumeSkills.map(normalizeText))
+
+  const commonSkills = skillUniverse.filter(
+    (skill) => normalizedJob.has(normalizeText(skill)) && normalizedResume.has(normalizeText(skill))
+  )
+  const missingSkills = jobSkills.filter((skill) => !normalizedResume.has(normalizeText(skill)))
+  const jobCoverageSkills = jobSkills.filter((skill) => normalizedResume.has(normalizeText(skill)))
+  const prioritizedSkills = prioritizeSkillsByExperience(skillUniverse, input)
+
+  return {
+    roleIntelligence,
+    jobSkills,
+    rawResumeSkills,
+    resumeSkills,
+    rawSkillUniverse,
+    roleFallbackSkills,
+    skillUniverse,
+    commonSkills,
+    missingSkills,
+    jobCoverageSkills,
+    prioritizedSkills,
+  }
+}
+
 function buildPhaseHint(index: number, total: number): InterviewQuestion["phase_hint"] {
   if (index === 0) {
     return "warmup"
@@ -776,6 +952,16 @@ function inferQuestionIntent(skill: string, skillType: ReturnType<typeof classif
     return "behavioral"
   }
 
+  if (roleIntelligence?.family === "technical") {
+    if (/(monitoring|logging|alert|incident|on-call|sre|operations)/.test(normalizedSkill)) {
+      return "troubleshooting"
+    }
+
+    if (/(database|sql|postgresql|mysql|query|index|backup|replication|security|auth|encryption|api|backend|frontend|architecture|testing)/.test(normalizedSkill)) {
+      return "execution"
+    }
+  }
+
   if (roleIntelligence?.family === "operations" && roleIntelligence.subfamily === "field_service") {
     if (/(scheduling|schedule|dispatch|rescheduling|allocation|capacity)/.test(normalizedSkill)) {
       return "prioritization"
@@ -805,115 +991,113 @@ function inferQuestionIntent(skill: string, skillType: ReturnType<typeof classif
     return "judgment"
   }
 
-  if (/(metric|analysis|forecast|report|data|trend|kpi)/.test(normalizedSkill)) {
+  if (/(^|[\s_])(metric|metrics|analysis|forecast|report|reporting|trend|kpi|analytics|forecasting)([\s_]|$)/.test(normalizedSkill)) {
     return "analysis"
   }
 
   return skillType === "technical" ? "troubleshooting" : "execution"
 }
 
+function clampIntentToRoleFamily(intent: QuestionIntent, roleIntelligence?: RoleIntelligence) {
+  if (!roleIntelligence) {
+    return intent
+  }
+
+  const allowed = ROLE_FAMILY_INTENTS[roleIntelligence.family] ?? ROLE_FAMILY_INTENTS.general_business
+  return allowed.includes(intent) ? intent : allowed[0]
+}
+
+function buildVariableBank(
+  skill: string,
+  roleIntelligence?: RoleIntelligence,
+  intent?: QuestionIntent
+): QuestionTemplateVariables {
+  const displaySkill = presentSkillName(skill)
+  const normalizedSkill = normalizeText(skill)
+  const family = roleIntelligence?.family ?? "general_business"
+  const bank = QUESTION_VARIABLE_BANK[family] ?? QUESTION_VARIABLE_BANK.general_business
+
+  const pick = (values: string[], key: string, fallback: string) => {
+    if (!values.length) {
+      return fallback
+    }
+    return values[seededIndex(values.length, key)]
+  }
+
+  const system = pick(bank.variables.system, `${family}|${normalizedSkill}|${intent ?? "execution"}|system`, displaySkill)
+  const problem = pick(bank.variables.problem, `${family}|${normalizedSkill}|${intent ?? "execution"}|problem`, `a challenge affects ${displaySkill}`)
+  const scenario = pick(bank.variables.scenario, `${family}|${normalizedSkill}|${intent ?? "execution"}|scenario`, problem)
+  const constraint = pick(bank.variables.constraint, `${family}|${normalizedSkill}|${intent ?? "execution"}|constraint`, "time is limited")
+  const artifact = pick(bank.variables.artifact, `${family}|${normalizedSkill}|${intent ?? "execution"}|artifact`, "available information")
+
+  return {
+    skill: displaySkill,
+    system,
+    problem,
+    scenario,
+    constraint,
+    artifact,
+  }
+}
+
+function renderQuestionTemplate(template: string, variables: QuestionTemplateVariables) {
+  return template
+    .replace(/\{\{skill\}\}|\{skill\}/g, variables.skill)
+    .replace(/\{\{system\}\}/g, variables.system)
+    .replace(/\{\{problem\}\}/g, variables.problem)
+    .replace(/\{\{scenario\}\}|\{scenario\}/g, variables.scenario)
+    .replace(/\{\{constraint\}\}|\{constraint\}/g, variables.constraint)
+    .replace(/\{\{artifact\}\}|\{artifact\}/g, variables.artifact)
+}
+
 function buildIntentQuestion(
   displaySkill: string,
   intent: QuestionIntent,
   index: number,
-  roleIntelligence?: RoleIntelligence
+  roleIntelligence?: RoleIntelligence,
+  experienceLevel?: string
 ) {
-  const starter = QUESTION_VARIATION_STARTERS[index % QUESTION_VARIATION_STARTERS.length]
-  const isFieldService = roleIntelligence?.family === "operations" && roleIntelligence.subfamily === "field_service"
-
-  const scenarioByIntent: Record<QuestionIntent, string[]> = {
-    troubleshooting: isFieldService
-      ? [
-          `a schedule starts slipping across multiple field visits`,
-          `a planned visit cannot go ahead because the required part is missing`,
-          `customer urgency and engineer availability point in different directions`,
-        ]
-      : [
-          `a workflow starts failing unexpectedly`,
-          `results begin drifting off target`,
-          `a key handoff breaks down under pressure`,
-        ],
-    optimization: isFieldService
-      ? [
-          `improve schedule reliability without hurting customer commitments`,
-          `reduce reschedules while still protecting SLA performance`,
-          `improve field planning when demand becomes unpredictable`,
-        ]
-      : [
-          `improve consistency in ${displaySkill}`,
-          `make ${displaySkill} more efficient without losing quality`,
-          `improve outcomes in ${displaySkill} over time`,
-        ],
-    execution: [
-      `delivered ${displaySkill} in a real situation`,
-      `kept ${displaySkill} moving when the day changed unexpectedly`,
-      `handled ${displaySkill} from plan to completion`,
-    ],
-    behavioral: [
-      `${displaySkill} was tested under pressure`,
-      `${displaySkill} became critical in a difficult situation`,
-      `you had to rely on ${displaySkill} to steady a team or customer situation`,
-    ],
-    prioritization: isFieldService
-      ? [
-          `two urgent customer visits compete for the same engineer`,
-          `preventive work collides with a higher-severity corrective issue`,
-          `you need to rebalance schedules after a missed visit`,
-        ]
-      : [
-          `multiple priorities compete for the same window`,
-          `you have to decide what moves first when time is tight`,
-          `the plan changes and not everything can be handled at once`,
-        ],
-    coordination: isFieldService
-      ? [
-          `you need to align support, field teams, and parts availability for a visit`,
-          `a customer update depends on input from multiple internal teams`,
-          `a planned intervention needs to be rescheduled without losing trust`,
-        ]
-      : [
-          `different teams depend on your handling of ${displaySkill}`,
-          `${displaySkill} requires alignment across multiple stakeholders`,
-          `communication around ${displaySkill} starts breaking down`,
-        ],
-    judgment: [
-      `the right decision is not obvious in ${displaySkill}`,
-      `${displaySkill} involves ambiguity and risk at the same time`,
-      `you have to make a call in ${displaySkill} before all facts are available`,
-    ],
-    analysis: [
-      `you need to decide what the numbers are really saying about ${displaySkill}`,
-      `metrics around ${displaySkill} point in different directions`,
-      `you need to turn data from ${displaySkill} into a concrete action`,
-    ],
-  }
-
-  const scenario = scenarioByIntent[intent][index % scenarioByIntent[intent].length]
-
-  const byStarter: Record<string, string> = {
-    "How do you": `${starter} handle ${scenario}?`,
-    "Walk me through": `${starter} how you handled ${scenario}.`,
-    "Tell me about a time when": `${starter} ${scenario}.`,
-    "What signals tell you": `${starter} ${displaySkill} needs attention, and what do you do next?`,
-  }
+  const difficulty = extractDifficultyForExperience(experienceLevel)
+  const normalizedIntent = clampIntentToRoleFamily(intent, roleIntelligence)
+  const variables = buildVariableBank(displaySkill, roleIntelligence, normalizedIntent)
+  const templateLibrary = SEED_TEMPLATE_LIBRARY[INTENT_TEMPLATE_KEY[normalizedIntent]]
+  const templates =
+    difficulty === "guided"
+      ? templateLibrary.templates.slice(0, Math.min(4, templateLibrary.templates.length))
+      : difficulty === "scenario"
+        ? templateLibrary.templates
+        : [...templateLibrary.templates, ...templateLibrary.gold_standard]
+  const template = templates[seededIndex(templates.length, `${roleIntelligence?.family ?? "general"}|${displaySkill}|${normalizedIntent}|${difficulty}|${index}`)]
+  const skillType = normalizeInterviewSkillType(classifySkillType(displaySkill))
 
   return humanizeQuestion(
-    byStarter[starter] ?? `${starter} handle ${scenario}?`,
-    normalizeInterviewSkillType(classifySkillType(displaySkill))
+    renderQuestionTemplate(template, variables),
+    skillType
   )
 }
 
-function buildQuestionsForSkills(skills: string[], offset: number, roleIntelligence?: RoleIntelligence) {
+function buildQuestionsForSkills(
+  skills: string[],
+  offset: number,
+  roleIntelligence?: RoleIntelligence,
+  experienceLevel?: string
+) {
   return skills.map((skill, idx) => {
     const skillType = classifySkillType(skill)
     const displaySkill = presentSkillName(skill)
-    const intent = inferQuestionIntent(skill, skillType, roleIntelligence)
+    const intent = clampIntentToRoleFamily(inferQuestionIntent(skill, skillType, roleIntelligence), roleIntelligence)
     const questionType: "BEHAVIORAL" | "TECHNICAL" =
       skillType === "behavioral" ? "BEHAVIORAL" : "TECHNICAL"
 
     return {
       id: `q-${offset + idx}-${skill.replace(/\s+/g, "-")}`,
-      text: buildIntentQuestion(displaySkill, intent, offset + idx, roleIntelligence),
+      text: buildIntentQuestion(
+        displaySkill,
+        intent,
+        offset + idx,
+        roleIntelligence,
+        experienceLevel
+      ),
       phase: "MID" as const,
       tags: [skill],
       type: questionType,
@@ -921,7 +1105,12 @@ function buildQuestionsForSkills(skills: string[], offset: number, roleIntellige
   })
 }
 
-function deriveBehavioralQuestions(count: number, skills: string[], offset: number) {
+function deriveBehavioralQuestions(
+  count: number,
+  skills: string[],
+  offset: number,
+  experienceLevel?: string
+) {
   const pool = skills.length ? skills : ["leadership", "communication"]
   const behavioral: Question[] = []
 
@@ -930,7 +1119,15 @@ function deriveBehavioralQuestions(count: number, skills: string[], offset: numb
     const displaySkill = presentSkillName(skill)
     behavioral.push({
       id: `behavioral-${offset + i}`,
-      text: cleanQuestionText(buildIntentQuestion(displaySkill, "behavioral", offset + i)),
+      text: cleanQuestionText(
+        buildIntentQuestion(
+          displaySkill,
+          "behavioral",
+          offset + i,
+          undefined,
+          experienceLevel
+        )
+      ),
       phase: "MID",
       tags: [skill],
       type: "BEHAVIORAL",
@@ -940,7 +1137,12 @@ function deriveBehavioralQuestions(count: number, skills: string[], offset: numb
   return behavioral
 }
 
-function buildAdaptiveQuestions(role: RoleIntelligence, skills: string[], offset: number) {
+function buildAdaptiveQuestions(
+  role: RoleIntelligence,
+  skills: string[],
+  offset: number,
+  experienceLevel?: string
+) {
   const primarySkill = presentSkillName(skills[0] ?? "workflow")
   const secondarySkill = presentSkillName(skills[1] ?? skills[0] ?? "communication")
 
@@ -984,10 +1186,16 @@ function buildAdaptiveQuestions(role: RoleIntelligence, skills: string[], offset
   }
 
   const templates = byMode[role.questionMode] ?? byMode.analytical_business
+  const difficulty = extractDifficultyForExperience(experienceLevel)
 
-  return templates.map((template, index) => ({
+  const orderedTemplates = shuffleWithSeed(templates, `${role.family}|${role.subfamily ?? ""}|${difficulty}`)
+
+  return orderedTemplates.map((template, index) => ({
     id: `adaptive-${offset + index}`,
-    text: template(primarySkill, secondarySkill),
+    text:
+      difficulty === "guided"
+        ? `To help us understand your background better, ${template(primarySkill, secondarySkill).charAt(0).toLowerCase()}${template(primarySkill, secondarySkill).slice(1)}`
+        : template(primarySkill, secondarySkill),
     phase: "MID" as const,
     tags: [skills[index] ?? skills[0] ?? "workflow"],
     type: "BEHAVIORAL" as const,
@@ -1192,58 +1400,22 @@ function normalizeSkillMatch(skill: string, candidates: string[]) {
 export function generateBaseInterviewQuestions(input: BaseGenerationInput): BaseGenerationOutput {
   const requested = resolveBaseQuestionCount(input) ?? DEFAULT_TOTAL
   const total = Math.min(MAX_BASE_QUESTIONS, Math.max(MIN_BASE_QUESTIONS, requested))
-  const seed = `${input.jobDescription ?? ""}-${input.candidateResumeText ?? ""}`.slice(0, 120)
-  const roleIntelligence = inferRoleIntelligence({
-    jobTitle: input.jobTitle,
-    jobDescription: input.jobDescription,
-    coreSkills: input.coreSkills,
-    resumeSkills: input.candidateResumeSkills,
-    resumeText: input.candidateResumeText,
-  })
-
-  const jobSkills = buildEffectiveSkills({
-    listedSkills: input.coreSkills,
-    text: input.jobDescription,
-    jobTitle: input.jobTitle,
-    jobDescription: input.jobDescription,
-  })
-  const rawResumeSkills = buildEffectiveSkills({
-    listedSkills: input.candidateResumeSkills,
-    text: input.candidateResumeText,
-    jobTitle: input.jobTitle,
-    jobDescription: input.jobDescription,
-  })
-
-  const rawSkillUniverse = buildSkillUniverse({
-    jobTitle: input.jobTitle,
-    jobDescription: input.jobDescription,
-    coreSkills: jobSkills,
-    resumeSkills: rawResumeSkills,
-    resumeText: input.candidateResumeText,
-  })
-  const roleFallbackSkills = getFallbackSkillsForRoleFamily({
-    jobTitle: input.jobTitle,
-    jobDescription: input.jobDescription,
-    coreSkills: input.coreSkills,
-    resumeSkills: rawResumeSkills,
-    resumeText: input.candidateResumeText,
-  })
-  const resumeSkills = filterResumeSkillsForRoleContext(rawResumeSkills, roleIntelligence, jobSkills, roleFallbackSkills)
-  const skillUniverse = mergeUniqueSkills(
-    filterSkillsForRoleFamily(rawSkillUniverse, roleIntelligence, jobSkills, resumeSkills),
-    filterSkillsForRoleFamily(roleFallbackSkills, roleIntelligence, jobSkills, resumeSkills)
-  )
+  const {
+    roleIntelligence,
+    jobSkills,
+    resumeSkills,
+    roleFallbackSkills,
+    skillUniverse,
+    commonSkills,
+    missingSkills,
+    jobCoverageSkills,
+    prioritizedSkills,
+  } = buildRoleQuestionPlan(input)
 
   const normalizedJob = new Set(jobSkills.map(normalizeText))
   const normalizedResume = new Set(resumeSkills.map(normalizeText))
-  const commonSkills = skillUniverse.filter(
-    (skill) => normalizedJob.has(normalizeText(skill)) && normalizedResume.has(normalizeText(skill))
-  )
-  const missingSkills = jobSkills.filter((skill) => !normalizedResume.has(normalizeText(skill)))
-  const jobCoverageSkills = jobSkills.filter((skill) => normalizedResume.has(normalizeText(skill)))
-
-  const prioritizedSkills = prioritizeSkillsByExperience(skillUniverse, input)
-  const shuffledSkills = shuffleWithSeed(prioritizedSkills, seed)
+  const roleSeed = `${roleIntelligence.family}|${roleIntelligence.subfamily ?? ""}|${normalizeExperienceLevel(input.experienceLevel)}|${prioritizedSkills.join("|")}`
+  const shuffledSkills = shuffleWithSeed(prioritizedSkills, roleSeed)
   const resumeCount = Math.max(1, Math.round(total * RESUME_RATIO))
   const jobCount = Math.max(1, Math.round(total * JOB_RATIO))
   const behavioralCount = Math.max(1, Math.round(total * BEHAVIORAL_RATIO))
@@ -1253,15 +1425,28 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
   const jobPool = missingSkills.length > 0 ? [...missingSkills, ...jobCoverageSkills] : jobSkills
   const jobBasedSkills = pickUniqueSkills(jobPool, jobCount, usedSkills)
   const behavioralSkills = pickUniqueSkills(shuffledSkills, behavioralCount, usedSkills)
-  const adaptiveQuestions = roleIntelligence.adaptiveMode ? buildAdaptiveQuestions(roleIntelligence, shuffledSkills, 0) : []
+  const adaptiveQuestions = roleIntelligence.adaptiveMode
+    ? buildAdaptiveQuestions(roleIntelligence, shuffledSkills, 0, input.experienceLevel)
+    : []
   const adaptiveCount = adaptiveQuestions.length
 
-  const resumeQuestions = buildQuestionsForSkills(resumeBasedSkills, adaptiveCount, roleIntelligence)
-  const jobQuestions = buildQuestionsForSkills(jobBasedSkills, adaptiveCount + resumeQuestions.length, roleIntelligence)
+  const resumeQuestions = buildQuestionsForSkills(
+    resumeBasedSkills,
+    adaptiveCount,
+    roleIntelligence,
+    input.experienceLevel
+  )
+  const jobQuestions = buildQuestionsForSkills(
+    jobBasedSkills,
+    adaptiveCount + resumeQuestions.length,
+    roleIntelligence,
+    input.experienceLevel
+  )
   const behavioralQuestions = deriveBehavioralQuestions(
     behavioralCount,
     behavioralSkills,
-    adaptiveCount + resumeQuestions.length + jobQuestions.length
+    adaptiveCount + resumeQuestions.length + jobQuestions.length,
+    input.experienceLevel
   )
 
   let combined = [...adaptiveQuestions, ...resumeQuestions, ...jobQuestions, ...behavioralQuestions].slice(0, total)
@@ -1274,7 +1459,8 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
     const supplementalQuestions = buildQuestionsForSkills(
       supplementalSkills,
       combined.length,
-      roleIntelligence
+      roleIntelligence,
+      input.experienceLevel
     )
     combined = [...combined, ...supplementalQuestions].slice(0, total)
   }
@@ -1345,7 +1531,8 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
     const supplementalQuestions = buildQuestionsForSkills(
       supplementalSkills.slice(0, total - output.length),
       output.length,
-      roleIntelligence
+      roleIntelligence,
+      input.experienceLevel
     )
     const supplementalWithSkills: EnrichedGeneratedQuestion[] = assignSkillsToQuestions(supplementalQuestions, skillUniverse)
     const supplementalOutput = supplementalWithSkills.map((question, index) => {
@@ -1399,13 +1586,17 @@ export async function generateBaseInterviewQuestionsAI(
 ): Promise<BaseGenerationOutputWithError> {
   const apiKey = (process.env.OPENAI_API_KEY ?? "").trim().replace(/^"|"$/g, "")
   const model = process.env.OPENAI_QUESTION_MODEL ?? OPENAI_QUESTION_MODEL
-  const roleIntelligence = inferRoleIntelligence({
-    jobTitle: input.jobTitle,
-    jobDescription: input.jobDescription,
-    coreSkills: input.coreSkills,
-    resumeSkills: input.candidateResumeSkills,
-    resumeText: input.candidateResumeText,
-  })
+  const {
+    roleIntelligence,
+    jobSkills,
+    resumeSkills,
+    roleFallbackSkills,
+    skillUniverse,
+    commonSkills,
+    missingSkills,
+    jobCoverageSkills,
+    prioritizedSkills,
+  } = buildRoleQuestionPlan(input)
 
   if (!apiKey) {
     return options?.requireAi
@@ -1427,54 +1618,17 @@ export async function generateBaseInterviewQuestionsAI(
 
   const requested = resolveBaseQuestionCount(input) ?? DEFAULT_TOTAL
   const total = Math.min(MAX_BASE_QUESTIONS, Math.max(MIN_BASE_QUESTIONS, requested))
-
-  const jobSkills = buildEffectiveSkills({
-    listedSkills: input.coreSkills,
-    text: input.jobDescription,
-    jobTitle: input.jobTitle,
-    jobDescription: input.jobDescription,
-  })
-  const rawResumeSkills = buildEffectiveSkills({
-    listedSkills: input.candidateResumeSkills,
-    text: input.candidateResumeText,
-    jobTitle: input.jobTitle,
-    jobDescription: input.jobDescription,
-  })
   const previousQuestions = input.previousQuestions ?? []
-
-  const rawSkillUniverse = buildSkillUniverse({
-    jobTitle: input.jobTitle,
-    jobDescription: input.jobDescription,
-    coreSkills: jobSkills,
-    resumeSkills: rawResumeSkills,
-    resumeText: input.candidateResumeText,
-  })
-  const roleFallbackSkills = getFallbackSkillsForRoleFamily({
-    jobTitle: input.jobTitle,
-    jobDescription: input.jobDescription,
-    coreSkills: input.coreSkills,
-    resumeSkills: rawResumeSkills,
-    resumeText: input.candidateResumeText,
-  })
-  const resumeSkills = filterResumeSkillsForRoleContext(rawResumeSkills, roleIntelligence, jobSkills, roleFallbackSkills)
-  const skillUniverse = mergeUniqueSkills(
-    filterSkillsForRoleFamily(rawSkillUniverse, roleIntelligence, jobSkills, resumeSkills),
-    filterSkillsForRoleFamily(roleFallbackSkills, roleIntelligence, jobSkills, resumeSkills)
-  )
   if (skillUniverse.length === 0) {
-    skillUniverse.push("general")
+    skillUniverse.push("general workflow")
   }
 
   const normalizedJob = new Set(jobSkills.map(normalizeText))
   const normalizedResume = new Set(resumeSkills.map(normalizeText))
-  const commonSkills = skillUniverse.filter(
-    (skill) => normalizedJob.has(normalizeText(skill)) && normalizedResume.has(normalizeText(skill))
+  const shuffledSkills = shuffleWithSeed(
+    prioritizedSkills,
+    `${roleIntelligence.family}|${roleIntelligence.subfamily ?? ""}|${normalizeExperienceLevel(input.experienceLevel)}`
   )
-  const missingSkills = jobSkills.filter((skill) => !normalizedResume.has(normalizeText(skill)))
-  const jobCoverageSkills = jobSkills.filter((skill) => normalizedResume.has(normalizeText(skill)))
-
-  const prioritizedSkills = prioritizeSkillsByExperience(skillUniverse, input)
-  const shuffledSkills = shuffleWithSeed(prioritizedSkills, `${Date.now()}-${Math.random()}`)
   const resumeCount = Math.max(1, Math.round(total * RESUME_RATIO))
   const jobCount = Math.max(1, Math.round(total * JOB_RATIO))
   const behavioralCount = Math.max(1, Math.round(total * BEHAVIORAL_RATIO))
@@ -1596,11 +1750,13 @@ export async function generateBaseInterviewQuestionsAI(
     attemptNonce: string
   }) {
     const promptPayload = {
-      job_description: input.jobDescription ?? "",
-      job_title: input.jobTitle ?? "",
+      role_context: {
+        title: input.jobTitle ?? "",
+        jd_context: buildContextSnippet(input.jobDescription),
+        resume_context: buildContextSnippet(input.candidateResumeText),
+      },
       job_skills: jobSkills,
       resume_skills: resumeSkills,
-      resume_summary: (input.candidateResumeText ?? "").slice(0, 4000),
       role_intelligence: {
         family: roleIntelligence.family,
         subfamily: roleIntelligence.subfamily ?? null,
@@ -1634,15 +1790,20 @@ export async function generateBaseInterviewQuestionsAI(
         "rollback",
         "regression",
       ],
-      question_style_rules: {
-        technical: "use tools, systems, debugging, validation, and incident recovery",
-        functional: "use workflow, prioritization, SLA handling, process control, and customer coordination",
-        behavioral: "use real scenarios, ownership, communication, urgency handling, and cross-team tension",
-        analytical: "use metrics, forecasting, service levels, trend reading, and decision support",
-        strategic: "use planning, trade-offs, scaling the process, and long-term improvements",
-        operational: "use execution, dispatch, scheduling, resource allocation, field coordination, and recovery from disruption",
-      },
-    }
+                      question_style_rules: {
+                        technical: "use tools, systems, debugging, validation, and incident recovery",
+                        functional: "use workflow, prioritization, SLA handling, process control, and customer coordination",
+                        behavioral: "use real scenarios, ownership, communication, urgency handling, and cross-team tension",
+                        analytical: "use metrics, forecasting, service levels, trend reading, and decision support",
+                        strategic: "use planning, trade-offs, scaling the process, and long-term improvements",
+                        operational: "use execution, dispatch, scheduling, resource allocation, field coordination, and recovery from disruption",
+                      },
+                      experience_rules: {
+                        junior: "ask guided, clearer, foundational questions; prefer explain-how-you-would-approach wording over high-ambiguity leadership trade-offs",
+                        mid: "ask scenario-based questions with realistic constraints and decision points",
+                        senior: "ask higher-ownership questions involving strategy, ambiguity, trade-offs, stakeholder alignment, and scaling decisions",
+                      },
+                    }
 
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
@@ -1659,7 +1820,7 @@ export async function generateBaseInterviewQuestionsAI(
               {
                 type: "input_text",
                 text:
-                  "Generate interview questions based on the provided skills and resume context. Rules: one question per skill, no job titles inside the question body, no locations, no generic phrases. Use structures appropriate to each skill type from question_style_rules. Follow the role_intelligence.question_mode when choosing the questioning style for this role family. Technical roles must sound like a real technical interview and use technical language, systems thinking, debugging, architecture, tooling, validation, or incident handling. Non-technical roles must sound like a human business or operational interview and must not use technical failure language such as production, deployment, latency, rollback, debugging, or system failure. Use common_skills for resume-validation questions, missing_skills for coverage/probe questions, and variation_nonce to diversify phrasing across runs without mentioning it. If role_intelligence.adaptive_mode is true, make the first one or two questions exploratory and role-family-aware so the interview can refine what the candidate actually owns. For functional/behavioral/analytical/strategic/operational skills avoid technical phrases listed in non_technical_forbidden_phrases. Never quote the resume directly. Never mention awards, dates, date ranges, employer names, pasted bullet text, or sentence fragments from the resume. Convert resume context into a natural interview question about real work, judgment, ownership, planning, coordination, or execution. Output only JSON.",
+                  "Generate interview questions from a structured role-family system. The JD and resume are context only, not source text to copy. Use job_skills and resume_skills as the main anchors. Use role_context only to shape realistic scenarios, terminology, and ownership. Rules: one question per skill, no job titles inside the question body, no locations, no generic phrases. Use structures appropriate to each skill type from question_style_rules. Follow the role_intelligence.question_mode when choosing the questioning style for this role family. Follow experience_rules so fresher/junior roles get guided foundational questions, mid-level roles get realistic scenario questions, and senior/leadership roles get strategy, ambiguity, ownership, and trade-off questions. Technical roles must sound like a real technical interview and use technical language, systems thinking, debugging, architecture, tooling, validation, or incident handling. Non-technical roles must sound like a human business or operational interview and must not use technical failure language such as production, deployment, latency, rollback, debugging, or system failure. Use common_skills for resume-validation questions, missing_skills for coverage/probe questions, and variation_nonce only to vary phrasing. If role_intelligence.adaptive_mode is true, make the first one or two questions exploratory and role-family-aware so the interview can refine what the candidate actually owns. For functional/behavioral/analytical/strategic/operational skills avoid technical phrases listed in non_technical_forbidden_phrases. Never quote the JD or resume directly. Never mention awards, dates, date ranges, employer names, pasted bullet text, or sentence fragments from the resume. Output only JSON.",
               },
             ],
           },
@@ -1735,7 +1896,7 @@ export async function generateBaseInterviewQuestionsAI(
   for (let attempt = 0; attempt < maxAttempts && accepted.length < total; attempt += 1) {
     const remainingCount = total - accepted.length
     const remainingSkills = skillCandidates.filter((skill) => !used.has(normalizeText(skill)))
-    const variationNonce = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+      const variationNonce = `${roleIntelligence.family}|${roleIntelligence.subfamily ?? ""}|${normalizeExperienceLevel(input.experienceLevel)}|batch|${attempt}`
 
     try {
       const questions = await requestAIQuestions({
@@ -1792,7 +1953,7 @@ export async function generateBaseInterviewQuestionsAI(
         }
         let item: { question: string; skill: string; skill_type: string } | null = null
         for (let retry = 0; retry < 5 && !item; retry += 1) {
-          const variationNonce = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+          const variationNonce = `${roleIntelligence.family}|${roleIntelligence.subfamily ?? ""}|single|retry-${retry}|${skill}`
           const questions = await requestAIQuestions({
             requiredSkills: [skill],
             count: 1,
@@ -1847,7 +2008,7 @@ export async function generateBaseInterviewQuestionsAI(
         if (accepted.length >= total) {
           break
         }
-        const variationNonce = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+        const variationNonce = `${roleIntelligence.family}|${roleIntelligence.subfamily ?? ""}|strict|${skill}`
         const questions = await requestAIQuestions({
           requiredSkills: [skill],
           count: 1,
@@ -1888,7 +2049,12 @@ export async function generateBaseInterviewQuestionsAI(
   if (accepted.length < total) {
     if (options?.requireAi) {
       const remainingSkills = skillCandidates.filter((skill) => !used.has(normalizeText(skill)))
-      const filler = buildQuestionsForSkills(remainingSkills, accepted.length, roleIntelligence)
+      const filler = buildQuestionsForSkills(
+        remainingSkills,
+        accepted.length,
+        roleIntelligence,
+        input.experienceLevel
+      )
       const fillerWithSkills = assignSkillsToQuestions(filler, skillUniverse)
       for (const question of fillerWithSkills) {
         if (accepted.length >= total) {
@@ -1936,7 +2102,8 @@ export async function generateBaseInterviewQuestionsAI(
     const supplemental = buildQuestionsForSkills(
       supplementalSkillPool.slice(0, total - accepted.length),
       accepted.length,
-      roleIntelligence
+      roleIntelligence,
+      input.experienceLevel
     )
     const supplementalWithSkills: EnrichedGeneratedQuestion[] = assignSkillsToQuestions(supplemental, skillUniverse)
     for (const question of supplementalWithSkills) {
@@ -1979,7 +2146,12 @@ export async function generateBaseInterviewQuestionsAI(
     const refillSkills = mergeUniqueSkills(skillCandidates, roleFallbackSkills, skillUniverse).filter(
       (skill) => !usedSkillsAfterDedupe.has(normalizeText(skill))
     )
-    const refillQuestions = buildQuestionsForSkills(refillSkills.slice(0, total - dedupedAccepted.length), dedupedAccepted.length, roleIntelligence)
+    const refillQuestions = buildQuestionsForSkills(
+      refillSkills.slice(0, total - dedupedAccepted.length),
+      dedupedAccepted.length,
+      roleIntelligence,
+      input.experienceLevel
+    )
     const refillWithSkills: EnrichedGeneratedQuestion[] = assignSkillsToQuestions(refillQuestions, skillUniverse)
     const refillOutput = refillWithSkills.map((question, index) => {
       const mappedSkill = question.skill ?? mapQuestionToSkill(question.text, skillUniverse).skill
