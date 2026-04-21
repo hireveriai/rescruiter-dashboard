@@ -51,18 +51,18 @@ async function ensurePdfDomPolyfills() {
     return
   }
 
-  const canvasModule = await import("@napi-rs/canvas")
+  const geometryModule = await import("@napi-rs/canvas/geometry.js")
 
-  if (!globalThis.DOMMatrix && canvasModule.DOMMatrix) {
-    globalThis.DOMMatrix = canvasModule.DOMMatrix as typeof DOMMatrix
+  if (!globalThis.DOMMatrix && geometryModule.DOMMatrix) {
+    globalThis.DOMMatrix = geometryModule.DOMMatrix as typeof DOMMatrix
   }
 
-  if (!globalThis.DOMPoint && canvasModule.DOMPoint) {
-    globalThis.DOMPoint = canvasModule.DOMPoint as typeof DOMPoint
+  if (!globalThis.DOMPoint && geometryModule.DOMPoint) {
+    globalThis.DOMPoint = geometryModule.DOMPoint as typeof DOMPoint
   }
 
-  if (!globalThis.DOMRect && canvasModule.DOMRect) {
-    globalThis.DOMRect = canvasModule.DOMRect as typeof DOMRect
+  if (!globalThis.DOMRect && geometryModule.DOMRect) {
+    globalThis.DOMRect = geometryModule.DOMRect as typeof DOMRect
   }
 }
 
