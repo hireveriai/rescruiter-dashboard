@@ -140,6 +140,7 @@ const MAX_BASE_QUESTIONS = 10
 const RESUME_RATIO = 0.3
 const JOB_RATIO = 0.5
 const BEHAVIORAL_RATIO = 0.2
+const MIN_SKILL_KEYWORD_RATIO = 0.7
 
 const VAGUE_MARKERS = ["not sure", "maybe", "i think", "not certain", "somehow"]
 const STRONG_MARKERS = ["always", "never", "definitely", "absolutely"]
@@ -913,15 +914,16 @@ function buildRoleQuestionPlan(input: BaseGenerationInput): RoleQuestionPlan {
 
 function selectTargetSkillsForInterview(plan: RoleQuestionPlan, total: number) {
   const anchorCount = Math.min(total, Math.max(5, Math.min(8, total)))
-  const anchorPool = mergeUniqueSkills(
+  const jdResumeAnchorPool = mergeUniqueSkills(
     plan.commonSkills,
     plan.missingSkills,
     plan.jobCoverageSkills,
     plan.resumeSkills,
-    plan.jobSkills,
-    plan.prioritizedSkills,
-    plan.roleFallbackSkills
+    plan.jobSkills
   )
+  const anchorPool = jdResumeAnchorPool.length > 0
+    ? mergeUniqueSkills(jdResumeAnchorPool, plan.prioritizedSkills)
+    : mergeUniqueSkills(plan.prioritizedSkills, plan.roleFallbackSkills)
 
   const anchors = pickUniqueSkills(anchorPool, anchorCount, new Set<string>())
   const remainingPool = mergeUniqueSkills(plan.prioritizedSkills, plan.skillUniverse, plan.roleFallbackSkills).filter(
@@ -1094,6 +1096,44 @@ function renderQuestionTemplate(template: string, variables: QuestionTemplateVar
     .replace(/\{\{artifact\}\}|\{artifact\}/g, variables.artifact)
 }
 
+function buildSkillAnchoredFallbackQuestion(
+  displaySkill: string,
+  intent: QuestionIntent,
+  roleIntelligence?: RoleIntelligence
+) {
+  const family = roleIntelligence?.family ?? "general_business"
+
+  if (family === "technical") {
+    if (intent === "troubleshooting") {
+      return `How do you troubleshoot issues in ${displaySkill}?`
+    }
+    if (intent === "optimization") {
+      return `How do you optimize ${displaySkill} under heavy load?`
+    }
+    return `How would you use ${displaySkill} in a real technical project?`
+  }
+
+  if (family === "operations") {
+    if (intent === "prioritization") {
+      return `How do you prioritize work when ${displaySkill} is under pressure?`
+    }
+    if (intent === "coordination") {
+      return `How would you keep ${displaySkill} aligned across teams?`
+    }
+    return `How do you handle change when ${displaySkill} is central to the work?`
+  }
+
+  if (intent === "behavioral") {
+    return `Tell me about a time when ${displaySkill} was critical to your work.`
+  }
+
+  if (intent === "analysis") {
+    return `How do you use ${displaySkill} to make better decisions?`
+  }
+
+  return `How would you approach ${displaySkill} in this role?`
+}
+
 function buildIntentQuestion(
   displaySkill: string,
   intent: QuestionIntent,
@@ -1114,8 +1154,15 @@ function buildIntentQuestion(
   const template = templates[seededIndex(templates.length, `${roleIntelligence?.family ?? "general"}|${displaySkill}|${normalizedIntent}|${difficulty}|${index}`)]
   const skillType = normalizeInterviewSkillType(classifySkillType(displaySkill))
 
+  const rendered = renderQuestionTemplate(template, variables)
+  const humanized = humanizeQuestion(rendered, skillType)
+
+  if (questionMentionsSkill(humanized, displaySkill)) {
+    return humanized
+  }
+
   return humanizeQuestion(
-    renderQuestionTemplate(template, variables),
+    buildSkillAnchoredFallbackQuestion(displaySkill, normalizedIntent, roleIntelligence),
     skillType
   )
 }
@@ -1155,11 +1202,13 @@ function ensureQuestionCount(params: {
   roleIntelligence: RoleIntelligence
   experienceLevel?: string
   skillPool: string[]
+  anchorSkills?: string[]
   resumeSkillSet: Set<string>
   jobSkillSet: Set<string>
 }) {
   let output = [...params.questions]
-  const pool = params.skillPool.length > 0 ? params.skillPool : ["workflow"]
+  const prioritizedPool = mergeUniqueSkills(params.anchorSkills ?? [], params.skillPool)
+  const pool = prioritizedPool.length > 0 ? prioritizedPool : ["workflow"]
   const intents = ROLE_FAMILY_INTENTS[params.roleIntelligence.family] ?? ROLE_FAMILY_INTENTS.general_business
 
   let attempts = 0
@@ -1193,6 +1242,7 @@ function ensureQuestionCount(params: {
         roleIntelligence: params.roleIntelligence,
         skillType: classifySkillType(skill),
       })
+      && questionMentionsSkill(candidate.question, candidate.skill)
     ) {
       const deduped = dedupeInterviewQuestions([...output, candidate])
       if (deduped.length > output.length) {
@@ -1204,6 +1254,145 @@ function ensureQuestionCount(params: {
   }
 
   return output.slice(0, params.total)
+}
+
+function ensureSkillCoverageQuestionSet(params: {
+  questions: InterviewQuestion[]
+  total: number
+  anchorSkills: string[]
+  roleIntelligence: RoleIntelligence
+  experienceLevel?: string
+  skillPool: string[]
+  resumeSkillSet: Set<string>
+  jobSkillSet: Set<string>
+}) {
+  const desiredAnchorSkills = pickUniqueSkills(
+    params.anchorSkills,
+    Math.min(params.total, params.anchorSkills.length),
+    new Set<string>()
+  )
+
+  const validExisting = dedupeInterviewQuestions(
+    params.questions.filter((question) =>
+      questionMatchesRoleStyle({
+        question: question.question,
+        roleIntelligence: params.roleIntelligence,
+        skillType: classifySkillType(question.skill),
+      }) && questionMentionsSkill(question.question, question.skill)
+    )
+  )
+
+  const selected: InterviewQuestion[] = []
+  const selectedSkills = new Set<string>()
+
+  for (const anchorSkill of desiredAnchorSkills) {
+    const normalizedAnchor = normalizeText(anchorSkill)
+    const existing = validExisting.find((question) => normalizeText(question.skill) === normalizedAnchor)
+    if (existing && !selectedSkills.has(normalizedAnchor)) {
+      selected.push(existing)
+      selectedSkills.add(normalizedAnchor)
+      continue
+    }
+
+    const displaySkill = presentSkillName(anchorSkill)
+    const skillType = normalizeInterviewSkillType(classifySkillType(anchorSkill))
+    const id = buildInterviewQuestionId("anchor", selected.length, anchorSkill)
+    selected.push({
+      id,
+      question: buildIntentQuestion(
+        displaySkill,
+        clampIntentToRoleFamily(
+          inferQuestionIntent(anchorSkill, classifySkillType(anchorSkill), params.roleIntelligence),
+          params.roleIntelligence
+        ),
+        selected.length + 500,
+        params.roleIntelligence,
+        params.experienceLevel
+      ),
+      skill: displaySkill,
+      skill_type: skillType,
+      skill_bucket: bucketSkill(anchorSkill),
+      ...buildQuestionMetadata({
+        id,
+        skill: anchorSkill,
+        skillType,
+        total: params.total,
+        index: selected.length,
+        roleIntelligence: params.roleIntelligence,
+        resumeSkillSet: params.resumeSkillSet,
+        jobSkillSet: params.jobSkillSet,
+      }),
+    })
+    selectedSkills.add(normalizedAnchor)
+  }
+
+  for (const question of validExisting) {
+    if (selected.length >= params.total) {
+      break
+    }
+    const normalizedSkill = normalizeText(question.skill)
+    if (!normalizedSkill || selectedSkills.has(normalizedSkill)) {
+      continue
+    }
+    selected.push(question)
+    selectedSkills.add(normalizedSkill)
+  }
+
+  let output = dedupeInterviewQuestions(selected).slice(0, params.total)
+
+  output = ensureQuestionCount({
+    questions: output,
+    total: params.total,
+    roleIntelligence: params.roleIntelligence,
+    experienceLevel: params.experienceLevel,
+    skillPool: params.skillPool,
+    anchorSkills: desiredAnchorSkills,
+    resumeSkillSet: params.resumeSkillSet,
+    jobSkillSet: params.jobSkillSet,
+  })
+
+  const minimumSkillQuestions = Math.max(1, Math.ceil(params.total * MIN_SKILL_KEYWORD_RATIO))
+  const skillKeywordQuestions = output.filter((question) => questionMentionsSkill(question.question, question.skill)).length
+
+  if (skillKeywordQuestions < minimumSkillQuestions) {
+    const refillPool = mergeUniqueSkills(desiredAnchorSkills, params.skillPool).filter(
+      (skill) => !output.some((question) => normalizeText(question.skill) === normalizeText(skill))
+    )
+    const refillQuestions = buildQuestionsForSkills(
+      refillPool.slice(0, minimumSkillQuestions - skillKeywordQuestions),
+      output.length,
+      params.roleIntelligence,
+      params.experienceLevel
+    )
+    const refillOutput: InterviewQuestion[] = assignSkillsToQuestions(refillQuestions, mergeUniqueSkills(params.anchorSkills, params.skillPool)).map(
+      (question, index) => {
+        const mappedSkill = question.skill ?? params.anchorSkills[index] ?? params.skillPool[index] ?? "workflow"
+        const skillType = normalizeInterviewSkillType(classifySkillType(mappedSkill))
+
+        return {
+          id: question.id,
+          question: humanizeQuestion(question.text, skillType),
+          skill: presentSkillName(mappedSkill),
+          skill_type: skillType,
+          skill_bucket: question.skillBucket,
+          ...buildQuestionMetadata({
+            id: question.id,
+            skill: mappedSkill,
+            skillType,
+            total: params.total,
+            index: output.length + index,
+            roleIntelligence: params.roleIntelligence,
+            resumeSkillSet: params.resumeSkillSet,
+            jobSkillSet: params.jobSkillSet,
+          }),
+        }
+      }
+    ).filter((question) => questionMentionsSkill(question.question, question.skill))
+
+    output = dedupeInterviewQuestions([...output, ...refillOutput]).slice(0, params.total)
+  }
+
+  return output
 }
 
 function deriveBehavioralQuestions(
@@ -1670,9 +1859,10 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
     output = dedupeInterviewQuestions([...output, ...supplementalOutput]).slice(0, total)
   }
 
-  output = ensureQuestionCount({
+  output = ensureSkillCoverageQuestionSet({
     questions: output,
     total,
+    anchorSkills,
     roleIntelligence,
     experienceLevel: input.experienceLevel,
     skillPool: mergeUniqueSkills(jobSkills, resumeSkills, roleFallbackSkills, skillUniverse),
@@ -2321,9 +2511,10 @@ export async function generateBaseInterviewQuestionsAI(
     dedupedAccepted = dedupeInterviewQuestions([...dedupedAccepted, ...refillOutput]).slice(0, total)
   }
 
-  dedupedAccepted = ensureQuestionCount({
+  dedupedAccepted = ensureSkillCoverageQuestionSet({
     questions: dedupedAccepted,
     total,
+    anchorSkills,
     roleIntelligence,
     experienceLevel: input.experienceLevel,
     skillPool: mergeUniqueSkills(jobSkills, resumeSkills, roleFallbackSkills, skillUniverse),
