@@ -26,21 +26,40 @@ function isDocxFile(file: File) {
   )
 }
 
-type PdfParseResult = {
+type PdfTextResult = {
   text?: string
 }
 
-type PdfParseFn = (input: Buffer) => Promise<PdfParseResult>
+type PdfParseInstance = {
+  getText: () => Promise<PdfTextResult>
+  destroy?: () => Promise<void>
+}
+
+type PdfParseCtor = new (options: { data: Buffer | Uint8Array | ArrayBuffer }) => PdfParseInstance
 
 async function extractResumeText(file: File, resumeBuffer: Buffer) {
   try {
     if (isPdfFile(file)) {
       const pdfParseModule = await import("pdf-parse")
-      const pdfParse = (("default" in pdfParseModule ? pdfParseModule.default : pdfParseModule) as unknown) as PdfParseFn
-      const parsed = await pdfParse(resumeBuffer)
-      const text = parsed.text?.trim()
+      const PDFParse = (("PDFParse" in pdfParseModule ? pdfParseModule.PDFParse : null) as unknown) as
+        | PdfParseCtor
+        | null
 
-      return text || null
+      if (!PDFParse) {
+        throw new Error("pdf-parse PDFParse export is unavailable")
+      }
+
+      const parser = new PDFParse({ data: resumeBuffer })
+
+      try {
+        const parsed = await parser.getText()
+        const text = parsed.text?.trim()
+
+        return text || null
+      } finally {
+        await parser.destroy?.()
+      }
+
     }
 
     if (isDocxFile(file)) {
