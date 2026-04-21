@@ -46,7 +46,28 @@ type PdfLoadingTask = {
   destroy?: () => Promise<void>
 }
 
+async function ensurePdfDomPolyfills() {
+  if (globalThis.DOMMatrix && globalThis.DOMPoint && globalThis.DOMRect) {
+    return
+  }
+
+  const canvasModule = await import("@napi-rs/canvas")
+
+  if (!globalThis.DOMMatrix && canvasModule.DOMMatrix) {
+    globalThis.DOMMatrix = canvasModule.DOMMatrix as typeof DOMMatrix
+  }
+
+  if (!globalThis.DOMPoint && canvasModule.DOMPoint) {
+    globalThis.DOMPoint = canvasModule.DOMPoint as typeof DOMPoint
+  }
+
+  if (!globalThis.DOMRect && canvasModule.DOMRect) {
+    globalThis.DOMRect = canvasModule.DOMRect as typeof DOMRect
+  }
+}
+
 async function extractPdfText(resumeBuffer: Buffer) {
+  await ensurePdfDomPolyfills()
   const pdfjsModule = await import("pdfjs-dist/legacy/build/pdf.mjs")
   const getDocument = (pdfjsModule.getDocument as (options: {
     data: Uint8Array
@@ -95,6 +116,7 @@ async function extractPdfText(resumeBuffer: Buffer) {
 }
 
 async function extractPdfTextWithPdfParse(resumeBuffer: Buffer) {
+  await ensurePdfDomPolyfills()
   const pdfParseModule = await import("pdf-parse")
   const PDFParse = (("PDFParse" in pdfParseModule ? pdfParseModule.PDFParse : null) as unknown) as
     | (new (options: { data: Uint8Array | Buffer | ArrayBuffer }) => {
