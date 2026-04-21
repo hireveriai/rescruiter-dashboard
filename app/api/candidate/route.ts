@@ -1,5 +1,7 @@
 import { Prisma } from "@prisma/client"
 import { NextResponse } from "next/server"
+import { createRequire } from "module"
+import { pathToFileURL } from "url"
 
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
 import { ApiError } from "@/lib/server/errors"
@@ -10,6 +12,8 @@ import { uploadBufferToS3 } from "@/lib/server/s3"
 import { jobPositionsSupportIsActive } from "@/lib/server/services/jobs"
 
 export const runtime = "nodejs"
+
+const requireFromRoute = createRequire(import.meta.url)
 
 function getStringValue(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : ""
@@ -69,6 +73,11 @@ async function ensurePdfDomPolyfills() {
 async function extractPdfText(resumeBuffer: Buffer) {
   await ensurePdfDomPolyfills()
   const pdfjsModule = await import("pdfjs-dist/legacy/build/pdf.mjs")
+  const workerPath = requireFromRoute.resolve("pdfjs-dist/legacy/build/pdf.worker.mjs")
+  const globalWorkerOptions = pdfjsModule.GlobalWorkerOptions as { workerSrc?: string }
+
+  globalWorkerOptions.workerSrc = pathToFileURL(workerPath).toString()
+
   const getDocument = (pdfjsModule.getDocument as (options: {
     data: Uint8Array
     useWorkerFetch?: boolean
@@ -119,15 +128,21 @@ async function extractPdfTextWithPdfParse(resumeBuffer: Buffer) {
   await ensurePdfDomPolyfills()
   const pdfParseModule = await import("pdf-parse")
   const PDFParse = (("PDFParse" in pdfParseModule ? pdfParseModule.PDFParse : null) as unknown) as
-    | (new (options: { data: Uint8Array | Buffer | ArrayBuffer }) => {
-        getText: () => Promise<{ text?: string }>
-        destroy?: () => Promise<void>
+    | ({
+        new (options: { data: Uint8Array | Buffer | ArrayBuffer }): {
+          getText: () => Promise<{ text?: string }>
+          destroy?: () => Promise<void>
+        }
+        setWorker?: (workerSrc?: string) => string
       })
     | null
 
   if (!PDFParse) {
     throw new Error("pdf-parse PDFParse export is unavailable")
   }
+
+  const workerPath = requireFromRoute.resolve("pdf-parse/dist/pdf-parse/esm/pdf.worker.mjs")
+  PDFParse.setWorker?.(pathToFileURL(workerPath).toString())
 
   const parser = new PDFParse({ data: resumeBuffer })
 
