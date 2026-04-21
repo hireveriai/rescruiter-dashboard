@@ -583,6 +583,27 @@ function dedupeInterviewQuestions(questions: InterviewQuestion[]) {
   return accepted
 }
 
+function questionMentionsSkill(question: string, skill: string) {
+  const normalizedQuestion = normalizeText(question)
+  const displaySkill = presentSkillName(skill)
+  const normalizedSkill = normalizeText(displaySkill)
+
+  if (!normalizedQuestion || !normalizedSkill) {
+    return false
+  }
+
+  if (normalizedQuestion.includes(normalizedSkill)) {
+    return true
+  }
+
+  const meaningfulTokens = normalizedSkill
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 3 && !["and", "for", "the", "with"].includes(token))
+
+  return meaningfulTokens.some((token) => normalizedQuestion.includes(token))
+}
+
 function normalizeExperienceLevel(level?: string) {
   const normalized = normalizeText(level ?? "")
   if (!normalized) {
@@ -887,6 +908,29 @@ function buildRoleQuestionPlan(input: BaseGenerationInput): RoleQuestionPlan {
     missingSkills,
     jobCoverageSkills,
     prioritizedSkills,
+  }
+}
+
+function selectTargetSkillsForInterview(plan: RoleQuestionPlan, total: number) {
+  const anchorCount = Math.min(total, Math.max(5, Math.min(8, total)))
+  const anchorPool = mergeUniqueSkills(
+    plan.commonSkills,
+    plan.missingSkills,
+    plan.jobCoverageSkills,
+    plan.resumeSkills,
+    plan.jobSkills,
+    plan.prioritizedSkills,
+    plan.roleFallbackSkills
+  )
+
+  const anchors = pickUniqueSkills(anchorPool, anchorCount, new Set<string>())
+  const remainingPool = mergeUniqueSkills(plan.prioritizedSkills, plan.skillUniverse, plan.roleFallbackSkills).filter(
+    (skill) => !anchors.map(normalizeText).includes(normalizeText(skill))
+  )
+
+  return {
+    anchorSkills: anchors,
+    remainingPool,
   }
 }
 
@@ -1473,43 +1517,45 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
   const normalizedResume = new Set(resumeSkills.map(normalizeText))
   const roleSeed = `${roleIntelligence.family}|${roleIntelligence.subfamily ?? ""}|${normalizeExperienceLevel(input.experienceLevel)}|${prioritizedSkills.join("|")}`
   const shuffledSkills = shuffleWithSeed(prioritizedSkills, roleSeed)
-  const resumeCount = Math.max(1, Math.round(total * RESUME_RATIO))
-  const jobCount = Math.max(1, Math.round(total * JOB_RATIO))
-  const behavioralCount = Math.max(1, Math.round(total * BEHAVIORAL_RATIO))
+  const { anchorSkills, remainingPool } = selectTargetSkillsForInterview(
+    {
+      roleIntelligence,
+      jobSkills,
+      rawResumeSkills: resumeSkills,
+      resumeSkills,
+      rawSkillUniverse: skillUniverse,
+      roleFallbackSkills,
+      skillUniverse,
+      commonSkills,
+      missingSkills,
+      jobCoverageSkills,
+      prioritizedSkills,
+    },
+    total
+  )
 
   const usedSkills = new Set<string>()
-  const resumeBasedSkills = pickUniqueSkills(commonSkills.length > 0 ? commonSkills : resumeSkills, resumeCount, usedSkills)
-  const jobPool = missingSkills.length > 0 ? [...missingSkills, ...jobCoverageSkills] : jobSkills
-  const jobBasedSkills = pickUniqueSkills(jobPool, jobCount, usedSkills)
-  const behavioralSkills = pickUniqueSkills(shuffledSkills, behavioralCount, usedSkills)
-  const adaptiveQuestions = roleIntelligence.adaptiveMode
-    ? buildAdaptiveQuestions(roleIntelligence, shuffledSkills, 0, input.experienceLevel)
-    : []
-  const adaptiveCount = adaptiveQuestions.length
+  const skillDrivenSkills = pickUniqueSkills(anchorSkills, Math.min(total, anchorSkills.length), usedSkills)
+  const fillBehavioralCount = Math.max(0, Math.min(total - skillDrivenSkills.length, Math.round(total * BEHAVIORAL_RATIO)))
+  const behavioralSkills = pickUniqueSkills(shuffledSkills, fillBehavioralCount, usedSkills)
 
-  const resumeQuestions = buildQuestionsForSkills(
-    resumeBasedSkills,
-    adaptiveCount,
-    roleIntelligence,
-    input.experienceLevel
-  )
-  const jobQuestions = buildQuestionsForSkills(
-    jobBasedSkills,
-    adaptiveCount + resumeQuestions.length,
+  const skillDrivenQuestions = buildQuestionsForSkills(
+    skillDrivenSkills,
+    0,
     roleIntelligence,
     input.experienceLevel
   )
   const behavioralQuestions = deriveBehavioralQuestions(
-    behavioralCount,
+    fillBehavioralCount,
     behavioralSkills,
-    adaptiveCount + resumeQuestions.length + jobQuestions.length,
+    skillDrivenQuestions.length,
     input.experienceLevel
   )
 
-  let combined = [...adaptiveQuestions, ...resumeQuestions, ...jobQuestions, ...behavioralQuestions].slice(0, total)
+  let combined = [...skillDrivenQuestions, ...behavioralQuestions].slice(0, total)
   if (combined.length < total) {
     const supplementalSkills = pickUniqueSkills(
-      mergeUniqueSkills(prioritizedSkills, roleFallbackSkills),
+      mergeUniqueSkills(remainingPool, prioritizedSkills, roleFallbackSkills),
       total - combined.length,
       new Set(usedSkills)
     )
@@ -1546,8 +1592,8 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
   })
 
   const withSkills: EnrichedGeneratedQuestion[] = assignSkillsToQuestions(regenerated, skillUniverse)
-  const resumeSkillSet = new Set(resumeBasedSkills.map(normalizeText))
-  const jobSkillSet = new Set(jobBasedSkills.map(normalizeText))
+  const resumeSkillSet = new Set(resumeSkills.map(normalizeText))
+  const jobSkillSet = new Set(jobSkills.map(normalizeText))
 
   let output: InterviewQuestion[] = withSkills.map((question, index) => {
     const mappedSkill = question.skill ?? mapQuestionToSkill(question.text, skillUniverse).skill
@@ -1576,6 +1622,7 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
       roleIntelligence,
       skillType: classifySkillType(question.skill),
     })
+    && questionMentionsSkill(question.question, question.skill)
   )
   output = dedupeInterviewQuestions(output)
 
@@ -1618,6 +1665,7 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
         roleIntelligence,
         skillType: classifySkillType(question.skill),
       })
+      && questionMentionsSkill(question.question, question.skill)
     )
     output = dedupeInterviewQuestions([...output, ...supplementalOutput]).slice(0, total)
   }
@@ -1697,25 +1745,36 @@ export async function generateBaseInterviewQuestionsAI(
     prioritizedSkills,
     `${roleIntelligence.family}|${roleIntelligence.subfamily ?? ""}|${normalizeExperienceLevel(input.experienceLevel)}`
   )
-  const resumeCount = Math.max(1, Math.round(total * RESUME_RATIO))
-  const jobCount = Math.max(1, Math.round(total * JOB_RATIO))
-  const behavioralCount = Math.max(1, Math.round(total * BEHAVIORAL_RATIO))
-
+  const { anchorSkills, remainingPool } = selectTargetSkillsForInterview(
+    {
+      roleIntelligence,
+      jobSkills,
+      rawResumeSkills: resumeSkills,
+      resumeSkills,
+      rawSkillUniverse: skillUniverse,
+      roleFallbackSkills,
+      skillUniverse,
+      commonSkills,
+      missingSkills,
+      jobCoverageSkills,
+      prioritizedSkills,
+    },
+    total
+  )
   const usedSkills = new Set<string>()
-  const resumeBasedSkills = pickUniqueSkills(commonSkills.length > 0 ? commonSkills : resumeSkills, resumeCount, usedSkills)
-  const jobPool = missingSkills.length > 0 ? [...missingSkills, ...jobCoverageSkills] : jobSkills
-  const jobBasedSkills = pickUniqueSkills(jobPool, jobCount, usedSkills)
-  const behavioralSkills = pickUniqueSkills(shuffledSkills, behavioralCount, usedSkills)
-  const resumeSkillSet = new Set(resumeBasedSkills.map(normalizeText))
-  const jobSkillSet = new Set(jobBasedSkills.map(normalizeText))
+  const primarySkills = pickUniqueSkills(anchorSkills, Math.min(total, anchorSkills.length), usedSkills)
+  const trailingBehavioralCount = Math.max(0, Math.min(total - primarySkills.length, Math.round(total * BEHAVIORAL_RATIO)))
+  const behavioralSkills = pickUniqueSkills(shuffledSkills, trailingBehavioralCount, usedSkills)
+  const resumeSkillSet = new Set(resumeSkills.map(normalizeText))
+  const jobSkillSet = new Set(jobSkills.map(normalizeText))
 
-  const requiredSkills = [...resumeBasedSkills, ...jobBasedSkills, ...behavioralSkills]
+  const requiredSkills = [...primarySkills, ...behavioralSkills]
   const baseCandidates = requiredSkills.length > 0 ? requiredSkills : [...skillUniverse, ...roleFallbackSkills]
   const skillCandidates = baseCandidates.length >= total
     ? baseCandidates
     : [
         ...baseCandidates,
-        ...roleFallbackSkills.filter((skill) => !baseCandidates.includes(skill)).slice(0, total - baseCandidates.length),
+        ...mergeUniqueSkills(remainingPool, roleFallbackSkills).filter((skill) => !baseCandidates.includes(skill)).slice(0, total - baseCandidates.length),
       ]
 
   const accepted: InterviewQuestion[] = []
@@ -1834,8 +1893,8 @@ export async function generateBaseInterviewQuestionsAI(
       },
       common_skills: commonSkills,
       missing_skills: missingSkills,
-      resume_target_skills: resumeBasedSkills,
-      job_target_skills: jobBasedSkills,
+      resume_target_skills: primarySkills.filter((skill) => resumeSkillSet.has(normalizeText(skill))),
+      job_target_skills: primarySkills.filter((skill) => jobSkillSet.has(normalizeText(skill))),
       behavioral_target_skills: behavioralSkills,
       required_skills: params.requiredSkills.map((skill) => presentSkillName(skill)),
       skill_type_map: Object.fromEntries(
@@ -1984,6 +2043,9 @@ export async function generateBaseInterviewQuestionsAI(
         if (!shouldAcceptQuestion({ question: item.question, skill: skillMatch, attempt })) {
           continue
         }
+        if (!questionMentionsSkill(item.question, skillMatch)) {
+          continue
+        }
 
         used.add(normalizedSkill)
         prev.push(item.question)
@@ -2045,6 +2107,9 @@ export async function generateBaseInterviewQuestionsAI(
         if (!shouldAcceptQuestion({ question: item.question, skill: skillMatch, attempt: 4 })) {
           continue
         }
+        if (!questionMentionsSkill(item.question, skillMatch)) {
+          continue
+        }
 
         used.add(normalizedSkill)
         prev.push(item.question)
@@ -2084,6 +2149,9 @@ export async function generateBaseInterviewQuestionsAI(
         })
         const item = questions[0]
         if (!item?.question) {
+          continue
+        }
+        if (!questionMentionsSkill(item.question, skill)) {
           continue
         }
         const normalizedSkill = normalizeText(skill)
