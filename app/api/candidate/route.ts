@@ -94,10 +94,55 @@ async function extractPdfText(resumeBuffer: Buffer) {
   }
 }
 
+async function extractPdfTextWithPdfParse(resumeBuffer: Buffer) {
+  const pdfParseModule = await import("pdf-parse")
+  const PDFParse = (("PDFParse" in pdfParseModule ? pdfParseModule.PDFParse : null) as unknown) as
+    | (new (options: { data: Uint8Array | Buffer | ArrayBuffer }) => {
+        getText: () => Promise<{ text?: string }>
+        destroy?: () => Promise<void>
+      })
+    | null
+
+  if (!PDFParse) {
+    throw new Error("pdf-parse PDFParse export is unavailable")
+  }
+
+  const parser = new PDFParse({ data: resumeBuffer })
+
+  try {
+    const parsed = await parser.getText()
+    return parsed.text?.trim() || null
+  } finally {
+    await parser.destroy?.()
+  }
+}
+
 async function extractResumeText(file: File, resumeBuffer: Buffer) {
   try {
     if (isPdfFile(file)) {
-      return await extractPdfText(resumeBuffer)
+      const parserErrors: string[] = []
+
+      try {
+        const text = await extractPdfText(resumeBuffer)
+        if (text) {
+          return text
+        }
+        parserErrors.push("pdfjs-dist returned empty text")
+      } catch (error) {
+        parserErrors.push(`pdfjs-dist: ${getErrorMessage(error)}`)
+      }
+
+      try {
+        const text = await extractPdfTextWithPdfParse(resumeBuffer)
+        if (text) {
+          return text
+        }
+        parserErrors.push("pdf-parse returned empty text")
+      } catch (error) {
+        parserErrors.push(`pdf-parse: ${getErrorMessage(error)}`)
+      }
+
+      throw new Error(parserErrors.join(" | "))
     }
 
     if (isDocxFile(file)) {
@@ -112,7 +157,7 @@ async function extractResumeText(file: File, resumeBuffer: Buffer) {
     return null
   } catch (error) {
     console.error("Failed to parse resume file", error)
-    return null
+    throw error
   }
 }
 
@@ -205,9 +250,9 @@ export async function POST(req: Request) {
     } catch (error) {
       console.error("Failed to extract resume text", error)
       throw new ApiError(
-        500,
+        400,
         "RESUME_PARSE_FAILED",
-        "Could not read resume text from the uploaded file"
+        `Could not read resume text from the uploaded file: ${getErrorMessage(error)}`
       )
     }
 
