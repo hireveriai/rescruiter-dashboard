@@ -8,7 +8,6 @@ import { errorResponse, successResponse } from "@/lib/server/response"
 import { generateBaseInterviewQuestions, generateBaseInterviewQuestionsAI } from "@/lib/server/ai/interview-flow"
 import { jobPositionsSupportIsActive } from "@/lib/server/services/jobs"
 import { createInterviewLink } from "@/lib/server/services/interview.service"
-import { repairInterviewQuestions } from "@/lib/server/services/interview-question-repair"
 import { sanitizeSkillList } from "@/lib/server/ai/skills"
 import {
   replaceInterviewQuestions,
@@ -165,9 +164,6 @@ export async function POST(request: Request) {
     let aiStatus = useAiQuestions ? "completed" : "disabled"
 
     if (useAiQuestions && result.interviewId) {
-      const asyncAi =
-        payload.async_ai_generation ?? payload.asyncAiGeneration ?? payload.async_ai ?? payload.asyncAi ?? false
-
       const runAiGeneration = async () => {
         const existingQuestions: string[] = []
         const resumeSkills = Array.isArray(payload.resume_skills ?? payload.resumeSkills)
@@ -298,36 +294,7 @@ export async function POST(request: Request) {
         }
       }
 
-      const runAutoRepair = async () => {
-        try {
-          await repairInterviewQuestions({
-            organizationId: auth.organizationId,
-            jobId,
-            interviewId: result.interviewId,
-            limit: 1,
-            force: false,
-          })
-
-          // Self-heal a small recent set of legacy interviews for the same job in background
-          // so recruiters do not need to run manual repair actions.
-          await repairInterviewQuestions({
-            organizationId: auth.organizationId,
-            jobId,
-            limit: 12,
-            force: false,
-          })
-        } catch (repairError) {
-          console.error("Automatic interview question repair failed", repairError)
-        }
-      }
-
-      if (asyncAi) {
-        await runAiGeneration()
-        void runAutoRepair()
-      } else {
-        await runAiGeneration()
-        void runAutoRepair()
-      }
+      await runAiGeneration()
     }
 
     let emailSent = false
