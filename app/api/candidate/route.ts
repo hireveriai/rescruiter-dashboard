@@ -1,7 +1,6 @@
 import { Prisma } from "@prisma/client"
 import { NextResponse } from "next/server"
-import { createRequire } from "module"
-import { dirname, join } from "path"
+import { join } from "path"
 import { pathToFileURL } from "url"
 
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
@@ -13,8 +12,6 @@ import { uploadBufferToS3 } from "@/lib/server/s3"
 import { jobPositionsSupportIsActive } from "@/lib/server/services/jobs"
 
 export const runtime = "nodejs"
-
-const requireFromRoute = createRequire(import.meta.url)
 
 function getStringValue(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : ""
@@ -74,8 +71,7 @@ async function ensurePdfDomPolyfills() {
 async function extractPdfText(resumeBuffer: Buffer) {
   await ensurePdfDomPolyfills()
   const pdfjsModule = await import("pdfjs-dist/legacy/build/pdf.mjs")
-  const pdfjsEntryPath = requireFromRoute.resolve("pdfjs-dist/legacy/build/pdf.mjs")
-  const workerPath = join(dirname(pdfjsEntryPath), "pdf.worker.mjs")
+  const workerPath = join(process.cwd(), "node_modules", "pdfjs-dist", "legacy", "build", "pdf.worker.mjs")
   const globalWorkerOptions = pdfjsModule.GlobalWorkerOptions as { workerSrc?: string }
 
   globalWorkerOptions.workerSrc = pathToFileURL(workerPath).toString()
@@ -143,8 +139,15 @@ async function extractPdfTextWithPdfParse(resumeBuffer: Buffer) {
     throw new Error("pdf-parse PDFParse export is unavailable")
   }
 
-  const pdfParseEntryPath = requireFromRoute.resolve("pdf-parse")
-  const workerPath = join(dirname(pdfParseEntryPath), "..", "esm", "pdf.worker.mjs")
+  const workerPath = join(
+    process.cwd(),
+    "node_modules",
+    "pdf-parse",
+    "dist",
+    "pdf-parse",
+    "esm",
+    "pdf.worker.mjs"
+  )
   PDFParse.setWorker?.(pathToFileURL(workerPath).toString())
 
   const parser = new PDFParse({ data: resumeBuffer })
