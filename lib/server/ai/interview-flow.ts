@@ -6,6 +6,7 @@ import {
   bucketSkill,
   classifySkillType,
   computeSkillCoverage,
+  deriveSkillsFromText,
   getFallbackSkillsForRoleFamily,
   inferRoleIntelligence,
   mapQuestionToSkill,
@@ -206,6 +207,47 @@ const AI_BAD_PREFIXES = [
 ]
 
 const NON_TECHNICAL_FORBIDDEN_PHRASES = ["troubleshoot", "production", "deployment", "latency", "rollback", "regression"]
+const TECHNICAL_LANGUAGE_MARKERS = [
+  "api",
+  "database",
+  "query",
+  "performance",
+  "latency",
+  "deployment",
+  "rollback",
+  "incident",
+  "system",
+  "service",
+  "monitoring",
+  "logging",
+  "security",
+  "architecture",
+  "debug",
+  "root cause",
+  "scal",
+  "backup",
+  "restore",
+]
+const NON_TECHNICAL_LANGUAGE_MARKERS = [
+  "schedule",
+  "scheduling",
+  "customer",
+  "stakeholder",
+  "coordination",
+  "resource",
+  "priority",
+  "sla",
+  "service level",
+  "planning",
+  "reschedule",
+  "allocation",
+  "workflow",
+  "communication",
+  "delivery",
+  "parts",
+  "supply chain",
+  "visit",
+]
 const QUESTION_VARIATION_STARTERS = ["How do you", "Walk me through", "Tell me about a time when", "What signals tell you"]
 
 type QuestionIntent =
@@ -498,6 +540,39 @@ function containsForbiddenNonTechnicalPhrase(question: string) {
   return NON_TECHNICAL_FORBIDDEN_PHRASES.some((phrase) => normalized.includes(phrase))
 }
 
+function containsTechnicalLanguage(question: string) {
+  const normalized = normalizeText(question)
+  return TECHNICAL_LANGUAGE_MARKERS.some((marker) => normalized.includes(marker))
+}
+
+function containsNonTechnicalLanguage(question: string) {
+  const normalized = normalizeText(question)
+  return NON_TECHNICAL_LANGUAGE_MARKERS.some((marker) => normalized.includes(marker))
+}
+
+function questionMatchesRoleStyle(params: {
+  question: string
+  roleIntelligence?: RoleIntelligence
+  skillType: ReturnType<typeof classifySkillType>
+}) {
+  const { question, roleIntelligence, skillType } = params
+  const family = roleIntelligence?.family
+
+  if (!family) {
+    return true
+  }
+
+  if (family === "technical") {
+    if (skillType === "behavioral") {
+      return true
+    }
+
+    return containsTechnicalLanguage(question) || skillType === "technical"
+  }
+
+  return !containsForbiddenNonTechnicalPhrase(question)
+}
+
 function cleanQuestionText(question: string) {
   return question
     .replace(/[Â·•]/g, " ")
@@ -506,6 +581,57 @@ function cleanQuestionText(question: string) {
     .replace(/[?!]{2,}/g, "?")
     .replace(/\s+([?.!,])/g, "$1")
     .trim()
+}
+
+function ensureQuestionSentence(question: string) {
+  const cleaned = cleanQuestionText(question)
+  if (!cleaned) {
+    return ""
+  }
+
+  const withoutTrailing = cleaned.replace(/[.?!]+$/g, "")
+  const capitalized = withoutTrailing.charAt(0).toUpperCase() + withoutTrailing.slice(1)
+  return `${capitalized}?`
+}
+
+function humanizeQuestion(question: string, skillType: InterviewQuestion["skill_type"]) {
+  let next = ensureQuestionSentence(question)
+    .replace(/\bHow do you handle production\b/gi, "How do you handle unexpected operational pressure")
+    .replace(/\bHow do you handle latency\b/gi, "How do you handle delays or slowdowns")
+    .replace(/\bmonitoring is central to the outcome\b/gi, "monitoring matters to the outcome")
+    .replace(/\bis a key part of the work\b/gi, "matters in the role")
+    .replace(/\bis central to the outcome\b/gi, "has a direct impact on the outcome")
+    .replace(/\bkey part of the work\b/gi, "role")
+    .replace(/\s+when when\b/gi, " when")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+
+  if (skillType !== "technical") {
+    next = next
+      .replace(/\bproduction\b/gi, "day-to-day delivery")
+      .replace(/\blatency\b/gi, "delay")
+      .replace(/\bdeployment\b/gi, "rollout")
+      .replace(/\brollback\b/gi, "reversal")
+      .replace(/\bmonitoring\b/gi, "tracking")
+      .replace(/\bsystem\b/gi, "process")
+  }
+
+  return ensureQuestionSentence(next)
+}
+
+function buildEffectiveSkills(params: {
+  listedSkills?: string[]
+  text?: string
+  jobTitle?: string
+  jobDescription?: string
+}) {
+  return mergeUniqueSkills(
+    sanitizeSkillList(params.listedSkills, {
+      jobTitle: params.jobTitle,
+      jobDescription: params.jobDescription,
+    }),
+    deriveSkillsFromText(params.text)
+  )
 }
 
 function buildPhaseHint(index: number, total: number): InterviewQuestion["phase_hint"] {
@@ -691,7 +817,10 @@ function buildIntentQuestion(
     "What signals tell you": `${starter} ${displaySkill} needs attention, and what do you do next?`,
   }
 
-  return cleanQuestionText(byStarter[starter] ?? `${starter} handle ${scenario}?`)
+  return humanizeQuestion(
+    byStarter[starter] ?? `${starter} handle ${scenario}?`,
+    normalizeInterviewSkillType(classifySkillType(displaySkill))
+  )
 }
 
 function buildQuestionsForSkills(skills: string[], offset: number, roleIntelligence?: RoleIntelligence) {
@@ -992,11 +1121,15 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
     resumeText: input.candidateResumeText,
   })
 
-  const jobSkills = sanitizeSkillList(input.coreSkills, {
+  const jobSkills = buildEffectiveSkills({
+    listedSkills: input.coreSkills,
+    text: input.jobDescription,
     jobTitle: input.jobTitle,
     jobDescription: input.jobDescription,
   })
-  const resumeSkills = sanitizeSkillList(input.candidateResumeSkills, {
+  const resumeSkills = buildEffectiveSkills({
+    listedSkills: input.candidateResumeSkills,
+    text: input.candidateResumeText,
     jobTitle: input.jobTitle,
     jobDescription: input.jobDescription,
   })
@@ -1065,8 +1198,10 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
     combined = [...combined, ...supplementalQuestions].slice(0, total)
   }
   const regenerated = combined.map((question) => {
+    const mappedSkill = question.tags?.[0] ?? mapQuestionToSkill(question.text, skillUniverse).skill
+    const normalizedSkillType = normalizeInterviewSkillType(classifySkillType(mappedSkill))
     const quality = validateQuestionQuality({
-      question: question.text,
+      question: humanizeQuestion(question.text, normalizedSkillType),
       jobTitle: input.jobTitle,
       jobSkills: skillUniverse,
       previousQuestions: input.previousQuestions ?? [],
@@ -1112,7 +1247,13 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
         jobSkillSet,
       }),
     }
-  })
+  }).filter((question) =>
+    questionMatchesRoleStyle({
+      question: question.question,
+      roleIntelligence,
+      skillType: classifySkillType(question.skill),
+    })
+  )
 
   if (output.length < total) {
     const outputSkills = new Set(output.map((question) => normalizeText(question.skill)))
@@ -1131,7 +1272,7 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
 
       return {
         id: question.id,
-        question: question.text,
+        question: humanizeQuestion(question.text, normalizedSkillType),
         skill: presentSkillName(mappedSkill),
         skill_type: normalizedSkillType,
         skill_bucket: question.skillBucket,
@@ -1146,7 +1287,13 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
           jobSkillSet,
         }),
       }
-    })
+    }).filter((question) =>
+      questionMatchesRoleStyle({
+        question: question.question,
+        roleIntelligence,
+        skillType: classifySkillType(question.skill),
+      })
+    )
     output = [...output, ...supplementalOutput].slice(0, total)
   }
 
@@ -1199,11 +1346,15 @@ export async function generateBaseInterviewQuestionsAI(
   const requested = resolveBaseQuestionCount(input) ?? DEFAULT_TOTAL
   const total = Math.min(MAX_BASE_QUESTIONS, Math.max(MIN_BASE_QUESTIONS, requested))
 
-  const jobSkills = sanitizeSkillList(input.coreSkills, {
+  const jobSkills = buildEffectiveSkills({
+    listedSkills: input.coreSkills,
+    text: input.jobDescription,
     jobTitle: input.jobTitle,
     jobDescription: input.jobDescription,
   })
-  const resumeSkills = sanitizeSkillList(input.candidateResumeSkills, {
+  const resumeSkills = buildEffectiveSkills({
+    listedSkills: input.candidateResumeSkills,
+    text: input.candidateResumeText,
     jobTitle: input.jobTitle,
     jobDescription: input.jobDescription,
   })
@@ -1295,6 +1446,16 @@ export async function generateBaseInterviewQuestionsAI(
 
     const skillType = classifySkillType(params.skill)
     if (skillType !== "technical" && containsForbiddenNonTechnicalPhrase(params.question)) {
+      return false
+    }
+
+    if (
+      !questionMatchesRoleStyle({
+        question: params.question,
+        roleIntelligence,
+        skillType,
+      })
+    ) {
       return false
     }
 
@@ -1415,7 +1576,7 @@ export async function generateBaseInterviewQuestionsAI(
               {
                 type: "input_text",
                 text:
-                  "Generate interview questions based on the provided skills and resume context. Rules: one question per skill, no job titles inside the question body, no locations, no generic phrases. Use structures appropriate to each skill type from question_style_rules. Follow the role_intelligence.question_mode when choosing the questioning style for this role family. Technical questions may use tools/debugging; non-technical questions must focus on workflow, scheduling, coordination, service urgency, resource allocation, stakeholders, metrics, planning, judgment, communication, or reasoning as appropriate. Use common_skills for resume-validation questions, missing_skills for coverage/probe questions, and variation_nonce to diversify phrasing across runs without mentioning it. If role_intelligence.adaptive_mode is true, make the first one or two questions exploratory and role-family-aware so the interview can refine what the candidate actually owns. For functional/behavioral/analytical/strategic/operational skills avoid technical phrases listed in non_technical_forbidden_phrases. Never quote the resume directly. Never mention awards, dates, date ranges, employer names, pasted bullet text, or sentence fragments from the resume. Convert resume context into a natural interview question about real work, judgment, ownership, planning, coordination, or execution. Output only JSON.",
+                  "Generate interview questions based on the provided skills and resume context. Rules: one question per skill, no job titles inside the question body, no locations, no generic phrases. Use structures appropriate to each skill type from question_style_rules. Follow the role_intelligence.question_mode when choosing the questioning style for this role family. Technical roles must sound like a real technical interview and use technical language, systems thinking, debugging, architecture, tooling, validation, or incident handling. Non-technical roles must sound like a human business or operational interview and must not use technical failure language such as production, deployment, latency, rollback, debugging, or system failure. Use common_skills for resume-validation questions, missing_skills for coverage/probe questions, and variation_nonce to diversify phrasing across runs without mentioning it. If role_intelligence.adaptive_mode is true, make the first one or two questions exploratory and role-family-aware so the interview can refine what the candidate actually owns. For functional/behavioral/analytical/strategic/operational skills avoid technical phrases listed in non_technical_forbidden_phrases. Never quote the resume directly. Never mention awards, dates, date ranges, employer names, pasted bullet text, or sentence fragments from the resume. Convert resume context into a natural interview question about real work, judgment, ownership, planning, coordination, or execution. Output only JSON.",
               },
             ],
           },
@@ -1518,7 +1679,7 @@ export async function generateBaseInterviewQuestionsAI(
         const normalizedSkillType = normalizeInterviewSkillType(item.skill_type || classifySkillType(skillMatch))
         accepted.push({
           id,
-          question: item.question,
+          question: humanizeQuestion(item.question, normalizedSkillType),
           skill: presentSkillName(skillMatch),
           skill_type: normalizedSkillType,
           skill_bucket: bucketSkill(skillMatch),
@@ -1579,7 +1740,7 @@ export async function generateBaseInterviewQuestionsAI(
         const normalizedSkillType = normalizeInterviewSkillType(item.skill_type || classifySkillType(skillMatch))
         accepted.push({
           id,
-          question: item.question,
+          question: humanizeQuestion(item.question, normalizedSkillType),
           skill: presentSkillName(skillMatch),
           skill_type: normalizedSkillType,
           skill_bucket: bucketSkill(skillMatch),
@@ -1623,7 +1784,7 @@ export async function generateBaseInterviewQuestionsAI(
         const normalizedSkillType = normalizeInterviewSkillType(classifySkillType(skill))
         accepted.push({
           id,
-          question: item.question,
+          question: humanizeQuestion(item.question, normalizedSkillType),
           skill: presentSkillName(skill),
           skill_type: normalizedSkillType,
           skill_bucket: bucketSkill(skill),
@@ -1659,7 +1820,7 @@ export async function generateBaseInterviewQuestionsAI(
         const normalizedSkillType = normalizeInterviewSkillType(classifySkillType(question.skill ?? normalizedSkill))
         accepted.push({
           id: question.id,
-          question: question.text,
+          question: humanizeQuestion(question.text, normalizedSkillType),
           skill: presentSkillName(question.skill ?? normalizedSkill),
           skill_type: normalizedSkillType,
           skill_bucket: question.skillBucket,
@@ -1710,7 +1871,7 @@ export async function generateBaseInterviewQuestionsAI(
       const normalizedSkillType = normalizeInterviewSkillType(classifySkillType(mappedSkill))
       accepted.push({
         id: question.id,
-        question: question.text,
+        question: humanizeQuestion(question.text, normalizedSkillType),
         skill: presentSkillName(mappedSkill),
         skill_type: normalizedSkillType,
         skill_bucket: question.skillBucket,

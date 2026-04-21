@@ -876,6 +876,14 @@ function extractSkillsFromText(text?: string) {
   return Array.from(new Set([...matchedKeywords, ...matchedPhrases]))
 }
 
+export function deriveSkillsFromText(text?: string) {
+  return Array.from(
+    new Set(
+      extractSkillsFromText(text).map((skill) => normalizeSkillName(skill))
+    )
+  )
+}
+
 function looksLikeSentenceSkill(raw: string) {
   const normalized = normalizeText(raw)
   if (!normalized) {

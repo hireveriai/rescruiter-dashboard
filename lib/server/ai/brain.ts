@@ -1,5 +1,5 @@
 import { enforceBehavioralQuestions, Question, RoleType } from "@/lib/server/ai/behavioral"
-import { assignSkillsToQuestions, buildSkillUniverse } from "@/lib/server/ai/skills"
+import { assignSkillsToQuestions, buildSkillUniverse, classifySkillType, presentSkillName } from "@/lib/server/ai/skills"
 
 export type GenerateQuestionsInput = {
   roleType: RoleType
@@ -186,6 +186,31 @@ const SCENARIO_KEYWORDS = [
   "lead quality",
 ]
 
+const TECHNICAL_SCENARIO_KEYWORDS = [
+  "production incident",
+  "latency spike",
+  "deployment issue",
+  "service outage",
+  "security review",
+  "performance regression",
+]
+
+const NON_TECHNICAL_SCENARIO_KEYWORDS = [
+  "priorities suddenly competing for the same time window",
+  "a customer commitment becoming hard to meet",
+  "a schedule slipping after an unexpected change",
+  "resource availability changing at the last minute",
+  "multiple teams needing alignment before work can continue",
+  "service pressure increasing while expectations stay high",
+]
+
+const BEHAVIORAL_SCENARIO_KEYWORDS = [
+  "stakeholders pulling in different directions",
+  "a difficult customer or team situation",
+  "a high-pressure day where calm judgment mattered",
+  "conflicting priorities forcing a tough decision",
+]
+
 const QUESTION_STARTERS = [
   "How do you handle",
   "What would you check if",
@@ -316,6 +341,23 @@ function containsSkillTag(text: string, skillTags: string[]) {
 function containsScenario(text: string) {
   const normalizedText = normalizeText(text)
   return SCENARIO_KEYWORDS.some((keyword) => normalizedText.includes(keyword))
+}
+
+function getScenarioPoolForSkill(skill: string) {
+  const skillType = classifySkillType(skill)
+  if (skillType === "behavioral") {
+    return BEHAVIORAL_SCENARIO_KEYWORDS
+  }
+
+  if (skillType === "technical") {
+    return TECHNICAL_SCENARIO_KEYWORDS
+  }
+
+  return NON_TECHNICAL_SCENARIO_KEYWORDS
+}
+
+function getQuestionTypeForSkill(skill: string): Question["type"] {
+  return classifySkillType(skill) === "behavioral" ? "BEHAVIORAL" : "TECHNICAL"
 }
 
 function looksLikeResumeLeak(text: string) {
@@ -481,10 +523,18 @@ function validateQuestionText(text: string, jobTitle: string | undefined, skillT
 }
 
 function createFallbackQuestion(skill: string, index: number, scenario: string): Question {
+  const displaySkill = presentSkillName(skill)
+  const skillType = classifySkillType(skill)
   const templates = [
-    `How do you handle ${scenario} when ${skill} is a key part of the work?`,
-    `Walk me through how you would respond if ${scenario} started affecting ${skill}.`,
-    `Tell me about a time when ${scenario} put pressure on ${skill}, and what you did next.`,
+    skillType === "technical"
+      ? `How do you investigate ${scenario} when ${displaySkill} is involved?`
+      : `How do you handle ${scenario} when ${displaySkill} needs to stay on track?`,
+    skillType === "technical"
+      ? `Walk me through how you would respond if ${scenario} started affecting ${displaySkill}.`
+      : `Walk me through how you would respond if ${scenario} started affecting ${displaySkill}.`,
+    skillType === "technical"
+      ? `Tell me about a time when ${scenario} tested your judgment around ${displaySkill}.`
+      : `Tell me about a time when ${scenario} created pressure around ${displaySkill}, and what you did next.`,
   ]
 
   const text = templates[index % templates.length]
@@ -494,7 +544,7 @@ function createFallbackQuestion(skill: string, index: number, scenario: string):
     text,
     phase: "MID",
     tags: [skill],
-    type: "TECHNICAL",
+    type: getQuestionTypeForSkill(skill),
   }
 }
 
@@ -505,7 +555,8 @@ function buildFallbackQuestions(skillTags: string[], totalNeeded: number) {
   let index = 0
   while (fallback.length < totalNeeded) {
     const skill = skills[index % skills.length]
-    const scenario = SCENARIO_KEYWORDS[index % SCENARIO_KEYWORDS.length]
+    const scenarioPool = getScenarioPoolForSkill(skill)
+    const scenario = scenarioPool[index % scenarioPool.length]
     const question = createFallbackQuestion(skill, index, scenario)
     fallback.push(question)
     index += 1
@@ -567,59 +618,66 @@ function buildRegeneratedQuestion(params: {
   attempt: number
 }): Question {
   const { reason, skill, scenario, attempt } = params
+  const displaySkill = presentSkillName(skill)
+  const skillType = classifySkillType(skill)
   const baseTemplates = [
-    `How do you handle ${scenario} when ${skill} is central to the outcome?`,
-    `Walk me through how you would respond if ${scenario} started affecting ${skill}.`,
-    `Tell me about a time when ${scenario} created pressure around ${skill}.`,
+    skillType === "technical"
+      ? `How do you investigate ${scenario} when ${displaySkill} is central to the outcome?`
+      : `How do you handle ${scenario} when ${displaySkill} is central to the outcome?`,
+    `Walk me through how you would respond if ${scenario} started affecting ${displaySkill}.`,
+    `Tell me about a time when ${scenario} created pressure around ${displaySkill}.`,
   ]
 
   if (reason === "generic_question") {
       return {
         id: `regen-${skill}-${attempt}`,
-      text: `Tell me about a time when ${scenario} made ${skill} harder to manage, and how you handled it.`,
+      text: `Tell me about a time when ${scenario} made ${displaySkill} harder to manage, and how you handled it.`,
         phase: "MID",
         tags: [skill],
-        type: "TECHNICAL",
+        type: getQuestionTypeForSkill(skill),
     }
   }
 
   if (reason === "no_skill_reference") {
       return {
         id: `regen-${skill}-${attempt}`,
-      text: `How do you handle ${scenario} when ${skill} is a key part of the work?`,
+      text:
+        skillType === "technical"
+          ? `How do you investigate ${scenario} when ${displaySkill} is a key part of the work?`
+          : `How do you handle ${scenario} when ${displaySkill} is a key part of the work?`,
         phase: "MID",
         tags: [skill],
-        type: "TECHNICAL",
+        type: getQuestionTypeForSkill(skill),
     }
   }
 
   if (reason === "repetition") {
       return {
         id: `regen-${skill}-${attempt}`,
-      text: `Walk me through a different example where ${scenario} tested your handling of ${skill}.`,
+      text: `Walk me through a different example where ${scenario} tested your handling of ${displaySkill}.`,
         phase: "MID",
         tags: [skill],
-        type: "TECHNICAL",
+        type: getQuestionTypeForSkill(skill),
     }
   }
 
   if (reason === "grammar_issue") {
       return {
         id: `regen-${skill}-${attempt}`,
-      text: `Walk me through how you would respond if ${scenario} started affecting ${skill}.`,
+      text: `Walk me through how you would respond if ${scenario} started affecting ${displaySkill}.`,
         phase: "MID",
         tags: [skill],
-        type: "TECHNICAL",
+        type: getQuestionTypeForSkill(skill),
     }
   }
 
   if (reason === "job_title_used") {
       return {
         id: `regen-${skill}-${attempt}`,
-      text: `Tell me about a situation where ${scenario} required strong judgment in ${skill}.`,
+      text: `Tell me about a situation where ${scenario} required strong judgment in ${displaySkill}.`,
         phase: "MID",
         tags: [skill],
-        type: "TECHNICAL",
+        type: getQuestionTypeForSkill(skill),
     }
   }
 
@@ -628,7 +686,7 @@ function buildRegeneratedQuestion(params: {
     text: baseTemplates[attempt % baseTemplates.length],
     phase: "MID",
     tags: [skill],
-    type: "TECHNICAL",
+    type: getQuestionTypeForSkill(skill),
   }
 }
 
@@ -641,12 +699,14 @@ function regenerateQuestionWithFeedback(params: {
 }): Question {
   const { reason, skillTags, previousQuestions, attempt } = params
   const skillPool = skillTags.length > 0 ? skillTags : DEFAULT_SKILLS
-  const scenario = SCENARIO_KEYWORDS[(attempt + previousQuestions.length) % SCENARIO_KEYWORDS.length]
 
   let skill = skillPool[attempt % skillPool.length]
   if (reason === "repetition" && skillPool.length > 1) {
     skill = skillPool[(attempt + 1) % skillPool.length]
   }
+
+  const scenarioPool = getScenarioPoolForSkill(skill)
+  const scenario = scenarioPool[(attempt + previousQuestions.length) % scenarioPool.length]
 
   return buildRegeneratedQuestion({ reason, skill, scenario, attempt })
 }
