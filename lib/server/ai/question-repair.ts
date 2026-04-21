@@ -8,38 +8,35 @@ export type RepairQuestionInput = {
 
 export type RepairQuestionOutput = {
   original: string
-  repaired: string
-  improvements: string[]
-  confidence: number
+  repaired: string | null
+  changed: boolean
+  rejected?: boolean
+  reason?: string
 }
 
-const STARTERS = [
+const STRONG_STARTERS = [
   "How do you",
+  "How would you",
   "What would you do if",
-  "Tell me about",
-  "How would you approach",
-  "Walk me through",
 ]
 
-const FILLER_PHRASES = [
-  "at first still matters",
-  "cannot be ignored",
+const BROKEN_PHRASES = [
+  "cannot be compromised",
+  "still matters",
   "starts affecting outcomes",
   "is central to the outcome",
   "is a key part of the work",
-  "at the same time still matters",
-  "when there is incomplete information at first",
+  "at first",
 ]
 
-const NORMALIZATION_MAP: Array<[RegExp, string]> = [
-  [/\bwhen there is incomplete information at first\b/gi, "when data is incomplete"],
-  [/\bat first\b/gi, ""],
-  [/\bstarts affecting outcomes\b/gi, "creates issues"],
-  [/\bis central to the outcome\b/gi, "matters in the role"],
-  [/\bis a key part of the work\b/gi, "matters in the role"],
+const NORMALIZATION_RULES: Array<[RegExp, string]> = [
+  [/[Â·â€¢_]+/g, " "],
+  [/\bwhen there is incomplete information\b/gi, "when data is incomplete"],
+  [/\bexecute database\b/gi, "work on the database"],
+  [/\bexecute sql\b/gi, "work on SQL"],
   [/\bthings\b/gi, "the process"],
   [/\bstuff\b/gi, "the work"],
-  [/[·•_]+/g, " "],
+  [/\boutcomes\b/gi, "results"],
   [/\s{2,}/g, " "],
 ]
 
@@ -47,24 +44,19 @@ function normalizeWhitespace(value: string) {
   return value.replace(/\s+/g, " ").trim()
 }
 
-function cleanText(value: string) {
-  let next = value
-  for (const [pattern, replacement] of NORMALIZATION_MAP) {
+function cleanRawText(value: string) {
+  let next = value ?? ""
+  for (const [pattern, replacement] of NORMALIZATION_RULES) {
     next = next.replace(pattern, replacement)
   }
-  for (const filler of FILLER_PHRASES) {
-    next = next.replace(new RegExp(filler.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), "")
+  for (const phrase of BROKEN_PHRASES) {
+    next = next.replace(new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), "")
   }
   return normalizeWhitespace(next)
 }
 
-function simplifyClauses(value: string) {
-  const parts = value
-    .split(/[,;]+/)
-    .map((part) => part.trim())
-    .filter(Boolean)
-
-  return normalizeWhitespace(parts.slice(0, 2).join(", "))
+function wordCount(value: string) {
+  return value.split(/\s+/).filter(Boolean).length
 }
 
 function sentenceCase(value: string) {
@@ -74,144 +66,164 @@ function sentenceCase(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
-function ensureStarter(text: string, intent?: string, skill?: string) {
-  const trimmed = text.trim()
-  if (!trimmed) {
-    const displaySkill = skill ? presentSkillName(skill) : "this area of work"
-    return `How would you approach ${displaySkill}?`
+function looksMeaningless(text: string) {
+  const normalized = text.toLowerCase()
+  if (!normalized || wordCount(normalized) < 4) {
+    return true
   }
 
-  if (STARTERS.some((starter) => trimmed.toLowerCase().startsWith(starter.toLowerCase()))) {
-    return trimmed
+  const badSignals = [
+    /employee of the month/i,
+    /worked as/i,
+    /from .* to/i,
+    /\baug\b|\bfeb\b|\bmar\b|\bapr\b|\bmay\b|\bjun\b|\bjul\b|\bsep\b|\boct\b|\bnov\b|\bdec\b/i,
+  ]
+
+  const signalHits = badSignals.filter((pattern) => pattern.test(text)).length
+  return signalHits >= 2
+}
+
+function inferStarter(intent?: string) {
+  const normalized = (intent ?? "").toUpperCase()
+  if (normalized.includes("BEHAV")) {
+    return "How do you"
+  }
+  if (normalized.includes("TROUBLE")) {
+    return "What would you do if"
+  }
+  if (normalized.includes("SYSTEM") || normalized.includes("DESIGN")) {
+    return "How would you"
+  }
+  if (normalized.includes("OPTIM")) {
+    return "How do you"
+  }
+  if (normalized.includes("ANAL")) {
+    return "How do you"
+  }
+  return STRONG_STARTERS[0]
+}
+
+function inferContextNoun(skill?: string, text?: string) {
+  const displaySkill = skill ? presentSkillName(skill) : ""
+  const normalizedSkill = normalizeSkillName(skill ?? "").replace(/_/g, " ")
+  const normalizedText = (text ?? "").toLowerCase()
+
+  if (/database|sql|query|postgres|mysql/.test(normalizedSkill) || /database|sql|query|postgres|mysql/.test(normalizedText)) {
+    return displaySkill || "the database"
+  }
+  if (/schedule|dispatch|allocation|resource|capacity/.test(normalizedSkill) || /schedule|dispatch|allocation|resource|capacity/.test(normalizedText)) {
+    return displaySkill || "the schedule"
+  }
+  if (/customer|service|support|sla/.test(normalizedSkill) || /customer|service|support|sla/.test(normalizedText)) {
+    return displaySkill || "the service process"
+  }
+  if (/pipeline|etl|data/.test(normalizedSkill) || /pipeline|etl|data/.test(normalizedText)) {
+    return displaySkill || "the data pipeline"
+  }
+  if (/team|stakeholder|coordination|communication/.test(normalizedSkill) || /team|stakeholder|coordination|communication/.test(normalizedText)) {
+    return displaySkill || "the workflow"
   }
 
-  const displaySkill = skill ? presentSkillName(skill) : "this"
+  return displaySkill || "the process"
+}
+
+function inferSituation(text: string, skill?: string, intent?: string) {
+  const normalized = text.toLowerCase()
+  const context = inferContextNoun(skill, text)
+
+  if (/priority|competing|window|urgent/.test(normalized)) {
+    return `priorities suddenly conflict in ${context}`
+  }
+  if (/monitor|alert|signal|metric/.test(normalized)) {
+    return `${context} shows warning signs`
+  }
+  if (/latency|performance|slow/.test(normalized)) {
+    return `${context} starts slowing down`
+  }
+  if (/security|risk|compliance/.test(normalized)) {
+    return `${context} raises a risk concern`
+  }
+  if (/handoff|team|stakeholder|communication/.test(normalized)) {
+    return `coordination breaks down around ${context}`
+  }
+  if (/incomplete information|data is incomplete|mixed signal/.test(normalized)) {
+    return `data is incomplete around ${context}`
+  }
+
   const normalizedIntent = (intent ?? "").toUpperCase()
-
-  if (normalizedIntent.includes("BEHAVIOR")) {
-    return `Tell me about ${trimmed.replace(/^[a-z]/, (m) => m.toLowerCase())}`
-  }
-
   if (normalizedIntent.includes("TROUBLE")) {
-    return `How do you ${trimmed.replace(/^[a-z]/, (m) => m.toLowerCase())}`
+    return `${context} starts going off track`
+  }
+  if (normalizedIntent.includes("BEHAV")) {
+    return `${context} comes under pressure`
   }
 
-  if (normalizedIntent.includes("EXECUTION") || normalizedIntent.includes("SYSTEM_DESIGN")) {
-    return `How would you approach ${trimmed.replace(/^[a-z]/, (m) => m.toLowerCase())}`
-  }
-
-  return `How do you handle ${displaySkill} when ${trimmed.replace(/^[a-z]/, (m) => m.toLowerCase())}`
+  return `${context} needs closer attention`
 }
 
-function injectMissingContext(text: string, skill?: string) {
-  if (!skill) {
-    return text
+function buildRewrite(input: RepairQuestionInput) {
+  const cleaned = cleanRawText(input.question_text)
+  const starter = inferStarter(input.intent)
+  const context = inferContextNoun(input.skill, cleaned)
+  const situation = inferSituation(cleaned, input.skill, input.intent)
+
+  if (starter === "What would you do if") {
+    return `${starter} ${situation}?`
   }
 
-  const displaySkill = presentSkillName(skill)
-  const normalizedText = text.toLowerCase()
-  const normalizedSkill = normalizeSkillName(skill).replace(/_/g, " ")
-
-  if (normalizedText.includes(normalizedSkill.toLowerCase())) {
-    return text
+  if (starter === "How would you") {
+    return `${starter} approach ${context} when ${situation.replace(new RegExp(`^${context}\\s*`, "i"), "").trim()}?`
   }
 
-  if (/process|system|database|workflow|schedule|pipeline|service|team|customer/.test(normalizedText)) {
-    return text
-  }
-
-  return text.replace(/\?$/, ` in ${displaySkill}?`)
+  return `${starter} handle ${situation}?`
 }
 
-function enforceQuestionLength(text: string) {
+function compressToLength(text: string) {
   const words = text.split(/\s+/).filter(Boolean)
-  if (words.length <= 25) {
+  if (words.length <= 18) {
     return text
   }
 
-  return `${words.slice(0, 25).join(" ").replace(/[,.]+$/g, "")}?`
-}
-
-function deRepeat(text: string) {
-  const normalized = text
-    .replace(/\b([a-z]+)\s+\1\b/gi, "$1")
-    .replace(/\b(the process)\s+(the process)\b/gi, "$1")
-  return normalizeWhitespace(normalized)
+  return `${words.slice(0, 18).join(" ").replace(/[,.]+$/g, "")}?`
 }
 
 function finalizeQuestion(text: string) {
-  const withoutPunctuation = text.replace(/[.?!]+$/g, "")
-  return `${sentenceCase(normalizeWhitespace(withoutPunctuation))}?`
-}
-
-function computeConfidence(improvements: string[], original: string, repaired: string) {
-  let score = 0.78
-  if (improvements.includes("grammar_fixed")) {
-    score -= 0.05
-  }
-  if (improvements.includes("jd_leakage_rewritten")) {
-    score -= 0.08
-  }
-  if (original.trim().toLowerCase() === repaired.trim().toLowerCase()) {
-    score += 0.06
-  }
-  return Math.max(0.45, Math.min(0.98, Number(score.toFixed(2))))
+  const trimmed = normalizeWhitespace(text).replace(/[.?!]+$/g, "")
+  return `${sentenceCase(trimmed)}?`
 }
 
 export function repairQuestionText(input: RepairQuestionInput): RepairQuestionOutput {
   const original = input.question_text ?? ""
-  const improvements = new Set<string>()
+  const cleaned = cleanRawText(original)
 
-  let repaired = cleanText(original)
-  if (repaired !== original) {
-    improvements.add("grammar_fixed")
+  if (looksMeaningless(cleaned)) {
+    return {
+      original,
+      repaired: null,
+      changed: false,
+      rejected: true,
+      reason: "Meaning is too unclear to rewrite confidently",
+    }
   }
 
-  const simplified = simplifyClauses(repaired)
-  if (simplified !== repaired) {
-    repaired = simplified
-    improvements.add("simplified")
-  }
-
-  const beforeStarter = repaired
-  repaired = ensureStarter(repaired, input.intent, input.skill)
-  if (repaired !== beforeStarter) {
-    improvements.add("clarity_improved")
-  }
-
-  const beforeContext = repaired
-  repaired = injectMissingContext(repaired, input.skill)
-  if (repaired !== beforeContext) {
-    improvements.add("context_added")
-  }
-
-  const beforeRepeat = repaired
-  repaired = deRepeat(repaired)
-  if (repaired !== beforeRepeat) {
-    improvements.add("repetition_removed")
-  }
-
-  const beforeLength = repaired
-  repaired = enforceQuestionLength(repaired)
-  if (repaired !== beforeLength) {
-    improvements.add("simplified")
-  }
-
-  const beforeFinal = repaired
+  let repaired = buildRewrite(input)
+  repaired = compressToLength(repaired)
   repaired = finalizeQuestion(repaired)
-  if (repaired !== beforeFinal) {
-    improvements.add("grammar_fixed")
-  }
 
-  if (/(award|awarded|employee of the month|worked as|from .* to)/i.test(original)) {
-    improvements.add("jd_leakage_rewritten")
+  if (wordCount(repaired) < 4 || wordCount(repaired) > 18) {
+    return {
+      original,
+      repaired: null,
+      changed: false,
+      rejected: true,
+      reason: "Question could not be rewritten into a clear short form",
+    }
   }
 
   return {
     original,
     repaired,
-    improvements: Array.from(improvements),
-    confidence: computeConfidence(Array.from(improvements), original, repaired),
+    changed: normalizeWhitespace(original).toLowerCase() !== normalizeWhitespace(repaired).toLowerCase(),
   }
 }
 
