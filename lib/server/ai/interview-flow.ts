@@ -140,7 +140,7 @@ const MAX_BASE_QUESTIONS = 10
 const RESUME_RATIO = 0.3
 const JOB_RATIO = 0.5
 const BEHAVIORAL_RATIO = 0.2
-const MIN_SKILL_KEYWORD_RATIO = 0.7
+const MIN_SKILL_KEYWORD_RATIO = 1
 
 const VAGUE_MARKERS = ["not sure", "maybe", "i think", "not certain", "somehow"]
 const STRONG_MARKERS = ["always", "never", "definitely", "absolutely"]
@@ -603,6 +603,39 @@ function questionMentionsSkill(question: string, skill: string) {
     .filter((token) => token.length >= 3 && !["and", "for", "the", "with"].includes(token))
 
   return meaningfulTokens.some((token) => normalizedQuestion.includes(token))
+}
+
+function isTooGenericSkillQuestion(question: string, skill: string) {
+  const normalizedQuestion = normalizeText(question)
+  const normalizedSkill = normalizeText(presentSkillName(skill))
+
+  if (!normalizedQuestion || !normalizedSkill) {
+    return true
+  }
+
+  const stripped = normalizedQuestion
+    .replace(new RegExp(`\\b${normalizedSkill.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g"), " ")
+    .replace(/\b(how do you|how would you|what would you do if|walk me through|tell me about)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+
+  const genericPhrases = [
+    "troubleshoot issues",
+    "optimize performance",
+    "handle production",
+    "improve outcomes",
+    "solve problems",
+    "manage work",
+    "deal with pressure",
+    "make decisions",
+  ]
+
+  if (genericPhrases.some((phrase) => normalizedQuestion.includes(phrase))) {
+    return true
+  }
+
+  const strippedTokens = stripped.split(/\s+/).filter(Boolean)
+  return strippedTokens.length < 3
 }
 
 function normalizeExperienceLevel(level?: string) {
@@ -1157,14 +1190,18 @@ function buildIntentQuestion(
   const rendered = renderQuestionTemplate(template, variables)
   const humanized = humanizeQuestion(rendered, skillType)
 
-  if (questionMentionsSkill(humanized, displaySkill)) {
+  if (questionMentionsSkill(humanized, displaySkill) && !isTooGenericSkillQuestion(humanized, displaySkill)) {
     return humanized
   }
 
-  return humanizeQuestion(
+  const fallback = humanizeQuestion(
     buildSkillAnchoredFallbackQuestion(displaySkill, normalizedIntent, roleIntelligence),
     skillType
   )
+
+  return isTooGenericSkillQuestion(fallback, displaySkill)
+    ? `How would you use ${displaySkill} in this role?`
+    : fallback
 }
 
 function buildQuestionsForSkills(
@@ -1243,6 +1280,7 @@ function ensureQuestionCount(params: {
         skillType: classifySkillType(skill),
       })
       && questionMentionsSkill(candidate.question, candidate.skill)
+      && !isTooGenericSkillQuestion(candidate.question, candidate.skill)
     ) {
       const deduped = dedupeInterviewQuestions([...output, candidate])
       if (deduped.length > output.length) {
@@ -1279,6 +1317,7 @@ function ensureSkillCoverageQuestionSet(params: {
         roleIntelligence: params.roleIntelligence,
         skillType: classifySkillType(question.skill),
       }) && questionMentionsSkill(question.question, question.skill)
+        && !isTooGenericSkillQuestion(question.question, question.skill)
     )
   )
 
@@ -1387,7 +1426,10 @@ function ensureSkillCoverageQuestionSet(params: {
           }),
         }
       }
-    ).filter((question) => questionMentionsSkill(question.question, question.skill))
+    ).filter((question) =>
+      questionMentionsSkill(question.question, question.skill)
+      && !isTooGenericSkillQuestion(question.question, question.skill)
+    )
 
     output = dedupeInterviewQuestions([...output, ...refillOutput]).slice(0, params.total)
   }
@@ -1812,6 +1854,7 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
       skillType: classifySkillType(question.skill),
     })
     && questionMentionsSkill(question.question, question.skill)
+    && !isTooGenericSkillQuestion(question.question, question.skill)
   )
   output = dedupeInterviewQuestions(output)
 
@@ -1855,6 +1898,7 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
         skillType: classifySkillType(question.skill),
       })
       && questionMentionsSkill(question.question, question.skill)
+      && !isTooGenericSkillQuestion(question.question, question.skill)
     )
     output = dedupeInterviewQuestions([...output, ...supplementalOutput]).slice(0, total)
   }
@@ -2236,6 +2280,9 @@ export async function generateBaseInterviewQuestionsAI(
         if (!questionMentionsSkill(item.question, skillMatch)) {
           continue
         }
+        if (isTooGenericSkillQuestion(item.question, skillMatch)) {
+          continue
+        }
 
         used.add(normalizedSkill)
         prev.push(item.question)
@@ -2300,6 +2347,9 @@ export async function generateBaseInterviewQuestionsAI(
         if (!questionMentionsSkill(item.question, skillMatch)) {
           continue
         }
+        if (isTooGenericSkillQuestion(item.question, skillMatch)) {
+          continue
+        }
 
         used.add(normalizedSkill)
         prev.push(item.question)
@@ -2342,6 +2392,9 @@ export async function generateBaseInterviewQuestionsAI(
           continue
         }
         if (!questionMentionsSkill(item.question, skill)) {
+          continue
+        }
+        if (isTooGenericSkillQuestion(item.question, skill)) {
           continue
         }
         const normalizedSkill = normalizeText(skill)
@@ -2506,6 +2559,8 @@ export async function generateBaseInterviewQuestionsAI(
         roleIntelligence,
         skillType: classifySkillType(question.skill),
       })
+      && questionMentionsSkill(question.question, question.skill)
+      && !isTooGenericSkillQuestion(question.question, question.skill)
     )
 
     dedupedAccepted = dedupeInterviewQuestions([...dedupedAccepted, ...refillOutput]).slice(0, total)
