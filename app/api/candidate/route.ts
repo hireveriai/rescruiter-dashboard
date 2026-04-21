@@ -1,7 +1,5 @@
 import { Prisma } from "@prisma/client"
 import { NextResponse } from "next/server"
-import { join } from "path"
-import { pathToFileURL } from "url"
 
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
 import { ApiError } from "@/lib/server/errors"
@@ -48,6 +46,10 @@ type PdfLoadingTask = {
   destroy?: () => Promise<void>
 }
 
+type PdfWorkerModule = {
+  WorkerMessageHandler?: unknown
+}
+
 async function ensurePdfDomPolyfills() {
   if (globalThis.DOMMatrix && globalThis.DOMPoint && globalThis.DOMRect) {
     return
@@ -68,13 +70,26 @@ async function ensurePdfDomPolyfills() {
   }
 }
 
-async function extractPdfText(resumeBuffer: Buffer) {
-  await ensurePdfDomPolyfills()
-  const pdfjsModule = await import("pdfjs-dist/legacy/build/pdf.mjs")
-  const workerPath = join(process.cwd(), "node_modules", "pdfjs-dist", "legacy", "build", "pdf.worker.mjs")
-  const globalWorkerOptions = pdfjsModule.GlobalWorkerOptions as { workerSrc?: string }
+async function ensurePdfWorkerModule() {
+  const existingWorker = (globalThis as typeof globalThis & { pdfjsWorker?: PdfWorkerModule }).pdfjsWorker
 
-  globalWorkerOptions.workerSrc = pathToFileURL(workerPath).toString()
+  if (existingWorker?.WorkerMessageHandler) {
+    return
+  }
+
+  const workerModule = await import("pdfjs-dist/legacy/build/pdf.worker.mjs")
+  ;(globalThis as typeof globalThis & { pdfjsWorker?: PdfWorkerModule }).pdfjsWorker =
+    workerModule as PdfWorkerModule
+}
+
+async function ensurePdfServerRuntime() {
+  await ensurePdfDomPolyfills()
+  await ensurePdfWorkerModule()
+}
+
+async function extractPdfText(resumeBuffer: Buffer) {
+  await ensurePdfServerRuntime()
+  const pdfjsModule = await import("pdfjs-dist/legacy/build/pdf.mjs")
 
   const getDocument = (pdfjsModule.getDocument as (options: {
     data: Uint8Array
@@ -123,7 +138,7 @@ async function extractPdfText(resumeBuffer: Buffer) {
 }
 
 async function extractPdfTextWithPdfParse(resumeBuffer: Buffer) {
-  await ensurePdfDomPolyfills()
+  await ensurePdfServerRuntime()
   const pdfParseModule = await import("pdf-parse")
   const PDFParse = (("PDFParse" in pdfParseModule ? pdfParseModule.PDFParse : null) as unknown) as
     | ({
@@ -131,24 +146,12 @@ async function extractPdfTextWithPdfParse(resumeBuffer: Buffer) {
           getText: () => Promise<{ text?: string }>
           destroy?: () => Promise<void>
         }
-        setWorker?: (workerSrc?: string) => string
       })
     | null
 
   if (!PDFParse) {
     throw new Error("pdf-parse PDFParse export is unavailable")
   }
-
-  const workerPath = join(
-    process.cwd(),
-    "node_modules",
-    "pdf-parse",
-    "dist",
-    "pdf-parse",
-    "esm",
-    "pdf.worker.mjs"
-  )
-  PDFParse.setWorker?.(pathToFileURL(workerPath).toString())
 
   const parser = new PDFParse({ data: resumeBuffer })
 
