@@ -26,40 +26,78 @@ function isDocxFile(file: File) {
   )
 }
 
-type PdfTextResult = {
-  text?: string
+type PdfTextContentItem = {
+  str?: string
 }
 
-type PdfParseInstance = {
-  getText: () => Promise<PdfTextResult>
+type PdfPageProxy = {
+  getTextContent: () => Promise<{ items: PdfTextContentItem[] }>
+  cleanup?: () => void
+}
+
+type PdfDocumentProxy = {
+  numPages: number
+  getPage: (pageNumber: number) => Promise<PdfPageProxy>
   destroy?: () => Promise<void>
 }
 
-type PdfParseCtor = new (options: { data: Buffer | Uint8Array | ArrayBuffer }) => PdfParseInstance
+type PdfLoadingTask = {
+  promise: Promise<PdfDocumentProxy>
+  destroy?: () => Promise<void>
+}
+
+async function extractPdfText(resumeBuffer: Buffer) {
+  const pdfjsModule = await import("pdfjs-dist/legacy/build/pdf.mjs")
+  const getDocument = (pdfjsModule.getDocument as (options: {
+    data: Uint8Array
+    useWorkerFetch?: boolean
+    isEvalSupported?: boolean
+    useSystemFonts?: boolean
+  }) => PdfLoadingTask)
+
+  const loadingTask = getDocument({
+    data: new Uint8Array(resumeBuffer),
+    useWorkerFetch: false,
+    isEvalSupported: false,
+    useSystemFonts: true,
+  })
+
+  const pdfDocument = await loadingTask.promise
+
+  try {
+    const pages: string[] = []
+
+    for (let pageNumber = 1; pageNumber <= pdfDocument.numPages; pageNumber += 1) {
+      const page = await pdfDocument.getPage(pageNumber)
+
+      try {
+        const textContent = await page.getTextContent()
+        const pageText = textContent.items
+          .map((item) => item.str?.trim() ?? "")
+          .filter(Boolean)
+          .join(" ")
+          .replace(/\s+/g, " ")
+          .trim()
+
+        if (pageText) {
+          pages.push(pageText)
+        }
+      } finally {
+        page.cleanup?.()
+      }
+    }
+
+    return pages.join("\n").trim() || null
+  } finally {
+    await pdfDocument.destroy?.()
+    await loadingTask.destroy?.()
+  }
+}
 
 async function extractResumeText(file: File, resumeBuffer: Buffer) {
   try {
     if (isPdfFile(file)) {
-      const pdfParseModule = await import("pdf-parse")
-      const PDFParse = (("PDFParse" in pdfParseModule ? pdfParseModule.PDFParse : null) as unknown) as
-        | PdfParseCtor
-        | null
-
-      if (!PDFParse) {
-        throw new Error("pdf-parse PDFParse export is unavailable")
-      }
-
-      const parser = new PDFParse({ data: resumeBuffer })
-
-      try {
-        const parsed = await parser.getText()
-        const text = parsed.text?.trim()
-
-        return text || null
-      } finally {
-        await parser.destroy?.()
-      }
-
+      return await extractPdfText(resumeBuffer)
     }
 
     if (isDocxFile(file)) {
