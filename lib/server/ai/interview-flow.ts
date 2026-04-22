@@ -137,6 +137,7 @@ const OPENAI_QUESTION_MODEL = "gpt-4o-mini"
 const DEFAULT_TOTAL = 7
 const MIN_BASE_QUESTIONS = 5
 const MAX_BASE_QUESTIONS = 10
+const STRICT_MAX_QUESTIONS = 15
 const RESUME_RATIO = 0.3
 const JOB_RATIO = 0.5
 const BEHAVIORAL_RATIO = 0.2
@@ -1976,6 +1977,348 @@ function normalizeSkillMatch(skill: string, candidates: string[]) {
   return partial ?? null
 }
 
+type SelectedInterviewSkill = {
+  skill: string
+  source: "job" | "resume"
+}
+
+function isDataEngineeringRole(plan: RoleQuestionPlan, input?: BaseGenerationInput) {
+  const title = normalizeText(input?.jobTitle ?? "")
+  if (title.includes("data engineer")) {
+    return true
+  }
+
+  return mergeUniqueSkills(plan.jobSkills, plan.resumeSkills).some(isDataEngineeringAnchor)
+}
+
+function buildSelectedInterviewSkills(
+  plan: RoleQuestionPlan,
+  input: BaseGenerationInput,
+  total: number
+): SelectedInterviewSkill[] {
+  const jobSpecific = prioritizeDomainSpecificJobSkills(
+    filterSpecificSkillAnchors(plan.jobSkills, plan.roleIntelligence)
+  )
+  const resumeSpecific = prioritizeDomainSpecificJobSkills(
+    filterSpecificSkillAnchors(plan.resumeSkills, plan.roleIntelligence)
+  )
+
+  const common = jobSpecific.filter((skill) =>
+    resumeSpecific.some((resumeSkill) => normalizeText(resumeSkill) === normalizeText(skill))
+  )
+  const jobOnly = jobSpecific.filter(
+    (skill) => !resumeSpecific.some((resumeSkill) => normalizeText(resumeSkill) === normalizeText(skill))
+  )
+  const resumeOnly = resumeSpecific.filter(
+    (skill) => !jobSpecific.some((jobSkill) => normalizeText(jobSkill) === normalizeText(skill))
+  )
+
+  const selected: SelectedInterviewSkill[] = []
+  const used = new Set<string>()
+  const pushSkills = (skills: string[], source: "job" | "resume", limit?: number) => {
+    let added = 0
+    for (const skill of skills) {
+      const normalized = normalizeText(skill)
+      if (!normalized || used.has(normalized)) {
+        continue
+      }
+      selected.push({ skill, source })
+      used.add(normalized)
+      added += 1
+      if (typeof limit === "number" && added >= limit) {
+        break
+      }
+      if (selected.length >= total) {
+        break
+      }
+    }
+  }
+
+  pushSkills(common, "job")
+  pushSkills(jobOnly, "job")
+  pushSkills(resumeOnly, "resume", Math.max(1, Math.floor(total * 0.25)))
+
+  if (selected.length < total) {
+    pushSkills(
+      buildJobFirstSkillPool(plan),
+      "job"
+    )
+  }
+
+  if (selected.length < total) {
+    pushSkills(
+      prioritizeDomainSpecificJobSkills(
+        filterSpecificSkillAnchors(plan.roleFallbackSkills, plan.roleIntelligence)
+      ),
+      "job"
+    )
+  }
+
+  return selected.slice(0, Math.max(total, 1))
+}
+
+function buildSkillQuestionVariants(
+  skill: string,
+  roleIntelligence: RoleIntelligence,
+  experienceLevel?: string,
+  dataEngineeringRole?: boolean
+) {
+  const displaySkill = presentSkillName(skill)
+  const normalizedSkill = normalizeText(skill)
+  const difficulty = extractDifficultyForExperience(experienceLevel)
+
+  const guided = difficulty === "guided"
+  const strategic = difficulty === "strategic"
+
+  if (/(azure data factory|adf)/.test(normalizedSkill)) {
+    return [
+      "How do you design ETL pipelines using Azure Data Factory?",
+      "How do you handle failures in Azure Data Factory pipelines?",
+      "Walk me through an Azure Data Factory pipeline you built.",
+    ]
+  }
+
+  if (/databricks/.test(normalizedSkill)) {
+    return [
+      "How do you use Databricks to build scalable data pipelines?",
+      "How do you optimize Databricks jobs for large datasets?",
+      "Walk me through a Databricks workflow you have built.",
+    ]
+  }
+
+  if (/(spark|pyspark)/.test(normalizedSkill)) {
+    return [
+      "How do you optimize Spark jobs for large datasets?",
+      "How do you troubleshoot slow Spark jobs in production pipelines?",
+      "Walk me through how you use Spark in ETL pipelines.",
+    ]
+  }
+
+  if (/delta lake/.test(normalizedSkill)) {
+    return [
+      "How do you use Delta Lake to improve reliability in data pipelines?",
+      "How do you structure Delta Lake tables for downstream querying?",
+      "What trade-offs do you consider when using Delta Lake?",
+    ]
+  }
+
+  if (/data lake/.test(normalizedSkill)) {
+    return [
+      "How do you structure data in a data lake for efficient querying?",
+      "How do you manage data quality in a data lake?",
+      "How would you organize a data lake for downstream consumers?",
+    ]
+  }
+
+  if (/(etl pipeline|data pipeline)/.test(normalizedSkill)) {
+    return [
+      "How do you design ETL pipelines for reliable data delivery?",
+      "How do you handle failures in ETL pipelines?",
+      "Walk me through an ETL pipeline you built.",
+    ]
+  }
+
+  if (/data warehouse/.test(normalizedSkill)) {
+    return [
+      "How do you model data for a warehouse used by analytics teams?",
+      "How do you improve performance in a data warehouse?",
+      "Walk me through a data warehouse design you implemented.",
+    ]
+  }
+
+  if (/(sql|mysql|postgresql|postgres|database)/.test(normalizedSkill)) {
+    if (dataEngineeringRole) {
+      return [
+        `How do you optimize ${displaySkill} queries for large datasets?`,
+        `How do you troubleshoot slow ${displaySkill} queries in ETL workflows?`,
+        `How do you use ${displaySkill} to support reliable data pipelines?`,
+      ]
+    }
+
+    return [
+      `How do you optimize ${displaySkill} queries under heavy load?`,
+      `How do you troubleshoot recurring ${displaySkill} issues?`,
+      `Walk me through how you use ${displaySkill} in production systems.`,
+    ]
+  }
+
+  if (roleIntelligence.family === "technical") {
+    if (dataEngineeringRole) {
+      return guided
+        ? [`How do you use ${displaySkill} in a data pipeline?`]
+        : strategic
+          ? [
+              `How would you scale ${displaySkill} for growing data volume?`,
+              `What trade-offs matter most when using ${displaySkill} in data platforms?`,
+            ]
+          : [
+              `How do you use ${displaySkill} in a production data pipeline?`,
+              `How do you improve reliability when working with ${displaySkill}?`,
+            ]
+    }
+
+    return guided
+      ? [`How do you use ${displaySkill} in real work?`]
+      : strategic
+        ? [
+            `How would you scale ${displaySkill} without losing reliability?`,
+            `What trade-offs matter most when designing around ${displaySkill}?`,
+          ]
+        : [
+            `How do you implement ${displaySkill} in production systems?`,
+            `How do you troubleshoot issues related to ${displaySkill}?`,
+          ]
+  }
+
+  if (roleIntelligence.family === "operations") {
+    return [
+      `How do you manage ${displaySkill} when priorities change unexpectedly?`,
+      `How do you keep ${displaySkill} on track under pressure?`,
+    ]
+  }
+
+  if (roleIntelligence.family === "sales") {
+    return [
+      `How do you use ${displaySkill} to move deals forward?`,
+      `How do you improve results when ${displaySkill} starts slipping?`,
+    ]
+  }
+
+  return [
+    `How do you apply ${displaySkill} in real work situations?`,
+    `How would you approach a practical problem using ${displaySkill}?`,
+  ]
+}
+
+function buildStrictSkillQuestions(
+  input: BaseGenerationInput
+): BaseGenerationOutput {
+  const requested = resolveBaseQuestionCount(input) ?? DEFAULT_TOTAL
+  const plan = buildRoleQuestionPlan(input)
+  const requiredJobSkills = prioritizeDomainSpecificJobSkills(
+    filterSpecificSkillAnchors(plan.jobSkills, plan.roleIntelligence)
+  )
+  const total = Math.min(
+    STRICT_MAX_QUESTIONS,
+    Math.max(MIN_BASE_QUESTIONS, requested, requiredJobSkills.length)
+  )
+  const variationSeed = buildVariationSeed(input)
+  const dataEngineeringRole = isDataEngineeringRole(plan, input)
+  const selectedSkills = buildSelectedInterviewSkills(plan, input, total)
+  const resumeSkillSet = new Set(plan.resumeSkills.map(normalizeText))
+  const jobSkillSet = new Set(plan.jobSkills.map(normalizeText))
+  const questions: InterviewQuestion[] = []
+  const seenQuestions = new Set<string>()
+  const usedSkills = new Set<string>()
+
+  const appendQuestionForSkill = (selected: SelectedInterviewSkill, variantIndex: number) => {
+    const normalizedSkill = normalizeText(selected.skill)
+    if (!normalizedSkill) {
+      return false
+    }
+
+    const variants = buildSkillQuestionVariants(
+      selected.skill,
+      plan.roleIntelligence,
+      input.experienceLevel,
+      dataEngineeringRole
+    )
+    const ordered = shuffleWithSeed(
+      variants,
+      `${variationSeed}|${selected.skill}|${variantIndex}|${selected.source}`
+    )
+
+    for (const candidateQuestion of ordered) {
+      const skillType = normalizeInterviewSkillType(classifySkillType(selected.skill))
+      const question = humanizeQuestion(candidateQuestion, skillType)
+      const normalizedQuestion = normalizeText(question)
+      if (!questionMentionsSkill(question, selected.skill)) {
+        continue
+      }
+      if (isTooGenericSkillQuestion(question, selected.skill)) {
+        continue
+      }
+      if (seenQuestions.has(normalizedQuestion)) {
+        continue
+      }
+
+      const id = buildInterviewQuestionId("strict", questions.length, selected.skill)
+      const sourceType: InterviewQuestion["source_type"] =
+        selected.source === "resume" && !jobSkillSet.has(normalizedSkill) ? "resume" : "job"
+
+      questions.push({
+        id,
+        question,
+        skill: presentSkillName(selected.skill),
+        skill_type: skillType,
+        skill_bucket: bucketSkill(selected.skill),
+        source_type: sourceType,
+        reference_context: {
+          anchor: presentSkillName(selected.skill),
+          source: sourceType,
+        },
+        is_dynamic: true,
+        allow_followups: true,
+        question_type: skillType === "behavioral" ? "behavioral" : "open_ended",
+        phase_hint: buildPhaseHint(questions.length, total),
+      })
+      seenQuestions.add(normalizedQuestion)
+      usedSkills.add(normalizedSkill)
+      return true
+    }
+
+    return false
+  }
+
+  for (const [index, selected] of selectedSkills.entries()) {
+    if (questions.length >= total) {
+      break
+    }
+    appendQuestionForSkill(selected, index)
+  }
+
+  if (questions.length < total) {
+    for (const [index, selected] of selectedSkills.entries()) {
+      if (questions.length >= total) {
+        break
+      }
+      appendQuestionForSkill(selected, index + 100)
+    }
+  }
+
+  if (questions.length < total) {
+    const fallbackSkills = buildJobFirstSkillPool(plan)
+      .filter((skill) => !usedSkills.has(normalizeText(skill)))
+      .map((skill) => ({
+        skill,
+        source: jobSkillSet.has(normalizeText(skill)) ? "job" : "resume",
+      })) as SelectedInterviewSkill[]
+
+    for (const [index, selected] of fallbackSkills.entries()) {
+      if (questions.length >= total) {
+        break
+      }
+      appendQuestionForSkill(selected, index + 200)
+    }
+  }
+
+  const deduped = dedupeInterviewQuestions(questions).slice(0, total)
+  const coverage = computeSkillCoverage(deduped, mergeUniqueSkills(plan.jobSkills, plan.resumeSkills, plan.skillUniverse))
+
+  return {
+    questions: deduped,
+    skills_covered: coverage.covered,
+    skills_remaining: coverage.remaining,
+    meta: {
+      role_family: plan.roleIntelligence.family,
+      role_subfamily: plan.roleIntelligence.subfamily,
+      role_confidence: plan.roleIntelligence.confidence,
+      adaptive_mode: false,
+      question_mode: plan.roleIntelligence.questionMode,
+    },
+  }
+}
+
 function isWeakGenericAnchorSkill(skill: string, roleIntelligence?: RoleIntelligence) {
   const normalized = normalizeText(skill)
   if (!normalized) {
@@ -2082,6 +2425,7 @@ function buildJobFirstSkillPool(plan: RoleQuestionPlan) {
 }
 
 export function generateBaseInterviewQuestions(input: BaseGenerationInput): BaseGenerationOutput {
+  return buildStrictSkillQuestions(input)
   const requested = resolveBaseQuestionCount(input) ?? DEFAULT_TOTAL
   const total = Math.min(MAX_BASE_QUESTIONS, Math.max(MIN_BASE_QUESTIONS, requested))
   const {
@@ -2327,6 +2671,7 @@ export async function generateBaseInterviewQuestionsAI(
   input: BaseGenerationInput,
   options?: { requireAi?: boolean }
 ): Promise<BaseGenerationOutputWithError> {
+  return buildStrictSkillQuestions(input)
   const apiKey = (process.env.OPENAI_API_KEY ?? "").trim().replace(/^"|"$/g, "")
   const model = process.env.OPENAI_QUESTION_MODEL ?? OPENAI_QUESTION_MODEL
   const {
@@ -2743,29 +3088,31 @@ export async function generateBaseInterviewQuestionsAI(
           continue
         }
 
-        const skillMatch = normalizeSkillMatch(item.skill, skillCandidates) ?? skill
+        const finalItem = item!
+
+        const skillMatch = normalizeSkillMatch(finalItem.skill, skillCandidates) ?? skill
         const normalizedSkill = normalizeText(skillMatch)
         if (!normalizedSkill || used.has(normalizedSkill)) {
           continue
         }
 
-        if (!shouldAcceptQuestion({ question: item.question, skill: skillMatch, attempt: 4 })) {
+        if (!shouldAcceptQuestion({ question: finalItem.question, skill: skillMatch, attempt: 4 })) {
           continue
         }
-        if (!questionMentionsSkill(item.question, skillMatch)) {
+        if (!questionMentionsSkill(finalItem.question, skillMatch)) {
           continue
         }
-        if (isTooGenericSkillQuestion(item.question, skillMatch)) {
+        if (isTooGenericSkillQuestion(finalItem.question, skillMatch)) {
           continue
         }
 
         used.add(normalizedSkill)
-        prev.push(item.question)
+        prev.push(finalItem.question)
         const id = buildInterviewQuestionId("ai", accepted.length, skillMatch)
-        const normalizedSkillType = normalizeInterviewSkillType(item.skill_type || classifySkillType(skillMatch))
+        const normalizedSkillType = normalizeInterviewSkillType(finalItem.skill_type || classifySkillType(skillMatch))
         accepted.push({
           id,
-          question: humanizeQuestion(item.question, normalizedSkillType),
+          question: humanizeQuestion(finalItem.question, normalizedSkillType),
           skill: presentSkillName(skillMatch),
           skill_type: normalizedSkillType,
           skill_bucket: bucketSkill(skillMatch),
