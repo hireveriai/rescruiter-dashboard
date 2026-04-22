@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client"
 
 import { prisma } from "@/lib/server/prisma"
 import { InterviewQuestion } from "@/lib/server/ai/interview-flow"
+import { repairQuestionText } from "@/lib/server/ai/question-repair"
 
 type ColumnInfo = {
   column_name: string
@@ -68,6 +69,40 @@ function isGenericQuestion(question: string) {
   return GENERIC_PATTERNS.some((pattern) => pattern.test(question))
 }
 
+function hasGoodQuestionLength(question: string) {
+  const words = normalizeText(question).split(/\s+/).filter(Boolean)
+  return words.length >= 10 && words.length <= 26
+}
+
+function normalizeQuestionPattern(question: string, skill: string) {
+  const normalizedQuestion = normalizeText(question)
+  const normalizedSkill = normalizeText(skill)
+  return normalizedQuestion
+    .replace(new RegExp(`\\b${normalizedSkill.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g"), " skill ")
+    .replace(/\b(how do you|how would you|what would you do if|walk me through|what would you check first|tell me about)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function repairQuestionsForPersistence(questions: InterviewQuestion[]) {
+  return questions
+    .map((question) => {
+      const repaired = repairQuestionText({
+        question_text: question.question,
+        intent: question.question_type ?? question.skill_type,
+        skill: question.skill,
+      })
+
+      return repaired.repaired
+        ? {
+            ...question,
+            question: repaired.repaired,
+          }
+        : question
+    })
+    .filter((question) => Boolean(question.question?.trim()) && Boolean(question.skill?.trim()))
+}
+
 function validateQuestionShield(questions: InterviewQuestion[]) {
   if (!Array.isArray(questions) || questions.length === 0) {
     return { ok: false, reason: "No questions to persist." }
@@ -75,6 +110,7 @@ function validateQuestionShield(questions: InterviewQuestion[]) {
 
   const seen = new Set<string>()
   const seenAnchorSource = new Set<string>()
+  const seenPatterns = new Set<string>()
 
   for (const question of questions) {
     const text = (question.question ?? "").trim()
@@ -84,6 +120,9 @@ function validateQuestionShield(questions: InterviewQuestion[]) {
 
     if (!text || text.length < 12) {
       return { ok: false, reason: "Question text is too short or empty." }
+    }
+    if (!hasGoodQuestionLength(text)) {
+      return { ok: false, reason: "Question text length is outside the allowed range." }
     }
 
     if (!skill) {
@@ -103,6 +142,14 @@ function validateQuestionShield(questions: InterviewQuestion[]) {
       return { ok: false, reason: "Duplicate question text detected." }
     }
     seen.add(normalizedText)
+
+    const pattern = normalizeQuestionPattern(text, skill)
+    if (pattern && seenPatterns.has(pattern)) {
+      return { ok: false, reason: "Duplicate question pattern detected." }
+    }
+    if (pattern) {
+      seenPatterns.add(pattern)
+    }
 
     const anchorSourceKey = `${normalizeText(source)}:${normalizeText(anchor)}`
     if (anchorSourceKey !== ":" && seenAnchorSource.has(anchorSourceKey)) {
@@ -301,7 +348,8 @@ export async function replaceInterviewQuestions(
   questions: InterviewQuestion[]
 ) {
   try {
-    const shield = validateQuestionShield(questions)
+    const repairedQuestions = repairQuestionsForPersistence(questions)
+    const shield = validateQuestionShield(repairedQuestions)
     if (!shield.ok) {
       console.warn("Question shield blocked insert", {
         interviewId,
@@ -324,7 +372,7 @@ export async function replaceInterviewQuestions(
       interviewId
     )
 
-    const insert = buildInsertStatement(columns, interviewId, questions)
+    const insert = buildInsertStatement(columns, interviewId, repairedQuestions)
     if (!insert) {
       return false
     }

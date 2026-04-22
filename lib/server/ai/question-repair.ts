@@ -510,18 +510,24 @@ function buildRewrite(input: RepairQuestionInput) {
       : `How do you troubleshoot ${problem} in ${system}?`
   }
 
+  if (/perform|throughput|slow|reliab|quality|delay/i.test(cleaned.toLowerCase())) {
+    return constraint
+      ? `How do you improve ${system} ${constraint}?`
+      : `How do you improve ${system} when ${problem}?`
+  }
+
   return constraint
-    ? `${starter} use ${system} ${constraint}?`
+    ? `${starter} work with ${system} ${constraint}?`
     : `${starter} use ${system} to handle ${problem}?`
 }
 
 function compressToLength(text: string) {
   const words = text.split(/\s+/).filter(Boolean)
-  if (words.length <= 18) {
+  if (words.length <= 20) {
     return text
   }
 
-  return words.slice(0, 18).join(" ").replace(/[,.]+$/g, "")
+  return words.slice(0, 20).join(" ").replace(/[,.]+$/g, "")
 }
 
 function finalizeQuestion(text: string) {
@@ -549,7 +555,7 @@ export function repairQuestionText(input: RepairQuestionInput): RepairQuestionOu
 
   const hasDomain = extractDomainTerms(repaired, input.skill).length > 0 || /\b(sql|database|pipeline|etl|databricks|spark|mysql|postgres)\b/i.test(repaired)
 
-  if (wordCount(repaired) < 4 || !hasDomain) {
+  if (wordCount(repaired) < 8 || !hasDomain) {
     return {
       original,
       repaired: null,

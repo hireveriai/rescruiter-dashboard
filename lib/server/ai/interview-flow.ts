@@ -2269,6 +2269,7 @@ function buildStrictSkillQuestions(
   const seenPatterns = new Set<string>()
   const usedSkills = new Set<string>()
   const usedStarters = new Set<string>()
+  const usedAngles = new Set<string>()
   const allSkillTerms = selectedSkills
     .map((item) => presentSkillName(item.skill))
     .map(normalizeText)
@@ -2300,6 +2301,22 @@ function buildStrictSkillQuestions(
       .trim()
   }
 
+  const extractAngle = (question: string) => {
+    const normalized = normalizeText(question)
+    if (normalized.includes("walk me through")) return "walkthrough"
+    if (normalized.includes("what would you check first")) return "check-first"
+    if (normalized.includes("what would you do if")) return "failure-scenario"
+    if (normalized.includes("trade-offs")) return "trade-offs"
+    if (normalized.includes("optimize")) return "optimization"
+    if (normalized.includes("troubleshoot")) return "troubleshooting"
+    if (normalized.includes("design")) return "design"
+    if (normalized.includes("structure")) return "structure"
+    if (normalized.includes("handle failures")) return "failure-handling"
+    if (normalized.includes("use ")) return "usage"
+    if (normalized.includes("improve reliability")) return "reliability"
+    return normalized.split(" ").slice(0, 4).join(" ")
+  }
+
   const appendQuestionForSkill = (selected: SelectedInterviewSkill, variantIndex: number) => {
     const normalizedSkill = normalizeText(selected.skill)
     if (!normalizedSkill) {
@@ -2318,7 +2335,9 @@ function buildStrictSkillQuestions(
     )
 
     const primaryPass = ordered.filter((candidateQuestion) => !usedStarters.has(extractStarter(candidateQuestion)))
-    const evaluationPool = primaryPass.length > 0 ? primaryPass : ordered
+    const starterPool = primaryPass.length > 0 ? primaryPass : ordered
+    const anglePass = starterPool.filter((candidateQuestion) => !usedAngles.has(extractAngle(candidateQuestion)))
+    const evaluationPool = anglePass.length > 0 ? anglePass : starterPool
 
     for (const candidateQuestion of evaluationPool) {
       const skillType = normalizeInterviewSkillType(classifySkillType(selected.skill))
@@ -2367,6 +2386,7 @@ function buildStrictSkillQuestions(
       }
       usedSkills.add(normalizedSkill)
       usedStarters.add(extractStarter(question))
+      usedAngles.add(extractAngle(question))
       return true
     }
 
