@@ -15,8 +15,13 @@ export async function generateRoleAwareQuestions(
   const apiKey = (process.env.OPENAI_API_KEY ?? "").trim().replace(/^"|"$/g, "")
   if (!apiKey) return null
 
+  const duration = input.interviewDurationMinutes ?? 30
+  let targetCount = 7
+  if (duration >= 60) targetCount = 12
+  else if (duration >= 45) targetCount = 10
+
   const prompt = `
-You are a senior domain-specific interviewer. Generate high-quality interview questions based ONLY on the JD and resume.
+You are a senior interviewer. Your job is to generate CLEAN, SHORT, DOMAIN-SPECIFIC interview questions.
 
 ---
 
@@ -26,42 +31,36 @@ INPUT:
 
 ---
 
-STEP 1: IDENTIFY DOMAIN
-Classify the role into a primary domain (e.g., TECH, DATA, SALES, OPERATIONS, HR, FINANCE, MARKETING, CUSTOMER_SUCCESS).
+STEP 1: Extract 8–10 core skills
+Rules:
+- Only real skills/tools (e.g., SQL, ETL, Databricks).
+- No long phrases or sentences.
+- Max 3 words per skill.
 
 ---
 
-STEP 2: EXTRACT SKILLS
-Extract 5–7 REAL, ROLE-SPECIFIC skills from JD + resume.
+STEP 2: Generate exactly ${targetCount} questions
 STRICT RULES:
-- Tools / processes / measurable capabilities only.
-- NO generic words like: performance, operations, management, system, work.
-
----
-
-STEP 3: GENERATE QUESTIONS
-Generate 6–8 interview questions.
-
-STRICT RULES:
-1. Each question MUST be ONE sentence and under 18 words.
-2. Each question MUST contain ONE clear domain skill.
-3. Use ONLY these formats:
+1. One question = ONE skill only.
+2. Max 14–16 words per question.
+3. NO copying from JD or resume. NO long phrases.
+4. NO prefixes like "You highlighted", "When working on", or "Think of a time".
+5. Allowed formats ONLY:
    - How do you...
    - How would you...
-   - Walk me through...
    - What would you do if...
-4. NO prefixes like "You highlighted", "When working on", or "Think of a time when".
-5. DO NOT copy JD descriptions or long phrases.
-6. Test real experience and decision-making.
+   - Walk me through...
+6. Each question must be specific, answerable, and skill-based.
 
 ---
 
-STEP 4: SELF-CHECK
+STEP 3: HARD FILTER (self-check)
 Reject question if:
-- Longer than 18 words.
+- Contains comma-separated lists (", and", ", or").
+- Longer than 16 words.
+- Contains JD-like phrases.
 - Contains more than one skill.
-- Copies JD wording exactly.
-- Not clearly answerable.
+- Not clearly understandable.
 
 ---
 
