@@ -584,6 +584,16 @@ function dedupeInterviewQuestions(questions: InterviewQuestion[]) {
   return accepted
 }
 
+function buildVariationSeed(input: BaseGenerationInput) {
+  return [
+    input.candidateId ?? "",
+    input.jobId ?? "",
+    input.jobTitle ?? "",
+    input.interviewDurationMinutes ?? "",
+    normalizeExperienceLevel(input.experienceLevel),
+  ].join("|")
+}
+
 function questionMentionsSkill(question: string, skill: string) {
   const normalizedQuestion = normalizeText(question)
   const displaySkill = presentSkillName(skill)
@@ -968,18 +978,33 @@ function buildRoleQuestionPlan(input: BaseGenerationInput): RoleQuestionPlan {
 
 function selectTargetSkillsForInterview(plan: RoleQuestionPlan, total: number) {
   const anchorCount = Math.min(total, Math.max(5, Math.min(8, total)))
-  const jdResumeAnchorPool = mergeUniqueSkills(
+  const used = new Set<string>()
+  const jobPriorityPool = mergeUniqueSkills(
     plan.commonSkills,
     plan.missingSkills,
     plan.jobCoverageSkills,
-    plan.resumeSkills,
     plan.jobSkills
   )
-  const anchorPool = jdResumeAnchorPool.length > 0
-    ? mergeUniqueSkills(jdResumeAnchorPool, plan.prioritizedSkills)
-    : mergeUniqueSkills(plan.prioritizedSkills, plan.roleFallbackSkills)
+  const resumeOnlyPool = filterSpecificSkillAnchors(plan.resumeSkills, plan.roleIntelligence).filter(
+    (skill) => !plan.jobSkills.some((jobSkill) => normalizeText(jobSkill) === normalizeText(skill))
+  )
+  const fallbackPool = buildJobFirstSkillPool(plan)
 
-  const anchors = pickUniqueSkills(anchorPool, anchorCount, new Set<string>())
+  const minimumJobAnchors = Math.min(
+    anchorCount,
+    Math.max(1, Math.ceil(anchorCount * 0.7))
+  )
+  const maximumResumeAnchors = Math.max(0, anchorCount - minimumJobAnchors)
+
+  const anchors = [
+    ...pickUniqueSkills(jobPriorityPool, minimumJobAnchors, used),
+    ...pickUniqueSkills(resumeOnlyPool, maximumResumeAnchors, used),
+  ]
+
+  if (anchors.length < anchorCount) {
+    anchors.push(...pickUniqueSkills(fallbackPool, anchorCount - anchors.length, used))
+  }
+
   const remainingPool = mergeUniqueSkills(plan.prioritizedSkills, plan.skillUniverse, plan.roleFallbackSkills).filter(
     (skill) => !anchors.map(normalizeText).includes(normalizeText(skill))
   )
@@ -1021,10 +1046,10 @@ function buildQuestionMetadata(params: {
     ? "adaptive"
     : params.id.startsWith("behavioral-") || params.skillType === "behavioral"
       ? "behavioral"
-      : params.resumeSkillSet?.has(normalizedSkill)
-        ? "resume"
-        : params.jobSkillSet?.has(normalizedSkill)
-          ? "job"
+      : params.jobSkillSet?.has(normalizedSkill)
+        ? "job"
+        : params.resumeSkillSet?.has(normalizedSkill)
+          ? "resume"
           : params.roleIntelligence?.adaptiveMode
             ? "adaptive"
             : "job"
@@ -1196,7 +1221,8 @@ function buildIntentQuestion(
   intent: QuestionIntent,
   index: number,
   roleIntelligence?: RoleIntelligence,
-  experienceLevel?: string
+  experienceLevel?: string,
+  variationSeed?: string
 ) {
   const difficulty = extractDifficultyForExperience(experienceLevel)
   const normalizedIntent = clampIntentToRoleFamily(intent, roleIntelligence)
@@ -1208,7 +1234,7 @@ function buildIntentQuestion(
       : difficulty === "scenario"
         ? templateLibrary.templates
         : [...templateLibrary.templates, ...templateLibrary.gold_standard]
-  const template = templates[seededIndex(templates.length, `${roleIntelligence?.family ?? "general"}|${displaySkill}|${normalizedIntent}|${difficulty}|${index}`)]
+  const template = templates[seededIndex(templates.length, `${roleIntelligence?.family ?? "general"}|${displaySkill}|${normalizedIntent}|${difficulty}|${variationSeed ?? ""}|${index}`)]
   const skillType = normalizeInterviewSkillType(classifySkillType(displaySkill))
 
   const rendered = renderQuestionTemplate(template, variables)
@@ -1232,7 +1258,8 @@ function buildQuestionsForSkills(
   skills: string[],
   offset: number,
   roleIntelligence?: RoleIntelligence,
-  experienceLevel?: string
+  experienceLevel?: string,
+  variationSeed?: string
 ) {
   return skills.map((skill, idx) => {
     const skillType = classifySkillType(skill)
@@ -1248,7 +1275,8 @@ function buildQuestionsForSkills(
         intent,
         offset + idx,
         roleIntelligence,
-        experienceLevel
+        experienceLevel,
+        variationSeed
       ),
       phase: "MID" as const,
       tags: [skill],
@@ -1264,6 +1292,7 @@ function ensureQuestionCount(params: {
   experienceLevel?: string
   skillPool: string[]
   anchorSkills?: string[]
+  variationSeed?: string
   resumeSkillSet: Set<string>
   jobSkillSet: Set<string>
 }) {
@@ -1281,7 +1310,14 @@ function ensureQuestionCount(params: {
     const id = buildInterviewQuestionId("fill", output.length + attempts, skill)
     const candidate: InterviewQuestion = {
       id,
-      question: buildIntentQuestion(displaySkill, intent, output.length + attempts + 1000, params.roleIntelligence, params.experienceLevel),
+      question: buildIntentQuestion(
+        displaySkill,
+        intent,
+        output.length + attempts + 1000,
+        params.roleIntelligence,
+        params.experienceLevel,
+        params.variationSeed
+      ),
       skill: displaySkill,
       skill_type: skillType,
       skill_bucket: bucketSkill(skill),
@@ -1325,6 +1361,7 @@ function ensureSkillCoverageQuestionSet(params: {
   roleIntelligence: RoleIntelligence
   experienceLevel?: string
   skillPool: string[]
+  variationSeed?: string
   resumeSkillSet: Set<string>
   jobSkillSet: Set<string>
 }) {
@@ -1370,7 +1407,8 @@ function ensureSkillCoverageQuestionSet(params: {
         ),
         selected.length + 500,
         params.roleIntelligence,
-        params.experienceLevel
+        params.experienceLevel,
+        params.variationSeed
       ),
       skill: displaySkill,
       skill_type: skillType,
@@ -1410,6 +1448,7 @@ function ensureSkillCoverageQuestionSet(params: {
     experienceLevel: params.experienceLevel,
     skillPool: params.skillPool,
     anchorSkills: desiredAnchorSkills,
+    variationSeed: params.variationSeed,
     resumeSkillSet: params.resumeSkillSet,
     jobSkillSet: params.jobSkillSet,
   })
@@ -1425,7 +1464,8 @@ function ensureSkillCoverageQuestionSet(params: {
       refillPool.slice(0, minimumSkillQuestions - skillKeywordQuestions),
       output.length,
       params.roleIntelligence,
-      params.experienceLevel
+      params.experienceLevel,
+      params.variationSeed
     )
     const refillOutput: InterviewQuestion[] = assignSkillsToQuestions(refillQuestions, mergeUniqueSkills(params.anchorSkills, params.skillPool)).map(
       (question, index) => {
@@ -1459,6 +1499,112 @@ function ensureSkillCoverageQuestionSet(params: {
   }
 
   return output
+}
+
+function rebalanceQuestionSources(params: {
+  questions: InterviewQuestion[]
+  total: number
+  roleIntelligence: RoleIntelligence
+  experienceLevel?: string
+  anchorSkills: string[]
+  plan: RoleQuestionPlan
+  variationSeed?: string
+  resumeSkillSet: Set<string>
+  jobSkillSet: Set<string>
+}) {
+  const maxResumeQuestions = Math.max(1, Math.floor(params.total * 0.35))
+  const jobFirstPool = buildJobFirstSkillPool(params.plan)
+  let output = [...params.questions]
+
+  const countResumeOnly = () =>
+    output.filter((question) => {
+      const normalizedSkill = normalizeText(question.skill)
+      return params.resumeSkillSet.has(normalizedSkill) && !params.jobSkillSet.has(normalizedSkill)
+    }).length
+
+  let resumeCount = countResumeOnly()
+  if (resumeCount <= maxResumeQuestions) {
+    return output.slice(0, params.total)
+  }
+
+  const replacementPool = jobFirstPool.filter(
+    (skill) =>
+      params.jobSkillSet.has(normalizeText(skill))
+      && !output.some((question) => normalizeText(question.skill) === normalizeText(skill))
+  )
+
+  for (const skill of replacementPool) {
+    if (resumeCount <= maxResumeQuestions) {
+      break
+    }
+
+    const replaceIndex = output.findIndex((question) => {
+      const normalizedSkill = normalizeText(question.skill)
+      return params.resumeSkillSet.has(normalizedSkill) && !params.jobSkillSet.has(normalizedSkill)
+    })
+
+    if (replaceIndex === -1) {
+      break
+    }
+
+    const displaySkill = presentSkillName(skill)
+    const skillType = normalizeInterviewSkillType(classifySkillType(skill))
+    const id = buildInterviewQuestionId("rebalance", replaceIndex, skill)
+    const replacement: InterviewQuestion = {
+      id,
+      question: buildIntentQuestion(
+        displaySkill,
+        clampIntentToRoleFamily(
+          inferQuestionIntent(skill, classifySkillType(skill), params.roleIntelligence),
+          params.roleIntelligence
+        ),
+        replaceIndex + 3000,
+        params.roleIntelligence,
+        params.experienceLevel,
+        params.variationSeed
+      ),
+      skill: displaySkill,
+      skill_type: skillType,
+      skill_bucket: bucketSkill(skill),
+      ...buildQuestionMetadata({
+        id,
+        skill,
+        skillType,
+        total: params.total,
+        index: replaceIndex,
+        roleIntelligence: params.roleIntelligence,
+        resumeSkillSet: params.resumeSkillSet,
+        jobSkillSet: params.jobSkillSet,
+      }),
+    }
+
+    if (
+      questionMatchesRoleStyle({
+        question: replacement.question,
+        roleIntelligence: params.roleIntelligence,
+        skillType: classifySkillType(skill),
+      })
+      && questionMentionsSkill(replacement.question, replacement.skill)
+      && !isTooGenericSkillQuestion(replacement.question, replacement.skill)
+    ) {
+      output[replaceIndex] = replacement
+      output = dedupeInterviewQuestions(output)
+      output = ensureQuestionCount({
+        questions: output,
+        total: params.total,
+        roleIntelligence: params.roleIntelligence,
+        experienceLevel: params.experienceLevel,
+        skillPool: jobFirstPool,
+        anchorSkills: params.anchorSkills,
+        variationSeed: params.variationSeed,
+        resumeSkillSet: params.resumeSkillSet,
+        jobSkillSet: params.jobSkillSet,
+      })
+      resumeCount = countResumeOnly()
+    }
+  }
+
+  return output.slice(0, params.total)
 }
 
 function deriveBehavioralQuestions(
@@ -1753,6 +1899,96 @@ function normalizeSkillMatch(skill: string, candidates: string[]) {
   return partial ?? null
 }
 
+function isWeakGenericAnchorSkill(skill: string, roleIntelligence?: RoleIntelligence) {
+  const normalized = normalizeText(skill)
+  if (!normalized) {
+    return true
+  }
+
+  const genericSingles = new Set([
+    "data",
+    "operations",
+    "operation",
+    "performance",
+    "monitoring",
+    "systems",
+    "system",
+    "process",
+    "processes",
+    "execution",
+    "delivery",
+    "quality",
+    "reporting",
+    "analytics",
+    "analysis",
+    "support",
+    "service",
+    "services",
+  ])
+
+  const technicalKeep = [
+    "sql",
+    "mysql",
+    "postgresql",
+    "postgres",
+    "spark",
+    "databricks",
+    "etl",
+    "airflow",
+    "snowflake",
+    "dbt",
+    "python",
+    "java",
+    "azure data factory",
+    "azure",
+    "aws",
+    "gcp",
+    "api",
+  ]
+
+  if (technicalKeep.some((item) => normalized === item || normalized.includes(item))) {
+    return false
+  }
+
+  if (genericSingles.has(normalized)) {
+    return true
+  }
+
+  const tokens = normalized.split(/\s+/).filter(Boolean)
+  if (tokens.length === 1 && tokens[0].length <= 4) {
+    return true
+  }
+
+  if (roleIntelligence?.family === "technical") {
+    if (tokens.length === 1 && !containsTechnicalLanguage(skill)) {
+      return true
+    }
+  }
+
+  return false
+}
+
+function filterSpecificSkillAnchors(skills: string[], roleIntelligence?: RoleIntelligence) {
+  const filtered = skills.filter((skill) => !isWeakGenericAnchorSkill(skill, roleIntelligence))
+  return filtered.length > 0 ? filtered : skills
+}
+
+function buildJobFirstSkillPool(plan: RoleQuestionPlan) {
+  const specificResume = filterSpecificSkillAnchors(plan.resumeSkills, plan.roleIntelligence)
+  const specificUniverse = filterSpecificSkillAnchors(plan.skillUniverse, plan.roleIntelligence)
+  const specificFallback = filterSpecificSkillAnchors(plan.roleFallbackSkills, plan.roleIntelligence)
+
+  return mergeUniqueSkills(
+    plan.commonSkills,
+    plan.missingSkills,
+    plan.jobCoverageSkills,
+    plan.jobSkills,
+    specificFallback,
+    specificUniverse,
+    specificResume
+  )
+}
+
 export function generateBaseInterviewQuestions(input: BaseGenerationInput): BaseGenerationOutput {
   const requested = resolveBaseQuestionCount(input) ?? DEFAULT_TOTAL
   const total = Math.min(MAX_BASE_QUESTIONS, Math.max(MIN_BASE_QUESTIONS, requested))
@@ -1770,7 +2006,8 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
 
   const normalizedJob = new Set(jobSkills.map(normalizeText))
   const normalizedResume = new Set(resumeSkills.map(normalizeText))
-  const roleSeed = `${roleIntelligence.family}|${roleIntelligence.subfamily ?? ""}|${normalizeExperienceLevel(input.experienceLevel)}|${prioritizedSkills.join("|")}`
+  const variationSeed = buildVariationSeed(input)
+  const roleSeed = `${roleIntelligence.family}|${roleIntelligence.subfamily ?? ""}|${normalizeExperienceLevel(input.experienceLevel)}|${variationSeed}|${prioritizedSkills.join("|")}`
   const shuffledSkills = shuffleWithSeed(prioritizedSkills, roleSeed)
   const { anchorSkills, remainingPool } = selectTargetSkillsForInterview(
     {
@@ -1798,7 +2035,8 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
     skillDrivenSkills,
     0,
     roleIntelligence,
-    input.experienceLevel
+    input.experienceLevel,
+    variationSeed
   )
   const behavioralQuestions = deriveBehavioralQuestions(
     fillBehavioralCount,
@@ -1818,7 +2056,8 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
       supplementalSkills,
       combined.length,
       roleIntelligence,
-      input.experienceLevel
+      input.experienceLevel,
+      variationSeed
     )
     combined = [...combined, ...supplementalQuestions].slice(0, total)
   }
@@ -1891,7 +2130,8 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
       supplementalSkills.slice(0, total - output.length),
       output.length,
       roleIntelligence,
-      input.experienceLevel
+      input.experienceLevel,
+      variationSeed
     )
     const supplementalWithSkills: EnrichedGeneratedQuestion[] = assignSkillsToQuestions(supplementalQuestions, skillUniverse)
     const supplementalOutput = supplementalWithSkills.map((question, index) => {
@@ -1934,10 +2174,34 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
     roleIntelligence,
     experienceLevel: input.experienceLevel,
     skillPool: mergeUniqueSkills(jobSkills, resumeSkills, roleFallbackSkills, skillUniverse),
+    variationSeed,
     resumeSkillSet,
     jobSkillSet,
   })
 
+  output = rebalanceQuestionSources({
+    questions: output,
+    total,
+    roleIntelligence,
+    experienceLevel: input.experienceLevel,
+    anchorSkills,
+    plan: {
+      roleIntelligence,
+      jobSkills,
+      rawResumeSkills: resumeSkills,
+      resumeSkills,
+      rawSkillUniverse: skillUniverse,
+      roleFallbackSkills,
+      skillUniverse,
+      commonSkills,
+      missingSkills,
+      jobCoverageSkills,
+      prioritizedSkills,
+    },
+    variationSeed,
+    resumeSkillSet,
+    jobSkillSet,
+  })
   const coverage = computeSkillCoverage(output, skillUniverse)
 
   return {
@@ -1999,9 +2263,10 @@ export async function generateBaseInterviewQuestionsAI(
 
   const normalizedJob = new Set(jobSkills.map(normalizeText))
   const normalizedResume = new Set(resumeSkills.map(normalizeText))
+  const variationSeed = buildVariationSeed(input)
   const shuffledSkills = shuffleWithSeed(
     prioritizedSkills,
-    `${roleIntelligence.family}|${roleIntelligence.subfamily ?? ""}|${normalizeExperienceLevel(input.experienceLevel)}`
+    `${roleIntelligence.family}|${roleIntelligence.subfamily ?? ""}|${normalizeExperienceLevel(input.experienceLevel)}|${variationSeed}`
   )
   const { anchorSkills, remainingPool } = selectTargetSkillsForInterview(
     {
@@ -2456,7 +2721,8 @@ export async function generateBaseInterviewQuestionsAI(
         remainingSkills,
         accepted.length,
         roleIntelligence,
-        input.experienceLevel
+        input.experienceLevel,
+        variationSeed
       )
       const fillerWithSkills = assignSkillsToQuestions(filler, skillUniverse)
       for (const question of fillerWithSkills) {
@@ -2506,7 +2772,8 @@ export async function generateBaseInterviewQuestionsAI(
       supplementalSkillPool.slice(0, total - accepted.length),
       accepted.length,
       roleIntelligence,
-      input.experienceLevel
+      input.experienceLevel,
+      variationSeed
     )
     const supplementalWithSkills: EnrichedGeneratedQuestion[] = assignSkillsToQuestions(supplemental, skillUniverse)
     for (const question of supplementalWithSkills) {
@@ -2553,7 +2820,8 @@ export async function generateBaseInterviewQuestionsAI(
       refillSkills.slice(0, total - dedupedAccepted.length),
       dedupedAccepted.length,
       roleIntelligence,
-      input.experienceLevel
+      input.experienceLevel,
+      variationSeed
     )
     const refillWithSkills: EnrichedGeneratedQuestion[] = assignSkillsToQuestions(refillQuestions, skillUniverse)
     const refillOutput = refillWithSkills.map((question, index) => {
@@ -2597,6 +2865,31 @@ export async function generateBaseInterviewQuestionsAI(
     roleIntelligence,
     experienceLevel: input.experienceLevel,
     skillPool: mergeUniqueSkills(jobSkills, resumeSkills, roleFallbackSkills, skillUniverse),
+    variationSeed,
+    resumeSkillSet,
+    jobSkillSet,
+  })
+
+  dedupedAccepted = rebalanceQuestionSources({
+    questions: dedupedAccepted,
+    total,
+    roleIntelligence,
+    experienceLevel: input.experienceLevel,
+    anchorSkills,
+    plan: {
+      roleIntelligence,
+      jobSkills,
+      rawResumeSkills: resumeSkills,
+      resumeSkills,
+      rawSkillUniverse: skillUniverse,
+      roleFallbackSkills,
+      skillUniverse,
+      commonSkills,
+      missingSkills,
+      jobCoverageSkills,
+      prioritizedSkills,
+    },
+    variationSeed,
     resumeSkillSet,
     jobSkillSet,
   })
