@@ -1,8 +1,7 @@
 import { Question } from "@/lib/server/ai/behavioral"
 import { regenerateQuestionWithValidation, validateQuestionQuality } from "@/lib/server/ai/brain"
-import { SEED_TEMPLATE_LIBRARY, SeedQuestionIntent } from "@/lib/server/ai/question-template-library"
-import { QUESTION_VARIABLE_BANK } from "@/lib/server/ai/question-variable-bank"
-import { generateRoleAwareQuestions, mapRoleAwareToInterviewQuestions, normalizeRoleFamily } from "./role-aware-generator"
+import { generateRoleAwareQuestions } from "./role-aware-generator"
+import { validateQuestionStrict } from "./question-validator"
 import {
   assignSkillsToQuestions,
   buildSkillUniverse,
@@ -68,6 +67,29 @@ export type BaseGenerationOutput = {
     adaptive_mode: boolean
     question_mode: string
   }
+}
+
+export async function generateQuestions(input: any) {
+  const result = await generateRoleAwareQuestions(input)
+
+  if (!result || !result.questions) {
+    throw new Error("Generation failed")
+  }
+
+  const finalQuestions = result.questions.filter((q) =>
+    validateQuestionStrict(q).valid
+  )
+
+  if (finalQuestions.length < 5) {
+    throw new Error("All questions rejected")
+  }
+
+  return finalQuestions.map((q, i) => ({
+    id: `q-${i}`,
+    question: q,
+    skill: result.skills[i % result.skills.length],
+    source_type: "adaptive" as const,
+  }))
 }
 
 export type BaseGenerationOutputWithError = BaseGenerationOutput & {
@@ -267,15 +289,6 @@ type QuestionIntent =
   | "judgment"
   | "analysis"
 
-type QuestionTemplateVariables = {
-  skill: string
-  system: string
-  problem: string
-  scenario: string
-  constraint: string
-  artifact: string
-}
-
 type RoleQuestionPlan = {
   roleIntelligence: RoleIntelligence
   jobSkills: string[]
@@ -408,17 +421,6 @@ const ROLE_FAMILY_INTENTS: Record<RoleIntelligence["family"], QuestionIntent[]> 
   banking_financial_services: ["judgment", "analysis", "execution", "coordination", "behavioral"],
   leadership_management: ["judgment", "coordination", "analysis", "behavioral", "execution"],
   general_business: ["execution", "coordination", "prioritization", "behavioral", "analysis"],
-}
-
-const INTENT_TEMPLATE_KEY: Record<QuestionIntent, SeedQuestionIntent> = {
-  troubleshooting: "TROUBLESHOOTING",
-  optimization: "OPTIMIZATION",
-  execution: "EXECUTION",
-  behavioral: "BEHAVIORAL",
-  prioritization: "PRIORITIZATION",
-  coordination: "COORDINATION",
-  judgment: "JUDGMENT",
-  analysis: "ANALYSIS",
 }
 
 function normalizeText(value: string) {
@@ -1148,101 +1150,6 @@ function clampIntentToRoleFamily(intent: QuestionIntent, roleIntelligence?: Role
   return allowed.includes(intent) ? intent : allowed[0]
 }
 
-function buildVariableBank(
-  skill: string,
-  roleIntelligence?: RoleIntelligence,
-  intent?: QuestionIntent
-): QuestionTemplateVariables {
-  const displaySkill = presentSkillName(skill)
-  const normalizedSkill = normalizeText(skill)
-  const family = roleIntelligence?.family ?? "general_business"
-  const bank = QUESTION_VARIABLE_BANK[family] ?? QUESTION_VARIABLE_BANK.general_business
-
-  if (
-    family === "technical" &&
-    /(azure data factory|adf|databricks|spark|pyspark|delta lake|data lake|etl pipeline|data pipeline|data warehouse|big data|sql|mysql|postgresql)/.test(normalizedSkill)
-  ) {
-    const dataSystem = (() => {
-      if (/(azure data factory|adf)/.test(normalizedSkill)) return "Azure Data Factory pipelines"
-      if (/databricks/.test(normalizedSkill)) return "Databricks workflows"
-      if (/(spark|pyspark)/.test(normalizedSkill)) return "Spark jobs"
-      if (/delta lake/.test(normalizedSkill)) return "Delta Lake tables"
-      if (/data lake/.test(normalizedSkill)) return "data lake storage"
-      if (/etl pipeline|data pipeline/.test(normalizedSkill)) return "ETL pipelines"
-      if (/data warehouse/.test(normalizedSkill)) return "data warehouse models"
-      if (/sql|mysql|postgresql/.test(normalizedSkill)) return `${displaySkill} queries`
-      return displaySkill
-    })()
-
-    return {
-      skill: displaySkill,
-      system: dataSystem,
-      problem: normalizeVariablePhrase(
-        /(sql|mysql|postgresql)/.test(normalizedSkill)
-          ? "query performance drops on large datasets"
-          : /(spark|databricks)/.test(normalizedSkill)
-            ? "job execution slows as data volume grows"
-            : "pipeline failures affect downstream data delivery"
-      ),
-      scenario: normalizeVariablePhrase(
-        /(azure data factory|adf)/.test(normalizedSkill)
-          ? "source systems send inconsistent data into ADF"
-          : /(databricks|spark|pyspark)/.test(normalizedSkill)
-            ? "large datasets increase processing time in Databricks"
-            : /(data lake|delta lake)/.test(normalizedSkill)
-              ? "downstream teams need reliable data access at scale"
-              : "upstream and downstream dependencies are both changing"
-      ),
-      constraint: normalizeVariablePhrase(
-        /(sql|mysql|postgresql)/.test(normalizedSkill)
-          ? "query performance needs to improve without breaking downstream reporting"
-          : /(spark|databricks)/.test(normalizedSkill)
-            ? "data volume is high and processing windows are tight"
-            : "pipeline reliability must improve without delaying delivery"
-      ),
-      artifact: normalizeVariablePhrase(
-        /(sql|mysql|postgresql)/.test(normalizedSkill)
-          ? "query plans and execution metrics"
-          : /(spark|databricks)/.test(normalizedSkill)
-            ? "job metrics and cluster logs"
-            : "pipeline runs and failure logs"
-      ),
-    }
-  }
-
-  const pick = (values: string[], key: string, fallback: string) => {
-    if (!values.length) {
-      return fallback
-    }
-    return values[seededIndex(values.length, key)]
-  }
-
-  const system = pick(bank.variables.system, `${family}|${normalizedSkill}|${intent ?? "execution"}|system`, displaySkill)
-  const problem = pick(bank.variables.problem, `${family}|${normalizedSkill}|${intent ?? "execution"}|problem`, `a challenge affects ${displaySkill}`)
-  const scenario = pick(bank.variables.scenario, `${family}|${normalizedSkill}|${intent ?? "execution"}|scenario`, problem)
-  const constraint = pick(bank.variables.constraint, `${family}|${normalizedSkill}|${intent ?? "execution"}|constraint`, "time is limited")
-  const artifact = pick(bank.variables.artifact, `${family}|${normalizedSkill}|${intent ?? "execution"}|artifact`, "available information")
-
-  return {
-    skill: displaySkill,
-    system: normalizeVariablePhrase(system),
-    problem: normalizeVariablePhrase(problem),
-    scenario: normalizeVariablePhrase(scenario),
-    constraint: normalizeVariablePhrase(constraint),
-    artifact: normalizeVariablePhrase(artifact),
-  }
-}
-
-function renderQuestionTemplate(template: string, variables: QuestionTemplateVariables) {
-  return template
-    .replace(/\{\{skill\}\}|\{skill\}/g, variables.skill)
-    .replace(/\{\{system\}\}/g, variables.system)
-    .replace(/\{\{problem\}\}/g, variables.problem)
-    .replace(/\{\{scenario\}\}|\{scenario\}/g, variables.scenario)
-    .replace(/\{\{constraint\}\}|\{constraint\}/g, variables.constraint)
-    .replace(/\{\{artifact\}\}|\{artifact\}/g, variables.artifact)
-}
-
 function buildSkillAnchoredFallbackQuestion(
   displaySkill: string,
   intent: QuestionIntent,
@@ -1308,25 +1215,11 @@ function buildIntentQuestion(
   experienceLevel?: string,
   variationSeed?: string
 ) {
-  const difficulty = extractDifficultyForExperience(experienceLevel)
+  void index
+  void experienceLevel
+  void variationSeed
   const normalizedIntent = clampIntentToRoleFamily(intent, roleIntelligence)
-  const variables = buildVariableBank(displaySkill, roleIntelligence, normalizedIntent)
-  const templateLibrary = SEED_TEMPLATE_LIBRARY[INTENT_TEMPLATE_KEY[normalizedIntent]]
-  const templates =
-    difficulty === "guided"
-      ? templateLibrary.templates.slice(0, Math.min(4, templateLibrary.templates.length))
-      : difficulty === "scenario"
-        ? templateLibrary.templates
-        : [...templateLibrary.templates, ...templateLibrary.gold_standard]
-  const template = templates[seededIndex(templates.length, `${roleIntelligence?.family ?? "general"}|${displaySkill}|${normalizedIntent}|${difficulty}|${variationSeed ?? ""}|${index}`)]
   const skillType = normalizeInterviewSkillType(classifySkillType(displaySkill))
-
-  const rendered = renderQuestionTemplate(template, variables)
-  const humanized = humanizeQuestion(rendered, skillType)
-
-  if (questionMentionsSkill(humanized, displaySkill) && !isTooGenericSkillQuestion(humanized, displaySkill)) {
-    return humanized
-  }
 
   const fallback = humanizeQuestion(
     buildSkillAnchoredFallbackQuestion(displaySkill, normalizedIntent, roleIntelligence),
@@ -2801,23 +2694,29 @@ export async function generateBaseInterviewQuestionsAI(
   const apiKey = (process.env.OPENAI_API_KEY ?? "").trim().replace(/^"|"$/g, "")
   const model = process.env.OPENAI_QUESTION_MODEL ?? OPENAI_QUESTION_MODEL
 
-  const roleAware = await generateRoleAwareQuestions(input)
-  if (roleAware) {
+  try {
     const skillUniverse = buildSkillUniverse(input)
-    const questions = mapRoleAwareToInterviewQuestions(roleAware, skillUniverse)
-    const coverage = computeSkillCoverage(questions, skillUniverse)
-    
+    const roleIntelligence = inferRoleIntelligence(input)
+    const generatedQuestions = await generateQuestions(input)
+    const mappedQuestions = generatedQuestions.map((item) => ({
+      ...item,
+      skill_type: classifySkillType(item.skill),
+    }))
+    const coverage = computeSkillCoverage(mappedQuestions, skillUniverse)
+
     return {
-      questions,
+      questions: mappedQuestions,
       skills_covered: coverage.covered,
       skills_remaining: coverage.remaining,
       meta: {
-        role_family: normalizeRoleFamily(roleAware.role_family),
+        role_family: roleIntelligence.family,
         role_confidence: 1.0,
         adaptive_mode: false,
         question_mode: "role_aware",
       },
     }
+  } catch {
+    // Fall through to the existing strict/fallback generation path.
   }
 
   return buildStrictSkillQuestions(input)
