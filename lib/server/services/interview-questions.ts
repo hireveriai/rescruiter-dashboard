@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client"
 
+import { validateQuestionStrict } from "@/lib/question-validator"
 import { prisma } from "@/lib/server/prisma"
 import { InterviewQuestion } from "@/lib/server/ai/interview-flow"
 
@@ -34,6 +35,7 @@ type QuestionColumnMap = {
 }
 
 const QUESTION_TABLE = "interview_questions"
+const MIN_VALID_QUESTIONS = 5
 const GENERIC_PATTERNS = [
   /\bhow (do|would) you use\b/i,
   /\bin this role\b/i,
@@ -89,6 +91,27 @@ async function repairQuestionsForPersistence(questions: InterviewQuestion[]) {
 
 export async function prepareInterviewQuestionsForPersistence(questions: InterviewQuestion[]) {
   return repairQuestionsForPersistence(questions)
+}
+
+function cleanQuestionsForSave(questions: InterviewQuestion[]) {
+  const cleaned = questions.filter((question) => {
+    const text = question.question ?? ""
+    return validateQuestionStrict(text).valid
+  }).map((question, index) => ({
+    ...question,
+    question: question.question,
+    source_type: "adaptive" as const,
+    is_dynamic: true,
+    question_type: question.question_type ?? (question.skill_type === "behavioral" ? "behavioral" : "open_ended"),
+    allow_followups: question.allow_followups ?? true,
+    id: question.id || `q-${index}`,
+  }))
+
+  if (cleaned.length < MIN_VALID_QUESTIONS) {
+    throw new Error("Rejected: low-quality questions")
+  }
+
+  return cleaned
 }
 
 function validateQuestionShield(questions: InterviewQuestion[]) {
@@ -196,7 +219,7 @@ export async function verifyInterviewQuestionsPersisted(
   questions: InterviewQuestion[]
 ) {
   try {
-    const preparedQuestions = await repairQuestionsForPersistence(questions)
+    const preparedQuestions = cleanQuestionsForSave(await repairQuestionsForPersistence(questions))
     const saved = await fetchExistingInterviewQuestions(interviewId)
     if (saved.length === 0 && preparedQuestions.length > 0) {
       return false
@@ -358,9 +381,10 @@ export async function replaceInterviewQuestions(
   questions: InterviewQuestion[]
 ) {
   try {
-    const repairedQuestions = await repairQuestionsForPersistence(questions)
-    
-    const shield = validateQuestionShield(repairedQuestions)
+    const preparedQuestions = await repairQuestionsForPersistence(questions)
+    const cleaned = cleanQuestionsForSave(preparedQuestions)
+
+    const shield = validateQuestionShield(cleaned)
     if (!shield.ok) {
       console.warn("Question shield blocked insert", {
         interviewId,
@@ -383,7 +407,7 @@ export async function replaceInterviewQuestions(
       interviewId
     )
 
-    const insert = buildInsertStatement(columns, interviewId, repairedQuestions)
+    const insert = buildInsertStatement(columns, interviewId, cleaned)
     if (!insert) {
       return false
     }
