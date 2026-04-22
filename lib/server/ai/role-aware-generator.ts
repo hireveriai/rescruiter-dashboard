@@ -16,7 +16,7 @@ export async function generateRoleAwareQuestions(
   if (!apiKey) return null
 
   const prompt = `
-Your job is to generate ROLE-AWARE, DOMAIN-SPECIFIC interview questions based ONLY on the job description (JD) and candidate resume.
+You are a senior domain-specific interviewer. Generate high-quality interview questions based ONLY on the JD and resume.
 
 ---
 
@@ -26,56 +26,42 @@ INPUT:
 
 ---
 
-STEP 1: IDENTIFY ROLE FAMILY
-
-Classify the role into ONE primary domain:
-
-- TECH (Backend, Frontend, Data, DevOps, QA)
-- DATA (Data Engineer, Analyst, BI, ML)
-- SALES (BD, Account Manager, Inside Sales)
-- OPERATIONS (Planner, Scheduler, Supply Chain, Field Ops)
-- HR (Recruiter, HRBP, Talent Acquisition)
-- FINANCE (Accounts, FP&A, Audit, Payroll)
-- MARKETING (Growth, Brand, Performance Marketing)
-- CUSTOMER_SUCCESS / SUPPORT
-
-Return:
-"role_family": "..."
+STEP 1: IDENTIFY DOMAIN
+Classify the role into a primary domain (e.g., TECH, DATA, SALES, OPERATIONS, HR, FINANCE, MARKETING, CUSTOMER_SUCCESS).
 
 ---
 
-STEP 2: EXTRACT DOMAIN-SPECIFIC SKILLS
-
-Extract 5–8 REAL, ROLE-SPECIFIC skills from JD + resume.
-
+STEP 2: EXTRACT SKILLS
+Extract 5–7 REAL, ROLE-SPECIFIC skills from JD + resume.
 STRICT RULES:
-- Skills must be tools / processes / measurable capabilities
-- NO generic words like:
-  ❌ performance, operations, management, system, work
+- Tools / processes / measurable capabilities only.
+- NO generic words like: performance, operations, management, system, work.
 
 ---
 
-STEP 3: GENERATE QUESTIONS (STRICT)
-
+STEP 3: GENERATE QUESTIONS
 Generate 6–8 interview questions.
 
-MANDATORY RULES:
-
-1. EVERY question MUST include a domain skill
-2. QUESTIONS MUST MATCH ROLE FAMILY
-3. NO GENERIC QUESTIONS
-4. MUST TEST REAL ABILITY: experience, decision-making, problem-solving
-5. LANGUAGE: Max 18 words, one clear idea, natural interviewer tone
+STRICT RULES:
+1. Each question MUST be ONE sentence and under 18 words.
+2. Each question MUST contain ONE clear domain skill.
+3. Use ONLY these formats:
+   - How do you...
+   - How would you...
+   - Walk me through...
+   - What would you do if...
+4. NO prefixes like "You highlighted", "When working on", or "Think of a time when".
+5. DO NOT copy JD descriptions or long phrases.
+6. Test real experience and decision-making.
 
 ---
 
-STEP 4: SELF-VALIDATION
-
+STEP 4: SELF-CHECK
 Reject question if:
-- No domain keyword
-- Too generic
-- Repeated intent
-- Not evaluatable
+- Longer than 18 words.
+- Contains more than one skill.
+- Copies JD wording exactly.
+- Not clearly answerable.
 
 ---
 
