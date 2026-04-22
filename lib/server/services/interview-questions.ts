@@ -34,6 +34,85 @@ type QuestionColumnMap = {
 }
 
 const QUESTION_TABLE = "interview_questions"
+const GENERIC_PATTERNS = [
+  /\bhow (do|would) you use\b/i,
+  /\bin this role\b/i,
+  /\boptimi[sz]e performance\b/i,
+  /\btroubleshoot issues\b/i,
+  /\bsolve problems\b/i,
+]
+
+function normalizeText(value: string) {
+  return value.toLowerCase().replace(/\s+/g, " ").trim()
+}
+
+function mentionsSkill(question: string, skill: string) {
+  const normalizedQuestion = normalizeText(question)
+  const normalizedSkill = normalizeText(skill)
+  if (!normalizedQuestion || !normalizedSkill) {
+    return false
+  }
+
+  if (normalizedQuestion.includes(normalizedSkill)) {
+    return true
+  }
+
+  const meaningfulTokens = normalizedSkill
+    .split(/\s+/)
+    .filter((token) => token.length >= 3 && !["and", "for", "the", "with"].includes(token))
+
+  return meaningfulTokens.some((token) => normalizedQuestion.includes(token))
+}
+
+function isGenericQuestion(question: string) {
+  return GENERIC_PATTERNS.some((pattern) => pattern.test(question))
+}
+
+function validateQuestionShield(questions: InterviewQuestion[]) {
+  if (!Array.isArray(questions) || questions.length === 0) {
+    return { ok: false, reason: "No questions to persist." }
+  }
+
+  const seen = new Set<string>()
+  const seenAnchorSource = new Set<string>()
+
+  for (const question of questions) {
+    const text = (question.question ?? "").trim()
+    const skill = (question.skill ?? "").trim()
+    const source = (question.source_type ?? "job").trim()
+    const anchor = (question.reference_context?.anchor ?? question.skill ?? "").trim()
+
+    if (!text || text.length < 12) {
+      return { ok: false, reason: "Question text is too short or empty." }
+    }
+
+    if (!skill) {
+      return { ok: false, reason: "Question skill is missing." }
+    }
+
+    if (!mentionsSkill(text, skill)) {
+      return { ok: false, reason: `Question does not mention skill: ${skill}` }
+    }
+
+    if (isGenericQuestion(text)) {
+      return { ok: false, reason: `Generic question blocked: ${text}` }
+    }
+
+    const normalizedText = normalizeText(text)
+    if (seen.has(normalizedText)) {
+      return { ok: false, reason: "Duplicate question text detected." }
+    }
+    seen.add(normalizedText)
+
+    const anchorSourceKey = `${normalizeText(source)}:${normalizeText(anchor)}`
+    if (anchorSourceKey !== ":" && seenAnchorSource.has(anchorSourceKey)) {
+      return { ok: false, reason: "Duplicate source+anchor detected." }
+    }
+    seenAnchorSource.add(anchorSourceKey)
+  }
+
+  return { ok: true as const }
+}
 
 async function getQuestionColumns() {
   const columns = await prisma.$queryRaw<ColumnInfo[]>(Prisma.sql`
@@ -222,6 +301,15 @@ export async function replaceInterviewQuestions(
   questions: InterviewQuestion[]
 ) {
   try {
+    const shield = validateQuestionShield(questions)
+    if (!shield.ok) {
+      console.warn("Question shield blocked insert", {
+        interviewId,
+        reason: shield.reason,
+      })
+      return false
+    }
+
     const columns = await getQuestionColumns()
     if (columns.length === 0) {
       console.warn("Interview questions table not found; skipping insert.")

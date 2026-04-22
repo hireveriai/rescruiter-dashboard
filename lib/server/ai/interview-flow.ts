@@ -628,6 +628,9 @@ function isTooGenericSkillQuestion(question: string, skill: string) {
     "manage work",
     "deal with pressure",
     "make decisions",
+    "how would you use",
+    "how do you use",
+    "in this role",
   ]
 
   if (genericPhrases.some((phrase) => normalizedQuestion.includes(phrase))) {
@@ -795,6 +798,11 @@ function cleanQuestionText(question: string) {
   return question
     .replace(/[Â·•]/g, " ")
     .replace(/_/g, " ")
+    .replace(/\bcannot be ignored\b/gi, "is important")
+    .replace(/\bstill matters\b/gi, "remains important")
+    .replace(/\bstarts affecting outcomes\b/gi, "starts affecting results")
+    .replace(/\bis central to the outcome\b/gi, "directly affects results")
+    .replace(/\bis a key part of the work\b/gi, "is important in this role")
     .replace(/\s+/g, " ")
     .replace(/[?!]{2,}/g, "?")
     .replace(/\s+([?.!,])/g, "$1")
@@ -820,6 +828,8 @@ function humanizeQuestion(question: string, skillType: InterviewQuestion["skill_
     .replace(/\bis a key part of the work\b/gi, "matters in the role")
     .replace(/\bis central to the outcome\b/gi, "has a direct impact on the outcome")
     .replace(/\bkey part of the work\b/gi, "role")
+    .replace(/\bHow would you use ([^?]+) in this role\b/gi, "How would you apply $1 in a real scenario")
+    .replace(/\bHow do you use ([^?]+) in this role\b/gi, "How do you apply $1 in real work situations")
     .replace(/\s+when when\b/gi, " when")
     .replace(/\s{2,}/g, " ")
     .trim()
@@ -835,6 +845,17 @@ function humanizeQuestion(question: string, skillType: InterviewQuestion["skill_
   }
 
   return ensureQuestionSentence(next)
+}
+
+function normalizeVariablePhrase(value: string) {
+  return cleanQuestionText(
+    value
+      .replace(/\bcannot be ignored\b/gi, "is important")
+      .replace(/\bstill matters\b/gi, "remains important")
+      .replace(/\bstill needs to be\b/gi, "needs to be")
+      .replace(/\bstarts affecting outcomes\b/gi, "starts affecting results")
+      .replace(/\bincomplete at first\b/gi, "incomplete")
+  )
 }
 
 function buildEffectiveSkills(params: {
@@ -1111,11 +1132,11 @@ function buildVariableBank(
 
   return {
     skill: displaySkill,
-    system,
-    problem,
-    scenario,
-    constraint,
-    artifact,
+    system: normalizeVariablePhrase(system),
+    problem: normalizeVariablePhrase(problem),
+    scenario: normalizeVariablePhrase(scenario),
+    constraint: normalizeVariablePhrase(constraint),
+    artifact: normalizeVariablePhrase(artifact),
   }
 }
 
@@ -1138,12 +1159,15 @@ function buildSkillAnchoredFallbackQuestion(
 
   if (family === "technical") {
     if (intent === "troubleshooting") {
-      return `How do you troubleshoot issues in ${displaySkill}?`
+      return `How do you troubleshoot recurring issues in ${displaySkill}?`
     }
     if (intent === "optimization") {
-      return `How do you optimize ${displaySkill} under heavy load?`
+      return `How do you optimize ${displaySkill} under heavy load constraints?`
     }
-    return `How would you use ${displaySkill} in a real technical project?`
+    if (intent === "analysis") {
+      return `How do you interpret signals from ${displaySkill} before choosing the next technical action?`
+    }
+    return `How would you design and implement ${displaySkill} for production reliability?`
   }
 
   if (family === "operations") {
@@ -1161,10 +1185,10 @@ function buildSkillAnchoredFallbackQuestion(
   }
 
   if (intent === "analysis") {
-    return `How do you use ${displaySkill} to make better decisions?`
+    return `How do you interpret data from ${displaySkill} to make a clear decision?`
   }
 
-  return `How would you approach ${displaySkill} in this role?`
+  return `How would you solve a practical problem using ${displaySkill}?`
 }
 
 function buildIntentQuestion(
@@ -1200,7 +1224,7 @@ function buildIntentQuestion(
   )
 
   return isTooGenericSkillQuestion(fallback, displaySkill)
-    ? `How would you use ${displaySkill} in this role?`
+    ? `How would you solve a real scenario using ${displaySkill} under constraints?`
     : fallback
 }
 

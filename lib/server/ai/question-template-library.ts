@@ -44,7 +44,7 @@ export const SEED_TEMPLATE_LIBRARY: SeedTemplateLibrary = {
     templates: [
       "How do you identify the root cause when {{problem}} affects {{system}}?",
       "When {{scenario}} happens, what do you check first before deciding the next move?",
-      "Walk me through how you would stabilize {{system}} when {{problem}} starts affecting outcomes.",
+      "Walk me through how you would stabilize {{system}} when {{problem}} starts impacting results.",
       "What signals tell you that {{problem}} is deeper than it first appears in {{system}}?",
       "How do you separate the immediate fix from the underlying issue when {{scenario}} keeps repeating?",
       "If {{problem}} and {{constraint}} are both in play, how do you decide what to investigate first?",
@@ -61,7 +61,7 @@ export const SEED_TEMPLATE_LIBRARY: SeedTemplateLibrary = {
       "Walk me through how you would improve {{skill}} while still respecting {{constraint}}.",
       "If {{scenario}} kept reducing efficiency, what would you optimize first and why?",
       "How do you decide which improvement in {{system}} creates the most value when resources are limited?",
-      "What trade-offs do you weigh when improving {{skill}} while {{constraint}} still matters?",
+      "What trade-offs do you weigh when improving {{skill}} while working within {{constraint}}?",
     ],
     gold_standard: [
       "How do you decide which improvement is worth making first when several inefficiencies exist at the same time?",
@@ -73,12 +73,12 @@ export const SEED_TEMPLATE_LIBRARY: SeedTemplateLibrary = {
       "Walk me through how you would deliver {{skill}} from start to finish when {{constraint}} is in play.",
       "How do you keep {{system}} on track when {{scenario}} disrupts the plan?",
       "Tell me about how you would execute {{skill}} when {{problem}} affects the normal flow of work.",
-      "What does strong execution look like for {{skill}} when {{constraint}} cannot be ignored?",
+      "What does strong execution look like for {{skill}} under {{constraint}}?",
       "How do you make sure {{system}} keeps moving when {{scenario}} changes the original plan?",
       "Walk me through your approach to delivering {{skill}} when several moving parts need to stay aligned.",
     ],
     gold_standard: [
-      "Walk me through how you keep execution disciplined when the plan changes but the outcome still matters.",
+      "Walk me through how you keep execution disciplined when the plan changes but results still matter.",
       "What does good end-to-end ownership look like when you are responsible for delivering a complex piece of work?",
     ],
   },
@@ -153,4 +153,3 @@ export const SEED_TEMPLATE_LIBRARY: SeedTemplateLibrary = {
     ],
   },
 }
-
