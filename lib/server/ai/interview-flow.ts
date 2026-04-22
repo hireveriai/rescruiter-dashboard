@@ -2073,24 +2073,24 @@ function buildSkillQuestionVariants(
   if (/(azure data factory|adf)/.test(normalizedSkill)) {
     return [
       "How do you design ETL pipelines using Azure Data Factory?",
-      "How do you handle failures in Azure Data Factory pipelines?",
       "Walk me through an Azure Data Factory pipeline you built.",
+      "What would you check first when an Azure Data Factory pipeline starts failing?",
     ]
   }
 
   if (/databricks/.test(normalizedSkill)) {
     return [
-      "How do you use Databricks to build scalable data pipelines?",
-      "How do you optimize Databricks jobs for large datasets?",
       "Walk me through a Databricks workflow you have built.",
+      "How do you optimize Databricks jobs for large datasets?",
+      "What would you do if a Databricks job starts missing its processing window?",
     ]
   }
 
   if (/(spark|pyspark)/.test(normalizedSkill)) {
     return [
       "How do you optimize Spark jobs for large datasets?",
-      "How do you troubleshoot slow Spark jobs in production pipelines?",
       "Walk me through how you use Spark in ETL pipelines.",
+      "What would you do if Spark jobs start slowing down as data volume grows?",
     ]
   }
 
@@ -2105,7 +2105,7 @@ function buildSkillQuestionVariants(
   if (/data lake/.test(normalizedSkill)) {
     return [
       "How do you structure data in a data lake for efficient querying?",
-      "How do you manage data quality in a data lake?",
+      "What would you do to improve data quality in a data lake?",
       "How would you organize a data lake for downstream consumers?",
     ]
   }
@@ -2113,32 +2113,72 @@ function buildSkillQuestionVariants(
   if (/(etl pipeline|data pipeline)/.test(normalizedSkill)) {
     return [
       "How do you design ETL pipelines for reliable data delivery?",
-      "How do you handle failures in ETL pipelines?",
       "Walk me through an ETL pipeline you built.",
+      "What would you do if an ETL pipeline starts failing after a schema change?",
     ]
   }
 
   if (/data warehouse/.test(normalizedSkill)) {
     return [
       "How do you model data for a warehouse used by analytics teams?",
-      "How do you improve performance in a data warehouse?",
       "Walk me through a data warehouse design you implemented.",
+      "What would you do to improve query performance in a data warehouse?",
     ]
   }
 
-  if (/(sql|mysql|postgresql|postgres|database)/.test(normalizedSkill)) {
+  if (/performance optimization/.test(normalizedSkill)) {
+    return [
+      "How do you identify the biggest bottleneck in a data pipeline?",
+      "What would you optimize first in a slow data workflow?",
+      "Walk me through how you improved throughput in a pipeline.",
+    ]
+  }
+
+  if (/(sql|postgresql|postgres)\b/.test(normalizedSkill)) {
     if (dataEngineeringRole) {
       return [
         `How do you optimize ${displaySkill} queries for large datasets?`,
-        `How do you troubleshoot slow ${displaySkill} queries in ETL workflows?`,
+        `What would you check first when ${displaySkill} queries start slowing down in ETL workflows?`,
         `How do you use ${displaySkill} to support reliable data pipelines?`,
       ]
     }
 
     return [
       `How do you optimize ${displaySkill} queries under heavy load?`,
-      `How do you troubleshoot recurring ${displaySkill} issues?`,
+      `What would you check first when ${displaySkill} queries start slowing down?`,
       `Walk me through how you use ${displaySkill} in production systems.`,
+    ]
+  }
+
+  if (/mysql/.test(normalizedSkill)) {
+    if (dataEngineeringRole) {
+      return [
+        "How do you troubleshoot slow MySQL queries in ETL workflows?",
+        "Walk me through how you use MySQL in a data pipeline.",
+        "What would you do to improve MySQL query performance on large datasets?",
+      ]
+    }
+
+    return [
+      "How do you troubleshoot recurring MySQL issues?",
+      "Walk me through how you use MySQL in production systems.",
+      "What would you do to improve MySQL query performance under heavy load?",
+    ]
+  }
+
+  if (/database/.test(normalizedSkill)) {
+    if (dataEngineeringRole) {
+      return [
+        "How do you design database tables for reliable ETL workflows?",
+        "What would you check first when a database slows down a data pipeline?",
+        "Walk me through a database change you made to support data engineering work.",
+      ]
+    }
+
+    return [
+      "How do you design database changes without affecting system reliability?",
+      "What would you check first when a database issue affects production performance?",
+      "Walk me through a database design decision you have made.",
     ]
   }
 
@@ -2210,6 +2250,16 @@ function buildStrictSkillQuestions(
   const questions: InterviewQuestion[] = []
   const seenQuestions = new Set<string>()
   const usedSkills = new Set<string>()
+  const usedStarters = new Set<string>()
+
+  const extractStarter = (question: string) => {
+    const normalized = normalizeText(question)
+    if (normalized.startsWith("how do you")) return "how-do-you"
+    if (normalized.startsWith("walk me through")) return "walk-me-through"
+    if (normalized.startsWith("what would you do if")) return "what-would-you-do-if"
+    if (normalized.startsWith("what would you check first")) return "what-would-you-check-first"
+    return normalized.split(" ").slice(0, 3).join(" ")
+  }
 
   const appendQuestionForSkill = (selected: SelectedInterviewSkill, variantIndex: number) => {
     const normalizedSkill = normalizeText(selected.skill)
@@ -2228,7 +2278,10 @@ function buildStrictSkillQuestions(
       `${variationSeed}|${selected.skill}|${variantIndex}|${selected.source}`
     )
 
-    for (const candidateQuestion of ordered) {
+    const primaryPass = ordered.filter((candidateQuestion) => !usedStarters.has(extractStarter(candidateQuestion)))
+    const evaluationPool = primaryPass.length > 0 ? primaryPass : ordered
+
+    for (const candidateQuestion of evaluationPool) {
       const skillType = normalizeInterviewSkillType(classifySkillType(selected.skill))
       const question = humanizeQuestion(candidateQuestion, skillType)
       const normalizedQuestion = normalizeText(question)
@@ -2264,6 +2317,7 @@ function buildStrictSkillQuestions(
       })
       seenQuestions.add(normalizedQuestion)
       usedSkills.add(normalizedSkill)
+      usedStarters.add(extractStarter(question))
       return true
     }
 
@@ -2320,7 +2374,7 @@ function buildStrictSkillQuestions(
 }
 
 function isWeakGenericAnchorSkill(skill: string, roleIntelligence?: RoleIntelligence) {
-  const normalized = normalizeText(skill)
+  const normalized = normalizeText(presentSkillName(skill))
   if (!normalized) {
     return true
   }
@@ -2344,6 +2398,9 @@ function isWeakGenericAnchorSkill(skill: string, roleIntelligence?: RoleIntellig
     "support",
     "service",
     "services",
+    "database",
+    "security",
+    "performance optimization",
   ])
 
   const technicalKeep = [
