@@ -43,6 +43,7 @@ export async function generateRoleAwareQuestions(
     candidateResumeText?: string
   } & BaseGenerationInput
 ): Promise<RoleAwareOutput | null> {
+  console.log("🔥 NEW GENERATOR ACTIVE")
   const apiKey = (process.env.OPENAI_API_KEY ?? "").trim().replace(/^"|"$/g, "")
   if (!apiKey) {
     return null

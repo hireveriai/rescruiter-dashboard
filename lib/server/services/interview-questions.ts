@@ -2,7 +2,6 @@ import { Prisma } from "@prisma/client"
 
 import { prisma } from "@/lib/server/prisma"
 import { InterviewQuestion } from "@/lib/server/ai/interview-flow"
-import { repairQuestionText, repairQuestionsBatch } from "@/lib/server/ai/question-repair"
 
 type ColumnInfo = {
   column_name: string
@@ -85,25 +84,7 @@ function normalizeQuestionPattern(question: string, skill: string) {
 }
 
 async function repairQuestionsForPersistence(questions: InterviewQuestion[]) {
-  const inputs = questions.map((q) => ({
-    question_text: q.question,
-    intent: q.question_type ?? q.skill_type,
-    skill: q.skill,
-  }))
-
-  const results = await repairQuestionsBatch(inputs)
-
-  return questions
-    .map((question, index) => {
-      const repaired = results[index]
-      return repaired?.repaired
-        ? {
-            ...question,
-            question: repaired.repaired,
-          }
-        : question
-    })
-    .filter((question) => Boolean(question.question?.trim()) && Boolean(question.skill?.trim()))
+  return questions.filter((question) => Boolean(question.question?.trim()) && Boolean(question.skill?.trim()))
 }
 
 export async function prepareInterviewQuestionsForPersistence(questions: InterviewQuestion[]) {

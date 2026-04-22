@@ -1,9 +1,6 @@
 import { Prisma } from "@prisma/client"
 
-import {
-  generateBaseInterviewQuestions,
-  generateBaseInterviewQuestionsAI,
-} from "@/lib/server/ai/interview-flow"
+import { generateInterviewQuestions } from "@/lib/interview-flow"
 import { inferRoleIntelligence, sanitizeSkillList } from "@/lib/server/ai/skills"
 import { prisma } from "@/lib/server/prisma"
 import {
@@ -216,33 +213,17 @@ export async function repairInterviewQuestions(input: RepairInterviewInput): Pro
         continue
       }
 
-      const aiOutput = await generateBaseInterviewQuestionsAI(
-        {
-          jobDescription: interview.job.jobDescription ?? undefined,
-          coreSkills: sanitizedCoreSkills,
-          candidateResumeText: interview.candidate.resumeText ?? undefined,
-          experienceLevel: String(interview.job.experienceLevelId ?? ""),
-          jobTitle: interview.job.jobTitle ?? undefined,
-          previousQuestions: existingQuestions,
-          similarityThreshold: 0.8,
-        },
-        { requireAi: false }
-      )
+      const generated = await generateInterviewQuestions({
+        jobDescription: interview.job.jobDescription ?? undefined,
+        coreSkills: sanitizedCoreSkills,
+        candidateResumeText: interview.candidate.resumeText ?? undefined,
+        experienceLevel: String(interview.job.experienceLevelId ?? ""),
+        jobTitle: interview.job.jobTitle ?? undefined,
+        previousQuestions: existingQuestions,
+        similarityThreshold: 0.8,
+      })
 
-      const generated =
-        aiOutput.questions.length > 0
-          ? aiOutput
-          : generateBaseInterviewQuestions({
-              jobDescription: interview.job.jobDescription ?? undefined,
-              coreSkills: sanitizedCoreSkills,
-              candidateResumeText: interview.candidate.resumeText ?? undefined,
-              experienceLevel: String(interview.job.experienceLevelId ?? ""),
-              jobTitle: interview.job.jobTitle ?? undefined,
-              previousQuestions: existingQuestions,
-              similarityThreshold: 0.8,
-            })
-
-      if (generated.questions.length === 0) {
+      if (generated.length === 0) {
         items.push({
           interviewId: interview.interviewId,
           jobId: interview.jobId,
@@ -252,7 +233,7 @@ export async function repairInterviewQuestions(input: RepairInterviewInput): Pro
         continue
       }
 
-      const replaced = await replaceInterviewQuestions(interview.interviewId, generated.questions)
+      const replaced = await replaceInterviewQuestions(interview.interviewId, generated)
 
       if (!replaced) {
         items.push({

@@ -2,10 +2,10 @@ import { NextResponse } from "next/server"
 import { Prisma } from "@prisma/client"
 
 import { ApiError } from "@/lib/server/errors"
+import { generateInterviewQuestions } from "@/lib/interview-flow"
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
 import { prisma } from "@/lib/server/prisma"
 import { errorResponse, successResponse } from "@/lib/server/response"
-import { generateBaseInterviewQuestions, generateBaseInterviewQuestionsAI } from "@/lib/server/ai/interview-flow"
 import { jobPositionsSupportIsActive } from "@/lib/server/services/jobs"
 import { createInterviewLink } from "@/lib/server/services/interview.service"
 import { sanitizeSkillList } from "@/lib/server/ai/skills"
@@ -65,6 +65,7 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMes
 
 export async function POST(request: Request) {
   try {
+    console.log("🚀 USING NEW QUESTION PIPELINE")
     const auth = await getRecruiterRequestContext(request)
     const payload = await request.json()
     const jobId = String(payload.jobId ?? payload.job_id ?? "").trim()
@@ -180,11 +181,9 @@ export async function POST(request: Request) {
               ""
           ) || undefined
 
-        let generatedAi
-
         try {
-          generatedAi = await withTimeout(
-            generateBaseInterviewQuestionsAI(
+          const generatedQuestions = await withTimeout(
+            generateInterviewQuestions(
               {
                 jobDescription: job.jobDescription ?? undefined,
                 coreSkills: sanitizedJobSkills,
@@ -202,110 +201,57 @@ export async function POST(request: Request) {
                 jobTitle: job.jobTitle ?? undefined,
                 previousQuestions: existingQuestions,
                 similarityThreshold: payload.similarity_threshold ?? payload.similarityThreshold ?? 0.8,
-              },
-              { requireAi: requireAiQuestions }
+              }
             ),
             CREATE_LINK_AI_TIMEOUT_MS,
             "AI question generation timed out"
           )
+          if (generatedQuestions.length < MIN_QUESTION_COUNT) {
+            throw new Error("Generated too few questions")
+          }
+
+          const replaced = await replaceInterviewQuestions(result.interviewId, generatedQuestions)
+          if (!replaced) {
+            const existingQuestions = await fetchExistingInterviewQuestions(result.interviewId)
+            console.error("Generated questions but replacement save failed.", {
+              interviewId: result.interviewId,
+              existingQuestionCount: existingQuestions.length,
+            })
+            aiStatus = "save_failed"
+
+            if (existingQuestions.length === 0) {
+              throw new ApiError(500, "INTERVIEW_QUESTIONS_SAVE_FAILED", "Generated interview questions could not be saved")
+            }
+
+            return
+          }
+
+          const verified = await verifyInterviewQuestionsPersisted(result.interviewId, generatedQuestions)
+          if (!verified) {
+            const existingQuestions = await fetchExistingInterviewQuestions(result.interviewId)
+            console.error("Interview questions were replaced but verification failed.", {
+              interviewId: result.interviewId,
+              existingQuestionCount: existingQuestions.length,
+            })
+            aiStatus = "verification_failed"
+
+            if (existingQuestions.length === 0) {
+              throw new ApiError(
+                500,
+                "INTERVIEW_QUESTIONS_VERIFY_FAILED",
+                "Interview questions were generated but could not be verified after saving"
+              )
+            }
+          }
         } catch (generationError) {
-          console.error("AI generation timed out or failed during create-link; using fallback generator", generationError)
-          generatedAi = {
-            questions: [],
-            skills_covered: [],
-            skills_remaining: [],
-            error_message:
-              generationError instanceof Error ? generationError.message : "AI question generation timed out",
-          }
-        }
+          console.error("Interview question generation failed during create-link", generationError)
+          aiStatus = "failed"
 
-        const generated =
-          generatedAi.questions.length > 0
-            ? generatedAi
-            : generateBaseInterviewQuestions({
-                jobDescription: job.jobDescription ?? undefined,
-                coreSkills: sanitizedJobSkills,
-                candidateResumeText,
-                candidateResumeSkills: resumeSkills,
-                candidateId,
-                jobId,
-                experienceLevel: String(job.experienceLevelId ?? ""),
-                totalQuestions: payload.total_questions ?? payload.totalQuestions,
-                interviewDurationMinutes:
-                  payload.interview_duration_minutes ??
-                  payload.interviewDurationMinutes ??
-                  interviewDurationMinutes ??
-                  undefined,
-                jobTitle: job.jobTitle ?? undefined,
-                previousQuestions: existingQuestions,
-                similarityThreshold: payload.similarity_threshold ?? payload.similarityThreshold ?? 0.8,
-              })
-
-        let finalGenerated = generated
-
-        if (generated.questions.length < MIN_QUESTION_COUNT) {
-          finalGenerated = generateBaseInterviewQuestions({
-            jobDescription: job.jobDescription ?? undefined,
-            coreSkills: sanitizedJobSkills,
-            candidateResumeText,
-            candidateResumeSkills: resumeSkills,
-            candidateId,
-            jobId,
-            experienceLevel: String(job.experienceLevelId ?? ""),
-            totalQuestions:
-              Math.max(
-                MIN_QUESTION_COUNT,
-                Number(payload.total_questions ?? payload.totalQuestions ?? 0) || MIN_QUESTION_COUNT
-              ),
-            interviewDurationMinutes:
-              payload.interview_duration_minutes ??
-              payload.interviewDurationMinutes ??
-              interviewDurationMinutes ??
-              undefined,
-            jobTitle: job.jobTitle ?? undefined,
-            previousQuestions: existingQuestions,
-            similarityThreshold: payload.similarity_threshold ?? payload.similarityThreshold ?? 0.8,
-          })
-          aiStatus = "fallback"
-        }
-
-        if (generatedAi.questions.length === 0) {
-          console.error("AI generation failed during create-link; used fallback generator", {
-            error: generatedAi.error_message ?? "unknown",
-          })
-          aiStatus = "fallback"
-        }
-
-        const replaced = await replaceInterviewQuestions(result.interviewId, finalGenerated.questions)
-        if (!replaced) {
-          const existingQuestions = await fetchExistingInterviewQuestions(result.interviewId)
-          console.error("AI questions generated but replacement save failed.", {
-            interviewId: result.interviewId,
-            existingQuestionCount: existingQuestions.length,
-          })
-          aiStatus = "save_failed"
-
-          if (existingQuestions.length === 0) {
-            throw new ApiError(500, "INTERVIEW_QUESTIONS_SAVE_FAILED", "Generated interview questions could not be saved")
-          }
-
-          return
-        }
-
-        const verified = await verifyInterviewQuestionsPersisted(result.interviewId, finalGenerated.questions)
-        if (!verified) {
-          const existingQuestions = await fetchExistingInterviewQuestions(result.interviewId)
-          console.error("Interview questions were replaced but verification failed.", {
-            interviewId: result.interviewId,
-            existingQuestionCount: existingQuestions.length,
-          })
-          aiStatus = "verification_failed"
-
-          if (existingQuestions.length === 0) {
+          if (requireAiQuestions) {
             throw new ApiError(
-              500,
-              "INTERVIEW_QUESTIONS_VERIFY_FAILED",
-              "Interview questions were generated but could not be verified after saving"
+              502,
+              "AI_GENERATION_REQUIRED",
+              generationError instanceof Error ? generationError.message : "AI question generation failed"
             )
           }
         }
