@@ -1078,6 +1078,15 @@ function inferQuestionIntent(skill: string, skillType: ReturnType<typeof classif
   }
 
   if (roleIntelligence?.family === "technical") {
+    if (/(azure data factory|adf|databricks|spark|pyspark|delta lake|data lake|etl pipeline|data pipeline|data warehouse|big data)/.test(normalizedSkill)) {
+      if (/(spark|databricks|performance|optimization)/.test(normalizedSkill)) {
+        return "optimization"
+      }
+      if (/(sql|query|database)/.test(normalizedSkill)) {
+        return "troubleshooting"
+      }
+      return "execution"
+    }
     if (/(monitoring|logging|alert|incident|on-call|sre|operations)/.test(normalizedSkill)) {
       return "troubleshooting"
     }
@@ -1142,6 +1151,58 @@ function buildVariableBank(
   const family = roleIntelligence?.family ?? "general_business"
   const bank = QUESTION_VARIABLE_BANK[family] ?? QUESTION_VARIABLE_BANK.general_business
 
+  if (
+    family === "technical" &&
+    /(azure data factory|adf|databricks|spark|pyspark|delta lake|data lake|etl pipeline|data pipeline|data warehouse|big data|sql|mysql|postgresql)/.test(normalizedSkill)
+  ) {
+    const dataSystem = (() => {
+      if (/(azure data factory|adf)/.test(normalizedSkill)) return "Azure Data Factory pipelines"
+      if (/databricks/.test(normalizedSkill)) return "Databricks workflows"
+      if (/(spark|pyspark)/.test(normalizedSkill)) return "Spark jobs"
+      if (/delta lake/.test(normalizedSkill)) return "Delta Lake tables"
+      if (/data lake/.test(normalizedSkill)) return "data lake storage"
+      if (/etl pipeline|data pipeline/.test(normalizedSkill)) return "ETL pipelines"
+      if (/data warehouse/.test(normalizedSkill)) return "data warehouse models"
+      if (/sql|mysql|postgresql/.test(normalizedSkill)) return `${displaySkill} queries`
+      return displaySkill
+    })()
+
+    return {
+      skill: displaySkill,
+      system: dataSystem,
+      problem: normalizeVariablePhrase(
+        /(sql|mysql|postgresql)/.test(normalizedSkill)
+          ? "query performance drops on large datasets"
+          : /(spark|databricks)/.test(normalizedSkill)
+            ? "job execution slows as data volume grows"
+            : "pipeline failures affect downstream data delivery"
+      ),
+      scenario: normalizeVariablePhrase(
+        /(azure data factory|adf)/.test(normalizedSkill)
+          ? "source systems send inconsistent data into ADF"
+          : /(databricks|spark|pyspark)/.test(normalizedSkill)
+            ? "large datasets increase processing time in Databricks"
+            : /(data lake|delta lake)/.test(normalizedSkill)
+              ? "downstream teams need reliable data access at scale"
+              : "upstream and downstream dependencies are both changing"
+      ),
+      constraint: normalizeVariablePhrase(
+        /(sql|mysql|postgresql)/.test(normalizedSkill)
+          ? "query performance needs to improve without breaking downstream reporting"
+          : /(spark|databricks)/.test(normalizedSkill)
+            ? "data volume is high and processing windows are tight"
+            : "pipeline reliability must improve without delaying delivery"
+      ),
+      artifact: normalizeVariablePhrase(
+        /(sql|mysql|postgresql)/.test(normalizedSkill)
+          ? "query plans and execution metrics"
+          : /(spark|databricks)/.test(normalizedSkill)
+            ? "job metrics and cluster logs"
+            : "pipeline runs and failure logs"
+      ),
+    }
+  }
+
   const pick = (values: string[], key: string, fallback: string) => {
     if (!values.length) {
       return fallback
@@ -1183,6 +1244,22 @@ function buildSkillAnchoredFallbackQuestion(
   const family = roleIntelligence?.family ?? "general_business"
 
   if (family === "technical") {
+    if (/(azure data factory|adf|etl pipeline|data pipeline)/i.test(displaySkill)) {
+      return `How would you design ${displaySkill} to handle failures and downstream dependencies?`
+    }
+    if (/(databricks|spark|pyspark)/i.test(displaySkill)) {
+      return intent === "optimization"
+        ? `How do you optimize ${displaySkill} for large datasets?`
+        : `How would you use ${displaySkill} to build reliable data processing workflows?`
+    }
+    if (/(data lake|delta lake)/i.test(displaySkill)) {
+      return `How would you structure ${displaySkill} for reliable querying and downstream use?`
+    }
+    if (/(sql|mysql|postgresql)/i.test(displaySkill)) {
+      return intent === "troubleshooting"
+        ? `How do you troubleshoot slow ${displaySkill} queries on large datasets?`
+        : `How do you optimize ${displaySkill} queries for large datasets?`
+    }
     if (intent === "troubleshooting") {
       return `How do you troubleshoot recurring issues in ${displaySkill}?`
     }
@@ -1973,12 +2050,27 @@ function filterSpecificSkillAnchors(skills: string[], roleIntelligence?: RoleInt
   return filtered.length > 0 ? filtered : skills
 }
 
+function isDataEngineeringAnchor(skill: string) {
+  const normalized = normalizeText(skill)
+  return /(azure data factory|adf|databricks|spark|pyspark|delta lake|data lake|etl pipeline|data pipeline|data warehouse|big data)/.test(normalized)
+}
+
+function prioritizeDomainSpecificJobSkills(skills: string[]) {
+  const dataAnchors = skills.filter(isDataEngineeringAnchor)
+  if (dataAnchors.length === 0) {
+    return skills
+  }
+
+  const rest = skills.filter((skill) => !isDataEngineeringAnchor(skill))
+  return mergeUniqueSkills(dataAnchors, rest)
+}
+
 function buildJobFirstSkillPool(plan: RoleQuestionPlan) {
   const specificResume = filterSpecificSkillAnchors(plan.resumeSkills, plan.roleIntelligence)
   const specificUniverse = filterSpecificSkillAnchors(plan.skillUniverse, plan.roleIntelligence)
   const specificFallback = filterSpecificSkillAnchors(plan.roleFallbackSkills, plan.roleIntelligence)
 
-  return mergeUniqueSkills(
+  return prioritizeDomainSpecificJobSkills(mergeUniqueSkills(
     plan.commonSkills,
     plan.missingSkills,
     plan.jobCoverageSkills,
@@ -1986,7 +2078,7 @@ function buildJobFirstSkillPool(plan: RoleQuestionPlan) {
     specificFallback,
     specificUniverse,
     specificResume
-  )
+  ))
 }
 
 export function generateBaseInterviewQuestions(input: BaseGenerationInput): BaseGenerationOutput {
@@ -2028,7 +2120,8 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
 
   const usedSkills = new Set<string>()
   const skillDrivenSkills = pickUniqueSkills(anchorSkills, Math.min(total, anchorSkills.length), usedSkills)
-  const fillBehavioralCount = Math.max(0, Math.min(total - skillDrivenSkills.length, Math.round(total * BEHAVIORAL_RATIO)))
+  const maxBehavioralCount = roleIntelligence.family === "technical" ? 1 : Math.round(total * BEHAVIORAL_RATIO)
+  const fillBehavioralCount = Math.max(0, Math.min(total - skillDrivenSkills.length, maxBehavioralCount))
   const behavioralSkills = pickUniqueSkills(shuffledSkills, fillBehavioralCount, usedSkills)
 
   const skillDrivenQuestions = buildQuestionsForSkills(
@@ -2048,7 +2141,19 @@ export function generateBaseInterviewQuestions(input: BaseGenerationInput): Base
   let combined = [...skillDrivenQuestions, ...behavioralQuestions].slice(0, total)
   if (combined.length < total) {
     const supplementalSkills = pickUniqueSkills(
-      mergeUniqueSkills(remainingPool, prioritizedSkills, roleFallbackSkills),
+      buildJobFirstSkillPool({
+        roleIntelligence,
+        jobSkills,
+        rawResumeSkills: resumeSkills,
+        resumeSkills,
+        rawSkillUniverse: skillUniverse,
+        roleFallbackSkills,
+        skillUniverse,
+        commonSkills,
+        missingSkills,
+        jobCoverageSkills,
+        prioritizedSkills,
+      }).filter((skill) => !usedSkills.has(skill)),
       total - combined.length,
       new Set(usedSkills)
     )
@@ -2286,18 +2391,32 @@ export async function generateBaseInterviewQuestionsAI(
   )
   const usedSkills = new Set<string>()
   const primarySkills = pickUniqueSkills(anchorSkills, Math.min(total, anchorSkills.length), usedSkills)
-  const trailingBehavioralCount = Math.max(0, Math.min(total - primarySkills.length, Math.round(total * BEHAVIORAL_RATIO)))
+  const maxBehavioralCount = roleIntelligence.family === "technical" ? 1 : Math.round(total * BEHAVIORAL_RATIO)
+  const trailingBehavioralCount = Math.max(0, Math.min(total - primarySkills.length, maxBehavioralCount))
   const behavioralSkills = pickUniqueSkills(shuffledSkills, trailingBehavioralCount, usedSkills)
   const resumeSkillSet = new Set(resumeSkills.map(normalizeText))
   const jobSkillSet = new Set(jobSkills.map(normalizeText))
 
   const requiredSkills = [...primarySkills, ...behavioralSkills]
-  const baseCandidates = requiredSkills.length > 0 ? requiredSkills : [...skillUniverse, ...roleFallbackSkills]
+  const jobFirstPool = buildJobFirstSkillPool({
+    roleIntelligence,
+    jobSkills,
+    rawResumeSkills: resumeSkills,
+    resumeSkills,
+    rawSkillUniverse: skillUniverse,
+    roleFallbackSkills,
+    skillUniverse,
+    commonSkills,
+    missingSkills,
+    jobCoverageSkills,
+    prioritizedSkills,
+  })
+  const baseCandidates = requiredSkills.length > 0 ? requiredSkills : jobFirstPool
   const skillCandidates = baseCandidates.length >= total
     ? baseCandidates
     : [
         ...baseCandidates,
-        ...mergeUniqueSkills(remainingPool, roleFallbackSkills).filter((skill) => !baseCandidates.includes(skill)).slice(0, total - baseCandidates.length),
+        ...jobFirstPool.filter((skill) => !baseCandidates.includes(skill)).slice(0, total - baseCandidates.length),
       ]
 
   const accepted: InterviewQuestion[] = []

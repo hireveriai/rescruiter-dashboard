@@ -130,6 +130,19 @@ const SKILL_SYNONYMS: Record<string, string> = {
   "data pipeline": "data",
   "etl": "data",
   "analytics": "data",
+  "azure data factory": "azure_data_factory",
+  adf: "azure_data_factory",
+  databricks: "databricks",
+  spark: "spark",
+  pyspark: "spark",
+  "delta lake": "delta_lake",
+  "data lake": "data_lake",
+  "etl pipeline": "etl_pipeline",
+  "etl pipelines": "etl_pipeline",
+  "data pipelines": "data_pipeline",
+  "data warehouse": "data_warehouse",
+  "data warehousing": "data_warehouse",
+  "big data": "big_data",
   "planner & scheduler": "scheduling",
   "planner and scheduler": "scheduling",
   planner: "planning",
@@ -255,7 +268,17 @@ const SKILL_KEYWORDS = [
   "react",
   "next.js",
   "etl",
+  "etl pipeline",
   "data pipeline",
+  "azure data factory",
+  "adf",
+  "databricks",
+  "spark",
+  "pyspark",
+  "delta lake",
+  "data lake",
+  "data warehouse",
+  "big data",
   "analytics",
   "scheduling",
   "planning",
@@ -1109,7 +1132,20 @@ export function bucketSkill(skill: string): SkillBucket {
     return "frontend"
   }
 
-  if (["data", "etl", "data pipeline", "analytics"].includes(normalized)) {
+  if ([
+    "data",
+    "etl",
+    "etl_pipeline",
+    "data pipeline",
+    "analytics",
+    "azure_data_factory",
+    "databricks",
+    "spark",
+    "delta_lake",
+    "data_lake",
+    "data_warehouse",
+    "big_data",
+  ].includes(normalized)) {
     return "data"
   }
 
