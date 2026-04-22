@@ -2798,6 +2798,9 @@ export async function generateBaseInterviewQuestionsAI(
   input: BaseGenerationInput,
   options?: { requireAi?: boolean }
 ): Promise<BaseGenerationOutputWithError> {
+  const apiKey = (process.env.OPENAI_API_KEY ?? "").trim().replace(/^"|"$/g, "")
+  const model = process.env.OPENAI_QUESTION_MODEL ?? OPENAI_QUESTION_MODEL
+
   const roleAware = await generateRoleAwareQuestions(input)
   if (roleAware) {
     const skillUniverse = buildSkillUniverse(input)
