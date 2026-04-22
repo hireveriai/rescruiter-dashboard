@@ -10,6 +10,7 @@ import { jobPositionsSupportIsActive } from "@/lib/server/services/jobs"
 import { createInterviewLink } from "@/lib/server/services/interview.service"
 import { sanitizeSkillList } from "@/lib/server/ai/skills"
 import {
+  fetchExistingInterviewQuestions,
   replaceInterviewQuestions,
   verifyInterviewQuestionsPersisted,
 } from "@/lib/server/services/interview-questions"
@@ -277,20 +278,36 @@ export async function POST(request: Request) {
 
         const replaced = await replaceInterviewQuestions(result.interviewId, finalGenerated.questions)
         if (!replaced) {
-          console.error("AI questions generated but could not be saved.")
+          const existingQuestions = await fetchExistingInterviewQuestions(result.interviewId)
+          console.error("AI questions generated but replacement save failed.", {
+            interviewId: result.interviewId,
+            existingQuestionCount: existingQuestions.length,
+          })
           aiStatus = "save_failed"
-          throw new ApiError(500, "INTERVIEW_QUESTIONS_SAVE_FAILED", "Generated interview questions could not be saved")
+
+          if (existingQuestions.length === 0) {
+            throw new ApiError(500, "INTERVIEW_QUESTIONS_SAVE_FAILED", "Generated interview questions could not be saved")
+          }
+
+          return
         }
 
         const verified = await verifyInterviewQuestionsPersisted(result.interviewId, finalGenerated.questions)
         if (!verified) {
-          console.error("Interview questions were replaced but verification failed.")
+          const existingQuestions = await fetchExistingInterviewQuestions(result.interviewId)
+          console.error("Interview questions were replaced but verification failed.", {
+            interviewId: result.interviewId,
+            existingQuestionCount: existingQuestions.length,
+          })
           aiStatus = "verification_failed"
-          throw new ApiError(
-            500,
-            "INTERVIEW_QUESTIONS_VERIFY_FAILED",
-            "Interview questions were generated but could not be verified after saving"
-          )
+
+          if (existingQuestions.length === 0) {
+            throw new ApiError(
+              500,
+              "INTERVIEW_QUESTIONS_VERIFY_FAILED",
+              "Interview questions were generated but could not be verified after saving"
+            )
+          }
         }
       }
 

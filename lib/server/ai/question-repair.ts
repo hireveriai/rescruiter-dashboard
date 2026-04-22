@@ -396,182 +396,123 @@ function looksMeaningless(text: string) {
   return signalHits >= 2
 }
 
-function inferStarter(intent?: string, text?: string) {
-  const normalizedIntent = (intent ?? "").toUpperCase()
-  const normalizedText = (text ?? "").toLowerCase()
-
-  if (normalizedIntent.includes("TROUBLE") || /\bincident\b|\bfail|\blatency\b|\bslow\b|\balert\b/.test(normalizedText)) {
-    return "How do you"
-  }
-  if (normalizedIntent.includes("SYSTEM") || normalizedIntent.includes("DESIGN")) {
-    return "How would you"
-  }
-  if (normalizedIntent.includes("OPTIM")) {
-    return "How do you"
-  }
-  if (normalizedIntent.includes("BEHAV")) {
-    return "Tell me about"
-  }
-  return STRONG_STARTERS[0]
-}
-
-function inferRoleFamily(text: string, skill?: string): RoleFamily {
-  return inferRoleIntelligence({
-    coreSkills: skill ? [skill] : [],
-    resumeSkills: skill ? [skill] : [],
-    jobDescription: text,
-    resumeText: text,
-  }).family
-}
-
-function extractDomainTerms(text: string, skill?: string) {
-  const source = `${skill ?? ""} ${text}`.trim()
-  const terms = DOMAIN_PATTERNS
-    .filter(({ pattern }) => pattern.test(source))
-    .map(({ label }) => label)
-
-  const normalizedSkill = normalizeSkillName(skill ?? "").replace(/_/g, " ").trim()
-  if (normalizedSkill) {
-    terms.unshift(presentSkillName(normalizedSkill))
-  }
-
-  return [...new Set(terms.filter(Boolean))]
-}
-
-function inferSystem(text: string, skill?: string) {
-  const terms = extractDomainTerms(text, skill)
-  if (terms.length >= 2) {
-    return `${terms[0]} in ${terms[1]}`
-  }
-  if (terms.length === 1) {
-    return terms[0]
-  }
-
-  const displaySkill = skill ? presentSkillName(skill) : ""
-  if (displaySkill) {
-    return displaySkill
-  }
-
-  const family = inferRoleFamily(text, skill)
-  return DOMAIN_CONTEXT_BY_FAMILY[family].defaultSystem
-}
-
-function inferProblem(text: string, skill?: string) {
-  const family = inferRoleFamily(text, skill)
-  const profile = DOMAIN_CONTEXT_BY_FAMILY[family]
-  const match = profile.problemPatterns.find(({ pattern }) => pattern.test(text))
-  return match?.value ?? profile.defaultProblem
-}
-
-function inferConstraint(text: string, skill?: string) {
-  const family = inferRoleFamily(text, skill)
-  const profile = DOMAIN_CONTEXT_BY_FAMILY[family]
-  const match = profile.constraintPatterns.find(({ pattern }) => pattern.test(text))
-  return match?.value ?? ""
-}
-
-function simplifyQuestionText(text: string) {
-  return normalizeWhitespace(
-    text
-      .replace(/\bwhen there is\b/gi, "when")
-      .replace(/\bwhat does strong execution look like for\b/gi, "how do you handle")
-      .replace(/\btell me about how you would\b/gi, "How would you")
-      .replace(/\bhow would you use\b/gi, "How do you use")
-      .replace(/\bhow do you investigate\b/gi, "How do you troubleshoot")
-  )
-}
-
-function buildRewrite(input: RepairQuestionInput) {
-  const cleaned = simplifyQuestionText(cleanRawText(input.question_text))
-  const starter = inferStarter(input.intent, cleaned)
-  const system = inferSystem(cleaned, input.skill)
-  const problem = inferProblem(cleaned, input.skill)
-  const constraint = inferConstraint(cleaned, input.skill)
-
-  if (starter === "Tell me about") {
-    return `Tell me about a time when you used ${system} to handle ${problem}.`
-  }
-
-  if (/optimi/i.test(input.intent ?? "") || /\boptimi/i.test(cleaned)) {
-    return constraint
-      ? `How do you optimize ${system} ${constraint}?`
-      : `How do you optimize ${system}?`
-  }
-
-  if (/design|system/i.test(input.intent ?? "") || /\bdesign\b|\bbuild\b/.test(cleaned.toLowerCase())) {
-    return constraint
-      ? `How would you design ${system} ${constraint}?`
-      : `How would you design ${system}?`
-  }
-
-  if (/trouble|incident|debug|alert|monitor/i.test(input.intent ?? "") || /\bincident\b|\balert\b|\bmonitoring\b|\bfail|\blatency\b/.test(cleaned.toLowerCase())) {
-    return constraint
-      ? `How do you troubleshoot ${problem} in ${system} ${constraint}?`
-      : `How do you troubleshoot ${problem} in ${system}?`
-  }
-
-  if (/perform|throughput|slow|reliab|quality|delay/i.test(cleaned.toLowerCase())) {
-    return constraint
-      ? `How do you improve ${system} ${constraint}?`
-      : `How do you improve ${system} when ${problem}?`
-  }
-
-  return constraint
-    ? `${starter} work with ${system} ${constraint}?`
-    : `${starter} use ${system} to handle ${problem}?`
-}
-
-function compressToLength(text: string) {
-  const words = text.split(/\s+/).filter(Boolean)
-  if (words.length <= 20) {
-    return text
-  }
-
-  return words.slice(0, 20).join(" ").replace(/[,.]+$/g, "")
-}
-
-function finalizeQuestion(text: string) {
-  const trimmed = normalizeWhitespace(text).replace(/[.?!]+$/g, "")
-  return `${sentenceCase(trimmed)}?`
-}
-
-export function repairQuestionText(input: RepairQuestionInput): RepairQuestionOutput {
+export async function repairQuestionTextAI(input: RepairQuestionInput): Promise<RepairQuestionOutput> {
   const original = input.question_text ?? ""
-  const cleaned = cleanRawText(original)
+  const apiKey = (process.env.OPENAI_API_KEY ?? "").trim().replace(/^"|"$/g, "")
+  const model = process.env.OPENAI_QUESTION_MODEL || "gpt-4o-mini"
 
-  if (looksMeaningless(cleaned)) {
+  if (!apiKey || !original) {
+    return { original, repaired: original, changed: false }
+  }
+
+  const prompt = `
+You are a strict editor.
+
+Rewrite the question into a clean, short, professional interview question.
+
+---
+
+RULES:
+
+1. REMOVE:
+   - any JD descriptions
+   - any resume sentences
+   - prefixes like:
+     "You highlighted"
+     "Your background includes"
+     "When working on"
+     "Think of a time"
+
+2. KEEP ONLY:
+   - ONE idea
+   - ONE skill
+
+3. SHORTEN:
+   - max 14 words
+
+4. CONVERT INTO:
+   - How do you...
+   - How would you...
+   - What would you do if...
+   - Walk me through...
+
+5. REMOVE:
+   - comma-separated lists
+   - long explanations
+
+6. IF INPUT IS BAD:
+   → rewrite into a valid technical question
+
+---
+
+OUTPUT:
+Return ONLY the final cleaned question.
+
+INPUT:
+question: "${original}"
+`
+
+  try {
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        input: [
+          {
+            role: "system",
+            content: [{ type: "input_text", text: "You are a strict editor. Output only the cleaned text." }],
+          },
+          {
+            role: "user",
+            content: [{ type: "input_text", text: prompt }],
+          },
+        ],
+      }),
+    })
+
+    if (!response.ok) {
+      return { original, repaired: original, changed: false }
+    }
+
+    const payload = await response.json()
+    const repaired = extractText(payload) || original
+    
     return {
       original,
-      repaired: null,
-      changed: false,
-      rejected: true,
-      reason: "Meaning is too unclear to rewrite confidently",
+      repaired: repaired.trim(),
+      changed: original.trim() !== repaired.trim(),
     }
+  } catch (error) {
+    console.error("AI repair failed", error)
+    return { original, repaired: original, changed: false }
   }
+}
 
-  let repaired = buildRewrite(input)
-  repaired = compressToLength(repaired)
-  repaired = finalizeQuestion(repaired)
-
-  const hasDomain = extractDomainTerms(repaired, input.skill).length > 0 || /\b(sql|database|pipeline|etl|databricks|spark|mysql|postgres)\b/i.test(repaired)
-
-  if (wordCount(repaired) < 8 || !hasDomain) {
-    return {
-      original,
-      repaired: null,
-      changed: false,
-      rejected: true,
-      reason: "Question could not be rewritten with clear domain context",
-    }
+function extractText(response: any) {
+  if (typeof response.output_text === "string" && response.output_text.trim()) {
+    return response.output_text.trim()
   }
-
-  return {
-    original,
-    repaired,
-    changed: normalizeWhitespace(original).toLowerCase() !== normalizeWhitespace(repaired).toLowerCase(),
-  }
+  return (response.output ?? [])
+    .flatMap((item: any) => item.content ?? [])
+    .filter((item: any) => item.type === "output_text" || item.type === "text")
+    .map((item: any) => item.text ?? "")
+    .join("")
+    .trim()
 }
 
 export async function repairQuestionsBatch(inputs: RepairQuestionInput[]): Promise<RepairQuestionOutput[]> {
-  return inputs.map(repairQuestionText)
+  return Promise.all(inputs.map(repairQuestionTextAI))
+}
+
+// Keep synchronous version for legacy if needed, but it won't do much now
+export function repairQuestionText(input: RepairQuestionInput): RepairQuestionOutput {
+  return {
+    original: input.question_text,
+    repaired: input.question_text,
+    changed: false
+  }
 }

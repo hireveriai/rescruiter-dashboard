@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client"
 
 import { prisma } from "@/lib/server/prisma"
 import { InterviewQuestion } from "@/lib/server/ai/interview-flow"
-import { repairQuestionText } from "@/lib/server/ai/question-repair"
+import { repairQuestionText, repairQuestionsBatch } from "@/lib/server/ai/question-repair"
 
 type ColumnInfo = {
   column_name: string
@@ -84,16 +84,19 @@ function normalizeQuestionPattern(question: string, skill: string) {
     .trim()
 }
 
-function repairQuestionsForPersistence(questions: InterviewQuestion[]) {
-  return questions
-    .map((question) => {
-      const repaired = repairQuestionText({
-        question_text: question.question,
-        intent: question.question_type ?? question.skill_type,
-        skill: question.skill,
-      })
+async function repairQuestionsForPersistence(questions: InterviewQuestion[]) {
+  const inputs = questions.map((q) => ({
+    question_text: q.question,
+    intent: q.question_type ?? q.skill_type,
+    skill: q.skill,
+  }))
 
-      return repaired.repaired
+  const results = await repairQuestionsBatch(inputs)
+
+  return questions
+    .map((question, index) => {
+      const repaired = results[index]
+      return repaired?.repaired
         ? {
             ...question,
             question: repaired.repaired,
@@ -101,6 +104,10 @@ function repairQuestionsForPersistence(questions: InterviewQuestion[]) {
         : question
     })
     .filter((question) => Boolean(question.question?.trim()) && Boolean(question.skill?.trim()))
+}
+
+export async function prepareInterviewQuestionsForPersistence(questions: InterviewQuestion[]) {
+  return repairQuestionsForPersistence(questions)
 }
 
 function validateQuestionShield(questions: InterviewQuestion[]) {
@@ -208,22 +215,23 @@ export async function verifyInterviewQuestionsPersisted(
   questions: InterviewQuestion[]
 ) {
   try {
+    const preparedQuestions = await repairQuestionsForPersistence(questions)
     const saved = await fetchExistingInterviewQuestions(interviewId)
-    // Use loose verification - if we have the same number of questions and at least some match, 
-    // or if we have at least 1 question, we consider it saved to avoid false errors.
-    if (saved.length === 0 && questions.length > 0) {
+    if (saved.length === 0 && preparedQuestions.length > 0) {
       return false
     }
 
-    // Verify at least 80% of questions match or simply that count matches if ordering is tricky
-    if (saved.length !== questions.length) {
-      console.warn(`Verification count mismatch: saved ${saved.length}, expected ${questions.length}`)
-      // If we saved something, it's better than saying "not saved" when it actually was.
+    if (saved.length !== preparedQuestions.length) {
+      console.warn(`Verification count mismatch: saved ${saved.length}, expected ${preparedQuestions.length}`)
       return saved.length > 0
     }
 
-    const matchCount = questions.filter((q, i) => (saved[i] ?? "").trim() === q.question.trim()).length
-    const matchRate = matchCount / questions.length
+    const matchCount = preparedQuestions.filter((q, i) => {
+      const savedText = normalizeText(saved[i] ?? "")
+      const expectedText = normalizeText(q.question ?? "")
+      return savedText === expectedText
+    }).length
+    const matchRate = matchCount / preparedQuestions.length
     
     return matchRate >= 0.8
   } catch (error) {
@@ -369,10 +377,7 @@ export async function replaceInterviewQuestions(
   questions: InterviewQuestion[]
 ) {
   try {
-    // Role-Aware questions (source_type: adaptive) are high quality and shouldn't be "repaired" 
-    // into generic templates which might trigger the pattern shield.
-    const isRoleAware = questions.some(q => q.source_type === "adaptive")
-    const repairedQuestions = isRoleAware ? questions : repairQuestionsForPersistence(questions)
+    const repairedQuestions = await repairQuestionsForPersistence(questions)
     
     const shield = validateQuestionShield(repairedQuestions)
     if (!shield.ok) {

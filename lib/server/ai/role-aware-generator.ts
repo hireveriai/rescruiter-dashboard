@@ -21,7 +21,9 @@ export async function generateRoleAwareQuestions(
   else if (duration >= 45) targetCount = 10
 
   const prompt = `
-You are a senior interviewer. Your job is to generate CLEAN, SHORT, DOMAIN-SPECIFIC interview questions.
+You are a senior interviewer across ALL job domains.
+
+Your task is to generate DOMAIN-AWARE, ROLE-SPECIFIC interview questions.
 
 ---
 
@@ -31,36 +33,102 @@ INPUT:
 
 ---
 
-STEP 1: Extract 8–10 core skills
-Rules:
-- Only real skills/tools (e.g., SQL, ETL, Databricks).
-- No long phrases or sentences.
-- Max 3 words per skill.
+STEP 1: DETECT ROLE FAMILY
+
+Classify into one:
+- technical
+- sales
+- operations
+- hr
+- finance
+- marketing
+- customer_success
+- general_business
 
 ---
 
-STEP 2: Generate exactly ${targetCount} questions
-STRICT RULES:
-1. One question = ONE skill only.
-2. Max 14–16 words per question.
-3. NO copying from JD or resume. NO long phrases.
-4. NO prefixes like "You highlighted", "When working on", or "Think of a time".
-5. Allowed formats ONLY:
+STEP 2: EXTRACT CORE SKILLS (5–6)
+
+Rules:
+- Only real skills/tools/processes
+- Max 3 words per skill
+- No sentences
+- No JD copy
+
+Examples:
+technical → SQL, APIs, Databricks  
+sales → CRM, pipeline, negotiation  
+hr → onboarding, compliance, employee relations  
+finance → financial modeling, forecasting, reporting  
+operations → scheduling, workflow, logistics  
+
+---
+
+STEP 3: GENERATE QUESTIONS (STRICT)
+
+Generate exactly ${targetCount} questions.
+
+Rules:
+
+1. Each question:
+   - ONE skill only
+   - Max 14–16 words
+   - Must be answerable
+
+2. DO NOT:
+   - copy JD text
+   - include long phrases
+   - include multiple skills
+   - include resume sentences
+
+3. NO prefixes:
+   ❌ "You highlighted"
+   ❌ "Your background includes"
+   ❌ "When working on"
+
+4. Allowed formats ONLY:
    - How do you...
    - How would you...
    - What would you do if...
    - Walk me through...
-6. Each question must be specific, answerable, and skill-based.
 
 ---
 
-STEP 3: HARD FILTER (self-check)
+STEP 4: DOMAIN ADAPTATION
+
+Adjust question style based on role:
+
+technical:
+- system design, troubleshooting, optimization
+
+sales:
+- pipeline management, closing strategy, objections
+
+hr:
+- conflict handling, compliance decisions, stakeholder communication
+
+finance:
+- analysis, forecasting, risk decisions
+
+operations:
+- execution, scheduling, coordination
+
+marketing:
+- campaigns, growth, analytics
+
+customer_success:
+- retention, escalation, onboarding
+
+---
+
+STEP 5: SELF-VALIDATE
+
 Reject question if:
-- Contains comma-separated lists (", and", ", or").
-- Longer than 16 words.
-- Contains JD-like phrases.
-- Contains more than one skill.
-- Not clearly understandable.
+- longer than 16 words
+- contains comma-separated list
+- contains JD phrases
+- generic like "in this role"
+- no skill present
 
 ---
 
