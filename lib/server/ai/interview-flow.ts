@@ -618,7 +618,7 @@ function questionMentionsSkill(question: string, skill: string) {
 
 function hasGoodQuestionLength(question: string) {
   const words = normalizeText(question).split(/\s+/).filter(Boolean)
-  return words.length >= 8 && words.length <= 24
+  return words.length >= 10 && words.length <= 26
 }
 
 function isTooGenericSkillQuestion(question: string, skill: string) {
@@ -2266,8 +2266,14 @@ function buildStrictSkillQuestions(
   const jobSkillSet = new Set(plan.jobSkills.map(normalizeText))
   const questions: InterviewQuestion[] = []
   const seenQuestions = new Set<string>()
+  const seenPatterns = new Set<string>()
   const usedSkills = new Set<string>()
   const usedStarters = new Set<string>()
+  const allSkillTerms = selectedSkills
+    .map((item) => presentSkillName(item.skill))
+    .map(normalizeText)
+    .filter(Boolean)
+    .sort((left, right) => right.length - left.length)
 
   const extractStarter = (question: string) => {
     const normalized = normalizeText(question)
@@ -2276,6 +2282,22 @@ function buildStrictSkillQuestions(
     if (normalized.startsWith("what would you do if")) return "what-would-you-do-if"
     if (normalized.startsWith("what would you check first")) return "what-would-you-check-first"
     return normalized.split(" ").slice(0, 3).join(" ")
+  }
+
+  const extractPattern = (question: string) => {
+    let normalized = normalizeText(question)
+    for (const term of allSkillTerms) {
+      if (!term) {
+        continue
+      }
+      normalized = normalized.replace(new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g"), " skill ")
+    }
+
+    return normalized
+      .replace(/\b(how do you|walk me through|what would you do if|what would you check first|tell me about)\b/g, " ")
+      .replace(/\b(skill|large datasets|data pipeline|etl workflows|production data pipeline|at scale|for downstream consumers)\b/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
   }
 
   const appendQuestionForSkill = (selected: SelectedInterviewSkill, variantIndex: number) => {
@@ -2314,6 +2336,10 @@ function buildStrictSkillQuestions(
       if (seenQuestions.has(normalizedQuestion)) {
         continue
       }
+      const pattern = extractPattern(question)
+      if (pattern && seenPatterns.has(pattern)) {
+        continue
+      }
 
       const id = buildInterviewQuestionId("strict", questions.length, selected.skill)
       const sourceType: InterviewQuestion["source_type"] =
@@ -2336,6 +2362,9 @@ function buildStrictSkillQuestions(
         phase_hint: buildPhaseHint(questions.length, total),
       })
       seenQuestions.add(normalizedQuestion)
+      if (pattern) {
+        seenPatterns.add(pattern)
+      }
       usedSkills.add(normalizedSkill)
       usedStarters.add(extractStarter(question))
       return true
