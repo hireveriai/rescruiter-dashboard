@@ -616,6 +616,11 @@ function questionMentionsSkill(question: string, skill: string) {
   return meaningfulTokens.some((token) => normalizedQuestion.includes(token))
 }
 
+function hasGoodQuestionLength(question: string) {
+  const words = normalizeText(question).split(/\s+/).filter(Boolean)
+  return words.length >= 8 && words.length <= 24
+}
+
 function isTooGenericSkillQuestion(question: string, skill: string) {
   const normalizedQuestion = normalizeText(question)
   const normalizedSkill = normalizeText(presentSkillName(skill))
@@ -2096,7 +2101,7 @@ function buildSkillQuestionVariants(
 
   if (/delta lake/.test(normalizedSkill)) {
     return [
-      "How do you use Delta Lake to improve reliability in data pipelines?",
+      "How do you use Delta Lake to manage schema changes in data pipelines?",
       "How do you structure Delta Lake tables for downstream querying?",
       "What trade-offs do you consider when using Delta Lake?",
     ]
@@ -2131,6 +2136,14 @@ function buildSkillQuestionVariants(
       "How do you identify the biggest bottleneck in a data pipeline?",
       "What would you optimize first in a slow data workflow?",
       "Walk me through how you improved throughput in a pipeline.",
+    ]
+  }
+
+  if (/big data/.test(normalizedSkill)) {
+    return [
+      "How do you design pipelines that can handle big data workloads reliably?",
+      "What would you optimize first in a big data processing workflow?",
+      "Walk me through a project where you worked with big data systems.",
     ]
   }
 
@@ -2185,7 +2198,10 @@ function buildSkillQuestionVariants(
   if (roleIntelligence.family === "technical") {
     if (dataEngineeringRole) {
       return guided
-        ? [`How do you use ${displaySkill} in a data pipeline?`]
+        ? [
+            `How do you use ${displaySkill} in a real data pipeline?`,
+            `Walk me through where ${displaySkill} fits in your ETL workflow.`,
+          ]
         : strategic
           ? [
               `How would you scale ${displaySkill} for growing data volume?`,
@@ -2193,7 +2209,8 @@ function buildSkillQuestionVariants(
             ]
           : [
               `How do you use ${displaySkill} in a production data pipeline?`,
-              `How do you improve reliability when working with ${displaySkill}?`,
+              `What would you optimize first when working with ${displaySkill} at scale?`,
+              `Walk me through a project where ${displaySkill} was important to your data platform.`,
             ]
     }
 
@@ -2285,6 +2302,9 @@ function buildStrictSkillQuestions(
       const skillType = normalizeInterviewSkillType(classifySkillType(selected.skill))
       const question = humanizeQuestion(candidateQuestion, skillType)
       const normalizedQuestion = normalizeText(question)
+      if (!hasGoodQuestionLength(question)) {
+        continue
+      }
       if (!questionMentionsSkill(question, selected.skill)) {
         continue
       }
