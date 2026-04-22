@@ -2,6 +2,7 @@ import { Question } from "@/lib/server/ai/behavioral"
 import { regenerateQuestionWithValidation, validateQuestionQuality } from "@/lib/server/ai/brain"
 import { SEED_TEMPLATE_LIBRARY, SeedQuestionIntent } from "@/lib/server/ai/question-template-library"
 import { QUESTION_VARIABLE_BANK } from "@/lib/server/ai/question-variable-bank"
+import { generateRoleAwareQuestions, mapRoleAwareToInterviewQuestions, normalizeRoleFamily } from "./role-aware-generator"
 import {
   assignSkillsToQuestions,
   buildSkillUniverse,
@@ -38,7 +39,7 @@ export type InterviewQuestion = {
   id: string
   question: string
   skill: string
-  skill_type: "technical" | "functional" | "behavioral"
+  skill_type: "technical" | "functional" | "behavioral" | "analytical" | "strategic" | "operational"
   skill_bucket?: string
   source_type?: "resume" | "job" | "behavioral" | "adaptive"
   reference_context?: {
@@ -2797,9 +2798,26 @@ export async function generateBaseInterviewQuestionsAI(
   input: BaseGenerationInput,
   options?: { requireAi?: boolean }
 ): Promise<BaseGenerationOutputWithError> {
+  const roleAware = await generateRoleAwareQuestions(input)
+  if (roleAware) {
+    const skillUniverse = buildSkillUniverse(input)
+    const questions = mapRoleAwareToInterviewQuestions(roleAware, skillUniverse)
+    const coverage = computeSkillCoverage(questions, skillUniverse)
+    
+    return {
+      questions,
+      skills_covered: coverage.covered,
+      skills_remaining: coverage.remaining,
+      meta: {
+        role_family: normalizeRoleFamily(roleAware.role_family),
+        role_confidence: 1.0,
+        adaptive_mode: false,
+        question_mode: "role_aware",
+      },
+    }
+  }
+
   return buildStrictSkillQuestions(input)
-  const apiKey = (process.env.OPENAI_API_KEY ?? "").trim().replace(/^"|"$/g, "")
-  const model = process.env.OPENAI_QUESTION_MODEL ?? OPENAI_QUESTION_MODEL
   const {
     roleIntelligence,
     jobSkills,
