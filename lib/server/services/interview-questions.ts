@@ -145,6 +145,7 @@ function validateQuestionShield(questions: InterviewQuestion[]) {
     const source = (question.source_type ?? "job").trim()
     const anchor = (question.reference_context?.anchor ?? question.skill ?? "").trim()
     const isAdaptive = source === "adaptive"
+    const isDynamicGenerated = question.is_dynamic === true
 
     if (!text || text.length < 12) {
       return { ok: false, reason: "Question text is too short or empty." }
@@ -160,11 +161,11 @@ function validateQuestionShield(questions: InterviewQuestion[]) {
       return { ok: false, reason: "Question skill is missing." }
     }
 
-    if (!isAdaptive && !mentionsSkill(text, skill)) {
+    if (!isAdaptive && !isDynamicGenerated && !mentionsSkill(text, skill)) {
       return { ok: false, reason: `Question does not mention skill: ${skill}` }
     }
 
-    if (!isAdaptive && isGenericQuestion(text)) {
+    if (!isAdaptive && !isDynamicGenerated && isGenericQuestion(text)) {
       return { ok: false, reason: `Generic question blocked: ${text}` }
     }
 
@@ -175,18 +176,20 @@ function validateQuestionShield(questions: InterviewQuestion[]) {
     seen.add(normalizedText)
 
     const pattern = normalizeQuestionPattern(text, skill)
-    if (!isAdaptive && pattern && seenPatterns.has(pattern)) {
+    if (!isAdaptive && !isDynamicGenerated && pattern && seenPatterns.has(pattern)) {
       return { ok: false, reason: "Duplicate question pattern detected." }
     }
-    if (pattern) {
+    if (!isDynamicGenerated && pattern) {
       seenPatterns.add(pattern)
     }
 
     const anchorSourceKey = `${normalizeText(source)}:${normalizeText(anchor)}`
-    if (anchorSourceKey !== ":" && seenAnchorSource.has(anchorSourceKey)) {
+    if (!isDynamicGenerated && anchorSourceKey !== ":" && seenAnchorSource.has(anchorSourceKey)) {
       return { ok: false, reason: "Duplicate source+anchor detected." }
     }
-    seenAnchorSource.add(anchorSourceKey)
+    if (!isDynamicGenerated) {
+      seenAnchorSource.add(anchorSourceKey)
+    }
   }
 
   return { ok: true as const }
