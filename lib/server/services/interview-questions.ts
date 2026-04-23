@@ -418,49 +418,53 @@ export async function replaceInterviewQuestions(
   interviewId: string,
   questions: InterviewQuestion[]
 ) {
+  const preparedQuestions = await repairQuestionsForPersistence(questions)
+  const cleaned = cleanQuestionsForSave(preparedQuestions)
+  const uniqueQuestions = dedupeQuestionsForSave(cleaned)
+  const existing = await fetchExistingInterviewQuestions(interviewId)
+  const existingSet = new Set(existing.map((questionText) => questionText.trim()))
+  const filtered = uniqueQuestions.filter((question) =>
+    !existingSet.has((question.question ?? "").trim())
+  )
+
+  if (filtered.length < MIN_VALID_QUESTIONS) {
+    throw new Error(`Rejected: low-quality questions after filtering (${filtered.length}/${MIN_VALID_QUESTIONS})`)
+  }
+
+  const shield = validateQuestionShield(filtered)
+  if (!shield.ok) {
+    throw new Error(`Question shield blocked insert: ${shield.reason}`)
+  }
+
+  const columns = await getQuestionColumns()
+  if (columns.length === 0) {
+    throw new Error("Interview questions table not found")
+  }
+
+  const cleared = await clearInterviewQuestions(interviewId)
+  if (!cleared) {
+    throw new Error("Failed to clear existing interview questions")
+  }
+
+  const insert = buildInsertStatement(columns, interviewId, filtered)
+  if (!insert) {
+    throw new Error("Interview question insert could not be built from current table schema")
+  }
+
   try {
-    const preparedQuestions = await repairQuestionsForPersistence(questions)
-    const cleaned = cleanQuestionsForSave(preparedQuestions)
-    const uniqueQuestions = dedupeQuestionsForSave(cleaned)
-    const existing = await fetchExistingInterviewQuestions(interviewId)
-    const existingSet = new Set(existing.map((questionText) => questionText.trim()))
-    const filtered = uniqueQuestions.filter((question) =>
-      !existingSet.has((question.question ?? "").trim())
-    )
-
-    if (filtered.length < MIN_VALID_QUESTIONS) {
-      throw new Error("Rejected: low-quality questions")
-    }
-
-    const shield = validateQuestionShield(filtered)
-    if (!shield.ok) {
-      console.warn("Question shield blocked insert", {
-        interviewId,
-        reason: shield.reason,
-      })
-      return false
-    }
-
-    const columns = await getQuestionColumns()
-    if (columns.length === 0) {
-      console.warn("Interview questions table not found; skipping insert.")
-      return false
-    }
-
-    await clearInterviewQuestions(interviewId)
-
-    const insert = buildInsertStatement(columns, interviewId, filtered)
-    if (!insert) {
-      return false
-    }
-
     await prisma.$executeRawUnsafe(insert.sql, ...insert.values)
     return true
   } catch (error) {
     console.error("Failed to replace interview questions", {
       interviewId,
       error: error instanceof Error ? error.message : error,
+      questionCount: filtered.length,
+      sampleQuestions: filtered.slice(0, 3).map((question) => ({
+        source_type: question.source_type,
+        skill: question.skill,
+        question: question.question,
+      })),
     })
-    return false
+    throw error instanceof Error ? error : new Error("Unknown interview question insert failure")
   }
 }
