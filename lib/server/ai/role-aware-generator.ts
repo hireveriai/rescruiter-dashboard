@@ -106,6 +106,9 @@ STRICT RULES:
 - NO phrases like "you highlighted"
 - Do NOT repeat previous question patterns
 - Generate fresh variations
+- Each question must be tied to ONE real-world scenario
+- Include light context such as failure, scale, pressure, ambiguity, or constraints
+- Add context naturally without copying sentences from the JD or resume
 - Job-anchored questions must come from JOB SKILLS
 - Resume-anchored questions must come from RESUME SKILLS
 - Resume questions must test candidate-owned experience, not copy resume text
@@ -210,6 +213,8 @@ RULES AGAIN:
 - No commas
 - No JD copy
 - No resume references
+- Add one light real-world constraint or operating context per question
+- Use failure, scale, pressure, ambiguity, or time constraints when relevant
 
 Regenerate clean output.
 `
