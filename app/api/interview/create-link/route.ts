@@ -6,6 +6,7 @@ import { generateInterviewQuestions } from "@/lib/interview-flow"
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
 import { prisma } from "@/lib/server/prisma"
 import { errorResponse, successResponse } from "@/lib/server/response"
+import { parseResumeText } from "@/lib/server/resumeParser"
 import { jobPositionsSupportIsActive } from "@/lib/server/services/jobs"
 import { createInterviewLink } from "@/lib/server/services/interview.service"
 import { sanitizeSkillList } from "@/lib/server/ai/skills"
@@ -169,9 +170,6 @@ export async function POST(request: Request) {
     if (useAiQuestions && result.interviewId) {
       const runAiGeneration = async () => {
         const existingQuestions: string[] = []
-        const resumeSkills = Array.isArray(payload.resume_skills ?? payload.resumeSkills)
-          ? (payload.resume_skills ?? payload.resumeSkills)
-          : []
         const candidateResumeText =
           String(
             payload.candidate_resume_text ??
@@ -181,6 +179,12 @@ export async function POST(request: Request) {
               candidate.resume_text ??
               ""
           ) || undefined
+        const parsedResumeSkills = candidateResumeText
+          ? parseResumeText(candidateResumeText).skills ?? []
+          : []
+        const resumeSkills = Array.isArray(payload.resume_skills ?? payload.resumeSkills)
+          ? (payload.resume_skills ?? payload.resumeSkills)
+          : parsedResumeSkills
 
         try {
           console.log("INTERVIEW ID:", result.interviewId)

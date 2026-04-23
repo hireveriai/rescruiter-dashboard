@@ -243,6 +243,15 @@ export default function SendInterviewModal({ isOpen, onClose }) {
         throw new Error("Candidate ID was not returned by the API")
       }
 
+      const extractedResumeSkills =
+        candidateData.parsedData?.extractedSkills ||
+        candidateData.data?.parsedData?.extractedSkills ||
+        []
+      const extractedResumeText =
+        candidateData.parsedData?.resumeText ||
+        candidateData.data?.parsedData?.resumeText ||
+        ""
+
       const interviewResponse = await fetch(buildAuthUrl("/api/interview/create-link", searchParams), {
         method: "POST",
         credentials: "include",
@@ -252,6 +261,8 @@ export default function SendInterviewModal({ isOpen, onClose }) {
         body: JSON.stringify({
           jobId,
           candidateId,
+          resume_skills: Array.isArray(extractedResumeSkills) ? extractedResumeSkills : [],
+          candidate_resume_text: extractedResumeText || undefined,
           accessType,
           startTime: accessType === "SCHEDULED" ? startTime : undefined,
           endTime: accessType === "SCHEDULED" ? endTime : undefined,
