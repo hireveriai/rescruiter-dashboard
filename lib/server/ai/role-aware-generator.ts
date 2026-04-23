@@ -128,14 +128,26 @@ OUTPUT JSON ONLY:
 `
 
   try {
-    return await generateWithRetry(basePrompt)
+    return await generateWithRetry(basePrompt, {
+      desiredTotal,
+      jobTarget,
+      resumeTarget,
+    })
   } catch (error) {
     console.error("Error generating role-aware questions", error)
     return null
   }
 }
 
-async function generateWithRetry(prompt: string, maxRetries = 3): Promise<RoleAwareOutput> {
+async function generateWithRetry(
+  prompt: string,
+  targets: {
+    desiredTotal: number
+    jobTarget: number
+    resumeTarget: number
+  },
+  maxRetries = 3
+): Promise<RoleAwareOutput> {
   let currentPrompt = prompt
 
   for (let i = 0; i < maxRetries; i += 1) {
@@ -174,13 +186,13 @@ async function generateWithRetry(prompt: string, maxRetries = 3): Promise<RoleAw
     const jobCount = validSources.filter((source) => source === "job").length
     const resumeCount = validSources.filter((source) => source === "resume").length
 
-    if (validQuestions.length >= 5 && jobCount >= jobTarget && resumeCount >= resumeTarget) {
+    if (validQuestions.length >= 5 && jobCount >= targets.jobTarget && resumeCount >= targets.resumeTarget) {
       return {
         role_family: parsed.role_family,
         skills: parsed.skills,
-        questions: validQuestions.slice(0, desiredTotal),
-        question_skills: validSkills.slice(0, desiredTotal),
-        question_sources: validSources.slice(0, desiredTotal),
+        questions: validQuestions.slice(0, targets.desiredTotal),
+        question_skills: validSkills.slice(0, targets.desiredTotal),
+        question_sources: validSources.slice(0, targets.desiredTotal),
       }
     }
 
