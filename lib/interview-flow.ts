@@ -13,16 +13,17 @@ export async function generateInterviewQuestions(
   return generated.map((question, index) => {
     const displaySkill = presentSkillName(question.skill)
     const skillType = classifySkillType(displaySkill)
+    const questionId = question.id || `q-${index}`
 
     return {
-      id: question.id || `q-${index}`,
+      id: questionId,
       question: question.question,
       skill: displaySkill,
       skill_type: skillType,
       skill_bucket: bucketSkill(displaySkill),
       source_type: "adaptive",
       reference_context: {
-        anchor: displaySkill,
+        anchor: `${displaySkill}:${questionId}`,
         source: "adaptive",
       },
       is_dynamic: true,

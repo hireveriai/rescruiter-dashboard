@@ -452,7 +452,10 @@ export async function replaceInterviewQuestions(
     await prisma.$executeRawUnsafe(insert.sql, ...insert.values)
     return true
   } catch (error) {
-    console.error("Failed to replace interview questions", error)
+    console.error("Failed to replace interview questions", {
+      interviewId,
+      error: error instanceof Error ? error.message : error,
+    })
     return false
   }
 }
