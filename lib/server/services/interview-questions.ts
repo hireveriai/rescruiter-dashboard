@@ -144,19 +144,21 @@ function validateQuestionShield(questions: InterviewQuestion[]) {
     const skill = (question.skill ?? "").trim()
     const source = (question.source_type ?? "job").trim()
     const anchor = (question.reference_context?.anchor ?? question.skill ?? "").trim()
+    const isAdaptive = source === "adaptive"
 
     if (!text || text.length < 12) {
       return { ok: false, reason: "Question text is too short or empty." }
     }
-    if (!hasGoodQuestionLength(text)) {
+    if (!isAdaptive && !hasGoodQuestionLength(text)) {
       return { ok: false, reason: "Question text length is outside the allowed range." }
+    }
+    if (isAdaptive && !validateQuestionStrict(text).valid) {
+      return { ok: false, reason: "Adaptive question failed strict validation." }
     }
 
     if (!skill) {
       return { ok: false, reason: "Question skill is missing." }
     }
-
-    const isAdaptive = source === "adaptive"
 
     if (!isAdaptive && !mentionsSkill(text, skill)) {
       return { ok: false, reason: `Question does not mention skill: ${skill}` }
