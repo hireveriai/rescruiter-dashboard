@@ -282,7 +282,7 @@ export async function verifyInterviewQuestionsPersisted(
 function buildColumnValues(question: InterviewQuestion, orderIndex: number): QuestionColumnMap {
   const phaseHint = question.phase_hint ?? "core"
   const questionType = question.question_type ?? (question.skill_type === "behavioral" ? "behavioral" : "open_ended")
-  const sourceType = question.source_type === "resume" || question.source_type === "job" || question.source_type === "behavioral" || question.source_type === "adaptive"
+  const sourceType = question.source_type === "resume" || question.source_type === "job" || question.source_type === "behavioral"
     ? question.source_type
     : question.skill_type === "behavioral"
       ? "behavioral"
