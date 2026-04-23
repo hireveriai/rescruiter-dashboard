@@ -100,7 +100,7 @@ function cleanQuestionsForSave(questions: InterviewQuestion[]) {
   }).map((question, index) => ({
     ...question,
     question: question.question,
-    source_type: "adaptive" as const,
+    source_type: question.source_type ?? "job",
     is_dynamic: true,
     question_type: question.question_type ?? (question.skill_type === "behavioral" ? "behavioral" : "open_ended"),
     allow_followups: question.allow_followups ?? true,

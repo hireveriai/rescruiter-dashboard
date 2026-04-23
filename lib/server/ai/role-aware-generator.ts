@@ -1,5 +1,5 @@
 import { BaseGenerationInput, InterviewQuestion } from "./interview-flow"
-import { mapQuestionToSkill, classifySkillType } from "./skills"
+import { mapQuestionToSkill, classifySkillType, deriveSkillsFromText, sanitizeSkillList } from "./skills"
 import { validateQuestionStrict } from "./question-validator"
 
 const MODEL = process.env.OPENAI_QUESTION_MODEL || "gpt-4o-mini"
@@ -8,6 +8,8 @@ export type RoleAwareOutput = {
   role_family: string
   skills: string[]
   questions: string[]
+  question_skills?: string[]
+  question_sources?: Array<"job" | "resume">
 }
 
 async function callLLM(prompt: string) {
@@ -49,6 +51,25 @@ export async function generateRoleAwareQuestions(
     return null
   }
   const uniqueSalt = Date.now()
+  const jobSkills = Array.from(new Set([
+    ...sanitizeSkillList(input.coreSkills ?? [], {
+      jobTitle: input.jobTitle,
+      jobDescription: input.jobDescription,
+    }),
+    ...deriveSkillsFromText(input.jobDescription),
+  ])).slice(0, 12)
+  const resumeSkills = Array.from(new Set([
+    ...sanitizeSkillList(input.candidateResumeSkills ?? [], {
+      jobTitle: input.jobTitle,
+      jobDescription: input.jobDescription,
+    }),
+    ...deriveSkillsFromText(input.candidateResumeText),
+  ])).slice(0, 12)
+  const desiredTotal = Math.max(5, Math.min(10, Number(input.totalQuestions ?? 7) || 7))
+  const resumeTarget = resumeSkills.length > 0
+    ? Math.min(2, Math.max(1, Math.round(desiredTotal * 0.3)), resumeSkills.length)
+    : 0
+  const jobTarget = desiredTotal - resumeTarget
 
   const basePrompt = `
 You are a senior interviewer across ALL job domains.
@@ -63,11 +84,17 @@ ${input.jobDescription || "N/A"}
 RESUME:
 ${input.candidateResumeText || "N/A"}
 
+JOB SKILLS:
+${jobSkills.length > 0 ? jobSkills.join(", ") : "N/A"}
+
+RESUME SKILLS:
+${resumeSkills.length > 0 ? resumeSkills.join(", ") : "N/A"}
+
 TASK:
 
 1. Detect role family
-2. Extract 5–6 skills
-3. Generate EXACTLY 7 questions
+2. Generate EXACTLY ${desiredTotal} questions
+3. Use EXACTLY ${jobTarget} job-anchored questions and EXACTLY ${resumeTarget} resume-anchored questions
 
 STRICT RULES:
 
@@ -79,6 +106,10 @@ STRICT RULES:
 - NO phrases like "you highlighted"
 - Do NOT repeat previous question patterns
 - Generate fresh variations
+- Job-anchored questions must come from JOB SKILLS
+- Resume-anchored questions must come from RESUME SKILLS
+- Resume questions must test candidate-owned experience, not copy resume text
+- Keep question_skills and question_sources aligned 1:1 with questions
 
 ALLOWED FORMAT:
 - How do you...
@@ -90,7 +121,9 @@ OUTPUT JSON ONLY:
 {
   "role_family": "...",
   "skills": ["..."],
-  "questions": ["..."]
+  "questions": ["..."],
+  "question_skills": ["..."],
+  "question_sources": ["job", "job", "resume"]
 }
 `
 
@@ -115,23 +148,39 @@ async function generateWithRetry(prompt: string, maxRetries = 3): Promise<RoleAw
       continue
     }
 
-    const valid: string[] = []
+    const validQuestions: string[] = []
+    const validSkills: string[] = []
+    const validSources: Array<"job" | "resume"> = []
     const errors: string[] = []
+    const parsedSkills = Array.isArray(parsed.question_skills) ? parsed.question_skills : []
+    const parsedSources = Array.isArray(parsed.question_sources) ? parsed.question_sources : []
 
-    for (const q of parsed.questions || []) {
+    for (let index = 0; index < (parsed.questions || []).length; index += 1) {
+      const q = parsed.questions[index]
       const v = validateQuestionStrict(q)
       if (v.valid) {
-        valid.push(q)
+        validQuestions.push(q)
+        validSkills.push(
+          typeof parsedSkills[index] === "string"
+            ? parsedSkills[index]
+            : parsed.skills?.[index % Math.max(parsed.skills?.length ?? 1, 1)] ?? "general"
+        )
+        validSources.push(parsedSources[index] === "resume" ? "resume" : "job")
       } else {
         errors.push(v.reason || "invalid")
       }
     }
 
-    if (valid.length >= 5) {
+    const jobCount = validSources.filter((source) => source === "job").length
+    const resumeCount = validSources.filter((source) => source === "resume").length
+
+    if (validQuestions.length >= 5 && jobCount >= jobTarget && resumeCount >= resumeTarget) {
       return {
         role_family: parsed.role_family,
         skills: parsed.skills,
-        questions: valid.slice(0, 7),
+        questions: validQuestions.slice(0, desiredTotal),
+        question_skills: validSkills.slice(0, desiredTotal),
+        question_sources: validSources.slice(0, desiredTotal),
       }
     }
 

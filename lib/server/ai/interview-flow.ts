@@ -87,8 +87,8 @@ export async function generateQuestions(input: any) {
   return finalQuestions.map((q, i) => ({
     id: `q-${i}`,
     question: q,
-    skill: result.skills[i % result.skills.length],
-    source_type: "adaptive" as const,
+    skill: result.question_skills?.[i] ?? result.skills[i % result.skills.length],
+    source_type: result.question_sources?.[i] === "resume" ? "resume" as const : "job" as const,
   }))
 }
 
