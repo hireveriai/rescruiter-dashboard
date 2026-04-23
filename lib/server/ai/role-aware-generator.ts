@@ -4,6 +4,17 @@ import { validateQuestionStrict } from "./question-validator"
 
 const MODEL = process.env.OPENAI_QUESTION_MODEL || "gpt-4o-mini"
 
+function resolveSeniorityLevel(level?: string) {
+  const normalized = String(level ?? "").toLowerCase().trim()
+  if (/senior|lead|staff|principal|manager|head|director/.test(normalized)) {
+    return "senior"
+  }
+  if (/mid|intermediate|3|4|5/.test(normalized)) {
+    return "mid"
+  }
+  return "junior"
+}
+
 export type RoleAwareOutput = {
   role_family: string
   skills: string[]
@@ -70,6 +81,7 @@ export async function generateRoleAwareQuestions(
     ? Math.min(2, Math.max(1, Math.round(desiredTotal * 0.3)), resumeSkills.length)
     : 0
   const jobTarget = desiredTotal - resumeTarget
+  const seniorityLevel = resolveSeniorityLevel(input.experienceLevel)
 
   const basePrompt = `
 You are a senior interviewer across ALL job domains.
@@ -89,6 +101,9 @@ ${jobSkills.length > 0 ? jobSkills.join(", ") : "N/A"}
 
 RESUME SKILLS:
 ${resumeSkills.length > 0 ? resumeSkills.join(", ") : "N/A"}
+
+EXPERIENCE LEVEL:
+${seniorityLevel}
 
 TASK:
 
@@ -113,11 +128,20 @@ STRICT RULES:
 - Resume-anchored questions must come from RESUME SKILLS
 - Resume questions must test candidate-owned experience, not copy resume text
 - Keep question_skills and question_sources aligned 1:1 with questions
+- Apply the difficulty layer across every domain based on EXPERIENCE LEVEL
+- Junior questions should focus on direct execution, guided troubleshooting, and clear scenarios
+- Mid questions should include realistic operating constraints, trade-offs, and moderate pressure
+- Senior questions should focus on system design, resilience, ambiguity, scale, and ownership under stress
 
 ALLOWED FORMAT:
 - How do you...
 - What would you do if...
 - Walk me through...
+
+DIFFICULTY EXAMPLES:
+- Junior: How do you debug a failed ETL job?
+- Mid: How do you handle ETL failures under moderate production load?
+- Senior: How do you design ETL systems to remain stable under peak load failures?
 
 OUTPUT JSON ONLY:
 
@@ -215,6 +239,7 @@ RULES AGAIN:
 - No resume references
 - Add one light real-world constraint or operating context per question
 - Use failure, scale, pressure, ambiguity, or time constraints when relevant
+- Match the requested difficulty level for junior, mid, or senior roles
 
 Regenerate clean output.
 `

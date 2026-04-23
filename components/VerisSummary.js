@@ -8,11 +8,11 @@ import { buildAuthUrl, hasAuthQuery } from "@/lib/client/auth-query"
 function getRecommendationColor(value) {
   const normalized = String(value ?? "").toUpperCase()
 
-  if (normalized === "HIRE" || normalized === "PROCEED") {
+  if (normalized === "STRONG HIRE" || normalized === "HIRE") {
     return "text-green-400"
   }
 
-  if (normalized === "REVIEW") {
+  if (normalized === "HOLD" || normalized === "REVIEW REQUIRED") {
     return "text-yellow-400"
   }
 
@@ -94,7 +94,7 @@ export default function VerisSummary({ initialSummaries }) {
               </div>
 
               <div className="text-sm">
-                Overall Score: <span className="text-blue-400">{item.overallScore ?? "-"}</span>
+                Score: <span className="text-blue-400">{item.scoreLabel ?? "-"}</span>
               </div>
 
               <div className="text-sm mt-1">
@@ -109,11 +109,19 @@ export default function VerisSummary({ initialSummaries }) {
                 Weaknesses: <span className="text-slate-100">{item.weaknessesShort}</span>
               </div>
 
+              <div className="text-sm mt-1 text-slate-300">
+                Behavioral Flags: <span className="text-slate-100">{item.behavioralFlagsShort}</span>
+              </div>
+
               <div className="text-sm mt-2">
                 Recommendation:
                 <span className={`ml-2 ${getRecommendationColor(item.recommendation)}`}>
                   {item.recommendation}
                 </span>
+              </div>
+
+              <div className="text-sm mt-1 text-slate-400">
+                Reason: <span className="text-slate-200">{item.recommendationReason}</span>
               </div>
             </div>
           ))

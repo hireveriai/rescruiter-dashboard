@@ -13,13 +13,37 @@ import {
   sanitizeSkillList,
 } from "@/lib/server/ai/skills"
 
-function buildResumeQuestion(skill: string, index: number) {
+function resolveSeniorityLevel(level?: string) {
+  const normalized = String(level ?? "").toLowerCase().trim()
+  if (/senior|lead|staff|principal|manager|head|director/.test(normalized)) {
+    return "senior"
+  }
+  if (/mid|intermediate|3|4|5/.test(normalized)) {
+    return "mid"
+  }
+  return "junior"
+}
+
+function buildResumeQuestion(skill: string, index: number, seniorityLevel: "junior" | "mid" | "senior") {
   const displaySkill = presentSkillName(skill)
-  const templates = [
-    `How have you used ${displaySkill} in recent projects to improve outcomes?`,
-    `Walk me through a recent project where you applied ${displaySkill} directly.`,
-    `What would you improve next time when using ${displaySkill} in production work?`,
-  ]
+  const templatesByLevel = {
+    junior: [
+      `How have you used ${displaySkill} in recent projects to solve routine problems?`,
+      `Walk me through a recent task where you applied ${displaySkill} directly.`,
+      `What would you check first when using ${displaySkill} under time pressure?`,
+    ],
+    mid: [
+      `How have you used ${displaySkill} under delivery pressure in recent projects?`,
+      `Walk me through using ${displaySkill} when priorities changed during execution.`,
+      `What trade-offs matter when applying ${displaySkill} under moderate constraints?`,
+    ],
+    senior: [
+      `How do you keep ${displaySkill} reliable under peak pressure and changing constraints?`,
+      `Walk me through leading ${displaySkill} decisions under ambiguity and scale.`,
+      `How do you design around ${displaySkill} when failures threaten critical outcomes?`,
+    ],
+  } as const
+  const templates = templatesByLevel[seniorityLevel]
 
   return templates[index % templates.length]
 }
@@ -59,6 +83,7 @@ export async function generateInterviewQuestions(
   input: BaseGenerationInput
 ): Promise<InterviewQuestion[]> {
   const generated = await generateRoleAwareQuestionSet(input)
+  const seniorityLevel = resolveSeniorityLevel(input.experienceLevel)
   const totalQuestions = Math.max(5, Math.min(10, Number(input.totalQuestions ?? generated.length ?? 7) || 7))
   const targetResumeCount = Math.min(
     2,
@@ -88,10 +113,14 @@ export async function generateInterviewQuestions(
     .slice(0, Math.max(0, totalQuestions - selectedResumeSkills.length))
 
   const injectedResumeQuestions = selectedResumeSkills.map((skill, index) => {
-    const questionText = buildResumeQuestion(skill, index)
+    const questionText = buildResumeQuestion(skill, index, seniorityLevel)
     const safeQuestion = validateQuestionStrict(questionText).valid
       ? questionText
-      : `How have you used ${presentSkillName(skill)} in recent projects at work?`
+      : seniorityLevel === "senior"
+        ? `How do you design ${presentSkillName(skill)} for resilience under pressure?`
+        : seniorityLevel === "mid"
+          ? `How have you used ${presentSkillName(skill)} under delivery pressure at work?`
+          : `How have you used ${presentSkillName(skill)} in recent projects at work?`
 
     return mapQuestion(
       {

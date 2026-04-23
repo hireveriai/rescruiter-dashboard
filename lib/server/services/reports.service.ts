@@ -134,6 +134,8 @@ export type NormalizedReportRow = {
   avg_skill_score: number | null
   missingSkills: string[]
   weakSkills: string[]
+  summaryStrengths: string[]
+  summaryWeaknesses: string[]
   normalized_score: number | null
   overall_score: number | null
   hire_recommendation: string | null
@@ -141,6 +143,24 @@ export type NormalizedReportRow = {
   risk_level: string | null
   suspicious_index: number
   is_flagged: boolean
+}
+
+export type VerisSummaryCard = {
+  attemptId: string
+  candidateName: string
+  jobTitle: string
+  score: number | null
+  scoreLabel: string
+  riskLevel: string
+  strengths: string[]
+  strengthsShort: string
+  weaknesses: string[]
+  weaknessesShort: string
+  behavioralFlags: string[]
+  behavioralFlagsShort: string
+  recommendation: string
+  recommendationReason: string
+  createdAt: string | null
 }
 
 type SkillProfileRow = {
@@ -312,6 +332,11 @@ function normalizeRecommendation(value: string | null | undefined) {
   return normalized
 }
 
+function isPositiveRecommendation(value: string | null | undefined) {
+  const normalized = normalizeStatus(value)
+  return normalized === "HIRE" || normalized === "STRONG HIRE"
+}
+
 function normalizeRiskLevel(value: string | null | undefined) {
   const normalized = normalizeStatus(value)
   if (!normalized) {
@@ -335,6 +360,303 @@ function toPercentUnit(value: number | null | undefined) {
   }
 
   return Number((Math.min(1, Math.max(0, value)) * 100).toFixed(2))
+}
+
+function uniqueItems(values: string[]) {
+  return [...new Set(values.map((item) => item.trim()).filter(Boolean))]
+}
+
+function toSentenceCase(value: string) {
+  const compact = value.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim()
+  if (!compact) {
+    return ""
+  }
+
+  return compact.charAt(0).toUpperCase() + compact.slice(1).toLowerCase()
+}
+
+function splitInsightText(value: unknown) {
+  if (Array.isArray(value)) {
+    return uniqueItems(value.map((item) => String(item ?? "")))
+  }
+
+  if (typeof value !== "string") {
+    return [] as string[]
+  }
+
+  return uniqueItems(
+    value
+      .split(/[\n;|]|\. /)
+      .map((item) => item.trim().replace(/^[•\-]\s*/, ""))
+      .filter(Boolean)
+  )
+}
+
+function summarizeList(items: string[]) {
+  return items.length > 0 ? items.join(", ") : "-"
+}
+
+function mapBehavioralFlagLabel(value: string) {
+  const normalized = normalizeStatus(value)
+
+  if (["MANUAL_EXIT", "EARLY_EXIT", "EARLY EXIT"].includes(normalized)) {
+    return "Early exit"
+  }
+
+  if (["TAB_SWITCH", "TAB SWITCH", "TAB_SWITCHES"].includes(normalized)) {
+    return "Tab switch"
+  }
+
+  if (["SILENCE_SPIKE", "SILENCE SPIKES", "SILENCE"].includes(normalized)) {
+    return "Silence spikes"
+  }
+
+  if (["MULTI_FACE", "MULTIPLE FACE", "MULTIPLE FACES"].includes(normalized)) {
+    return "Multiple faces detected"
+  }
+
+  if (["ATTENTION_LOSS", "ATTENTION LOSS"].includes(normalized)) {
+    return "Attention loss"
+  }
+
+  if (["LONG_GAZE_AWAY", "LOOK_AWAY", "LONG GAZE AWAY"].includes(normalized)) {
+    return "Long gaze away"
+  }
+
+  if (["NO_FACE", "NO FACE"].includes(normalized)) {
+    return "Face not visible"
+  }
+
+  return toSentenceCase(value)
+}
+
+function isBehavioralWeakness(value: string) {
+  const normalized = normalizeStatus(value)
+  return [
+    "MANUAL_EXIT",
+    "EARLY_EXIT",
+    "EARLY EXIT",
+    "TAB_SWITCH",
+    "TAB SWITCH",
+    "TAB_SWITCHES",
+    "SILENCE_SPIKE",
+    "SILENCE SPIKES",
+    "SILENCE",
+    "MULTI_FACE",
+    "MULTIPLE FACE",
+    "MULTIPLE FACES",
+    "ATTENTION_LOSS",
+    "ATTENTION LOSS",
+    "LONG_GAZE_AWAY",
+    "LOOK_AWAY",
+    "LONG GAZE AWAY",
+    "NO_FACE",
+    "NO FACE",
+  ].includes(normalized)
+}
+
+function deriveBehavioralFlags(row: Pick<
+  NormalizedReportRow,
+  | "tab_switch_count"
+  | "attention_loss_count"
+  | "long_gaze_away_count"
+  | "no_face_count"
+  | "multi_face_count"
+  | "attemptStatus"
+>, summaryWeaknesses: string[]) {
+  const flags = summaryWeaknesses.filter(isBehavioralWeakness).map(mapBehavioralFlagLabel)
+
+  if (row.attemptStatus && normalizeStatus(row.attemptStatus) === "MANUAL_EXIT") {
+    flags.push("Early exit")
+  }
+  if (row.tab_switch_count > 0) {
+    flags.push("Tab switch")
+  }
+  if (row.attention_loss_count > 0) {
+    flags.push("Attention loss")
+  }
+  if (row.long_gaze_away_count > 0) {
+    flags.push("Long gaze away")
+  }
+  if (row.no_face_count > 0) {
+    flags.push("Face not visible")
+  }
+  if (row.multi_face_count > 0) {
+    flags.push("Multiple faces detected")
+  }
+
+  return uniqueItems(flags)
+}
+
+function deriveStrengths(row: Pick<
+  NormalizedReportRow,
+  | "summaryStrengths"
+  | "avg_clarity_score"
+  | "avg_confidence_score"
+  | "avg_depth_score"
+  | "avg_skill_score"
+  | "tab_switch_count"
+  | "attention_loss_count"
+  | "multi_face_count"
+  | "avg_focus_ratio"
+>) {
+  const strengths = [...row.summaryStrengths]
+
+  if ((row.avg_clarity_score ?? 0) >= 0.7) {
+    strengths.push("Clear communication")
+  }
+  if ((row.avg_confidence_score ?? 0) >= 0.7) {
+    strengths.push("Structured thinking")
+  }
+  if ((row.avg_depth_score ?? 0) >= 0.7 || (row.avg_skill_score ?? 0) >= 3.7) {
+    strengths.push("Good technical depth")
+  }
+  if (row.tab_switch_count === 0 && row.attention_loss_count === 0 && row.multi_face_count === 0) {
+    strengths.push("Stable response patterns")
+  }
+  if (row.avg_focus_ratio !== null && row.avg_focus_ratio >= 0.8) {
+    strengths.push("Strong interview focus")
+  }
+
+  const normalized = uniqueItems(strengths.map(toSentenceCase))
+  const fallbacks = ["Structured thinking", "Clear communication", "Stable response patterns"]
+
+  for (const fallback of fallbacks) {
+    if (normalized.length >= 2) {
+      break
+    }
+    if (!normalized.includes(fallback)) {
+      normalized.push(fallback)
+    }
+  }
+
+  return normalized.slice(0, 4)
+}
+
+function deriveWeaknesses(row: Pick<
+  NormalizedReportRow,
+  | "summaryWeaknesses"
+  | "weakSkills"
+  | "missingSkills"
+  | "avg_depth_score"
+  | "avg_clarity_score"
+  | "avg_confidence_score"
+>) {
+  const weaknesses = row.summaryWeaknesses.filter((item) => !isBehavioralWeakness(item)).map(toSentenceCase)
+
+  row.weakSkills.forEach((skill) => weaknesses.push(`Weak ${toSentenceCase(skill)}`))
+  row.missingSkills.forEach((skill) => weaknesses.push(`Missing ${toSentenceCase(skill)}`))
+
+  if ((row.avg_depth_score ?? 1) < 0.55) {
+    weaknesses.push("Limited technical depth")
+  }
+  if ((row.avg_clarity_score ?? 1) < 0.55) {
+    weaknesses.push("Lack of clarity")
+  }
+  if ((row.avg_confidence_score ?? 1) < 0.55) {
+    weaknesses.push("Low answer confidence")
+  }
+
+  return uniqueItems(weaknesses).slice(0, 4)
+}
+
+function deriveRecommendation(score: number | null, riskLevel: string | null | undefined) {
+  const safeScore = score ?? 0
+  const risk = normalizeRiskLevel(riskLevel) ?? "LOW"
+
+  if (risk === "HIGH" || risk === "CRITICAL") {
+    return "Risk"
+  }
+
+  if (risk === "MEDIUM") {
+    return "Review Required"
+  }
+
+  if (safeScore >= 80) {
+    return "Strong Hire"
+  }
+
+  if (safeScore >= 60) {
+    return "Hire"
+  }
+
+  return "Hold"
+}
+
+function deriveRecommendationReason(params: {
+  recommendation: string
+  riskLevel: string
+  score: number | null
+  weaknesses: string[]
+  behavioralFlags: string[]
+}) {
+  const topWeakness = params.weaknesses[0]
+  const topFlag = params.behavioralFlags[0]
+  const safeScore = params.score ?? 0
+
+  if (params.recommendation === "Risk") {
+    return topFlag ? `${topFlag} created a high-risk interview pattern.` : "Behavioral risk signals are too strong for a confident pass."
+  }
+
+  if (params.recommendation === "Review Required") {
+    return topFlag
+      ? `${topFlag} needs recruiter review before moving forward.`
+      : topWeakness
+        ? `${topWeakness} needs recruiter review before moving forward.`
+        : "Mixed interview signals require recruiter review."
+  }
+
+  if (params.recommendation === "Strong Hire") {
+    return safeScore >= 80 ? "Low-risk interview with strong depth and communication signals." : "Low-risk interview with consistently strong performance."
+  }
+
+  if (params.recommendation === "Hire") {
+    return topWeakness
+      ? `Low-risk interview with enough strength to proceed despite ${topWeakness.toLowerCase()}.`
+      : "Low-risk interview with solid overall performance."
+  }
+
+  return topWeakness
+    ? `Stable behavior but ${topWeakness.toLowerCase()} reduced readiness for this role.`
+    : "Stable behavior but answer quality was not strong enough to recommend immediate hire."
+}
+
+function buildVerisSummaryCard(row: NormalizedReportRow): VerisSummaryCard | null {
+  const attemptId = row.attemptId ?? row.interviewId
+  if (!attemptId) {
+    return null
+  }
+
+  const behavioralFlags = deriveBehavioralFlags(row, row.summaryWeaknesses)
+  const strengths = deriveStrengths(row)
+  const weaknesses = deriveWeaknesses(row)
+  const riskLevel = normalizeRiskLevel(row.risk_level) ?? "LOW"
+  const score = row.normalized_score ?? row.overall_score
+  const recommendation = deriveRecommendation(score, riskLevel)
+
+  return {
+    attemptId,
+    candidateName: row.candidateName,
+    jobTitle: row.jobTitle,
+    score,
+    scoreLabel: score === null ? "-" : `${Math.round(score)} / 100`,
+    riskLevel,
+    strengths,
+    strengthsShort: summarizeList(strengths),
+    weaknesses,
+    weaknessesShort: summarizeList(weaknesses),
+    behavioralFlags,
+    behavioralFlagsShort: summarizeList(behavioralFlags),
+    recommendation,
+    recommendationReason: deriveRecommendationReason({
+      recommendation,
+      riskLevel,
+      score,
+      weaknesses,
+      behavioralFlags,
+    }),
+    createdAt: row.endedAt ?? row.startedAt ?? row.inviteCreatedAt ?? null,
+  }
 }
 
 async function tableExists(tableName: string) {
@@ -789,6 +1111,8 @@ export async function getNormalizedReportRows(organizationId: string): Promise<N
         avg_skill_score: avgSkillScore,
         missingSkills,
         weakSkills,
+        summaryStrengths: normalizeStringArray(summary?.strengths),
+        summaryWeaknesses: normalizeStringArray(summary?.weaknesses),
         normalized_score: normalizedScore,
         overall_score: overallScore,
         hire_recommendation: hireRecommendation,
@@ -824,8 +1148,14 @@ async function loadReportsData(organizationId: string): Promise<ReportsPayload> 
   const startedRows = rows.filter((row) => row.attemptId && row.startedAt)
   const completedRows = rows.filter((row) => row.result_status === "COMPLETED")
   const flaggedRows = rows.filter((row) => row.is_flagged)
-  const selectedRows = rows.filter((row) => normalizeRecommendation(row.hire_recommendation) === "HIRE")
-  const recommendedRows = rows.filter((row) => normalizeRecommendation(row.hire_recommendation) === "HIRE" || (row.normalized_score ?? 0) >= 80)
+  const selectedRows = rows.filter((row) => {
+    const recommendation = buildVerisSummaryCard(row)?.recommendation
+    return recommendation === "Strong Hire" || recommendation === "Hire"
+  })
+  const recommendedRows = rows.filter((row) => {
+    const recommendation = buildVerisSummaryCard(row)?.recommendation
+    return recommendation === "Strong Hire" || recommendation === "Hire"
+  })
 
   const confidenceValues = rows.map((row) => row.avg_confidence_score).filter((value): value is number => value !== null)
   const clarityValues = rows.map((row) => row.avg_clarity_score).filter((value): value is number => value !== null)
@@ -941,7 +1271,7 @@ async function loadReportsData(organizationId: string): Promise<ReportsPayload> 
       candidateName: row.candidateName,
       jobTitle: row.jobTitle,
       score: Number((row.normalized_score ?? 0).toFixed(1)),
-      recommendation: normalizeRecommendation(row.hire_recommendation) ?? (row.normalized_score ?? 0) >= 80 ? "HIRE" : "HOLD",
+      recommendation: buildVerisSummaryCard(row)?.recommendation ?? "Hold",
       riskLevel: row.risk_level ?? "LOW",
       attemptId: row.attemptId ?? row.interviewId,
     }))
@@ -979,7 +1309,8 @@ async function loadReportsData(organizationId: string): Promise<ReportsPayload> 
     if (row.result_status === "COMPLETED") {
       current.completed += 1
     }
-    if (normalizeRecommendation(row.hire_recommendation) === "HIRE") {
+    const recommendation = buildVerisSummaryCard(row)?.recommendation
+    if (recommendation === "Strong Hire" || recommendation === "Hire") {
       current.selected += 1
     }
     row.weakSkills.forEach((skill) => {
@@ -1163,4 +1494,15 @@ export async function getReportsOverview(organizationId: string) {
     expiresAt: Date.now() + REPORTS_CACHE_TTL_MS,
   })
   return payload
+}
+
+export async function getVerisSummaryCards(organizationId: string, limit = 6) {
+  const rows = await getNormalizedReportRows(organizationId)
+
+  return rows
+    .filter((row) => row.attemptId)
+    .sort((left, right) => new Date(right.endedAt ?? right.startedAt ?? 0).getTime() - new Date(left.endedAt ?? left.startedAt ?? 0).getTime())
+    .map((row) => buildVerisSummaryCard(row))
+    .filter((card): card is VerisSummaryCard => Boolean(card))
+    .slice(0, limit)
 }

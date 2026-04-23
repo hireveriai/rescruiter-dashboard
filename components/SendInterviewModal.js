@@ -71,6 +71,10 @@ function getFileExtension(fileName) {
   return parts.pop()?.toUpperCase() ?? null
 }
 
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value ?? "").trim())
+}
+
 function getResumeSourceLabel(file) {
   if (!file) {
     return "Uploaded from device"
@@ -198,6 +202,11 @@ export default function SendInterviewModal({ isOpen, onClose }) {
 
     if (!jobId || !name || !email) {
       setError("Please fill all required fields")
+      return
+    }
+
+    if (!isValidEmail(email)) {
+      setError("Please enter a valid candidate email address")
       return
     }
 
@@ -396,6 +405,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
 
               <label className="text-sm text-gray-400">Candidate Email *</label>
               <input
+                type="email"
                 className="mb-4 w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-400/60 focus:shadow-[0_0_0_3px_rgba(34,211,238,0.08)]"
                 placeholder="Enter email"
                 value={email}

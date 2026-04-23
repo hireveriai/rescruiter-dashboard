@@ -8,6 +8,7 @@ import { toFunctionApiError } from "@/lib/server/function-errors"
 import { parseResumeText } from "@/lib/server/resumeParser"
 import { uploadBufferToS3 } from "@/lib/server/s3"
 import { jobPositionsSupportIsActive } from "@/lib/server/services/jobs"
+import { createCandidateSchema } from "@/lib/server/validators"
 
 export const runtime = "nodejs"
 
@@ -233,6 +234,17 @@ export async function POST(req: Request) {
     const email = getStringValue(formData.get("email")).toLowerCase()
     const jobId = getStringValue(formData.get("jobId"))
     const resumeEntry = formData.get("resume")
+
+    const candidateValidation = createCandidateSchema.safeParse({
+      fullName,
+      email,
+      jobId,
+    })
+
+    if (!candidateValidation.success) {
+      const issue = candidateValidation.error.issues[0]
+      throw new ApiError(400, "INVALID_CANDIDATE_INPUT", issue?.message || "Invalid candidate input")
+    }
 
     if (!fullName || !email || !jobId) {
       return NextResponse.json(

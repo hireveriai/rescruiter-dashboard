@@ -268,7 +268,7 @@ function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, onEdit, o
         </div>
 
         <div className="max-h-[75vh] overflow-auto px-8 py-6">
-          <div className="grid grid-cols-[1.1fr_1fr_1.25fr_1fr_0.9fr_1.25fr] gap-4 border-b border-white/10 pb-3 text-xs uppercase tracking-[0.24em] text-slate-500">
+          <div className="grid grid-cols-[1.1fr_1fr_1.25fr_1fr_0.9fr_minmax(220px,1.35fr)] gap-4 border-b border-white/10 pb-3 text-xs uppercase tracking-[0.24em] text-slate-500">
             <div>Candidate</div>
             <div>Job</div>
             <div>Interview Type</div>
@@ -286,21 +286,21 @@ function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, onEdit, o
               interviews.map((item) => (
                 <div
                   key={item.inviteId}
-                  className="grid grid-cols-[1.1fr_1fr_1.25fr_1fr_0.9fr_1.25fr] gap-4 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-4 text-sm text-slate-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+                  className="grid grid-cols-[1.1fr_1fr_1.25fr_1fr_0.9fr_minmax(220px,1.35fr)] gap-4 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-4 text-sm text-slate-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
                 >
                   <div className="font-medium text-white">{item.candidateName}</div>
                   <div className="text-slate-300">{item.jobTitle}</div>
                   <div className="text-cyan-200">{getInterviewTypeLabel(item)}</div>
                   <div className="text-slate-400">{formatDate(item.createdAt)}</div>
                   <div className="text-amber-300">{getExpiryLabel(item.expiresAt, nowTick)}</div>
-                  <div className="flex flex-wrap gap-2">
-                    <button type="button" onClick={() => onCopy(item.link)} className="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1.5 text-cyan-100 transition hover:bg-cyan-400/20">
+                  <div className="flex flex-nowrap items-center gap-2 whitespace-nowrap">
+                    <button type="button" onClick={() => onCopy(item.link)} className="shrink-0 rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1.5 text-cyan-100 transition hover:bg-cyan-400/20">
                       {copiedLink === item.link ? "Copied" : "Copy"}
                     </button>
-                    <button type="button" onClick={() => onEdit(item)} className="rounded-full border border-indigo-400/30 bg-indigo-400/10 px-3 py-1.5 text-indigo-100 transition hover:bg-indigo-400/20">
+                    <button type="button" onClick={() => onEdit(item)} className="shrink-0 rounded-full border border-indigo-400/30 bg-indigo-400/10 px-3 py-1.5 text-indigo-100 transition hover:bg-indigo-400/20">
                       Edit
                     </button>
-                    <button type="button" disabled={busyInviteId === item.inviteId} onClick={() => onDelete(item)} className="rounded-full border border-rose-400/30 bg-rose-500/10 px-3 py-1.5 text-rose-100 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60">
+                    <button type="button" disabled={busyInviteId === item.inviteId} onClick={() => onDelete(item)} className="shrink-0 rounded-full border border-rose-400/30 bg-rose-500/10 px-3 py-1.5 text-rose-100 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60">
                       {busyInviteId === item.inviteId ? "Deleting..." : "Delete"}
                     </button>
                   </div>
@@ -559,14 +559,14 @@ export default function PendingInterviews({ initialPendingInterviews }) {
                     <td className="p-4 text-cyan-200">{getInterviewTypeLabel(item)}</td>
                     <td className="p-4 text-yellow-400">{getExpiryLabel(item.expiresAt, nowTick)}</td>
                     <td className="p-4">
-                      <div className="flex flex-wrap gap-3 text-xs sm:text-sm">
-                        <button className="text-blue-400" onClick={() => handleCopy(item.link)}>
+                      <div className="flex flex-nowrap items-center gap-3 whitespace-nowrap text-xs sm:text-sm">
+                        <button className="shrink-0 text-blue-400" onClick={() => handleCopy(item.link)}>
                           {copiedLink === item.link ? "Copied" : "Copy"}
                         </button>
-                        <button className="text-indigo-300" onClick={() => handleEditOpen(item)}>
+                        <button className="shrink-0 text-indigo-300" onClick={() => handleEditOpen(item)}>
                           Edit
                         </button>
-                        <button className="text-rose-300" onClick={() => handleDeleteOpen(item)}>
+                        <button className="shrink-0 text-rose-300" onClick={() => handleDeleteOpen(item)}>
                           {busyInviteId === item.inviteId ? "Deleting..." : "Delete"}
                         </button>
                       </div>

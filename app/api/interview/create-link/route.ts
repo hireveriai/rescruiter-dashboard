@@ -32,6 +32,11 @@ type JobStatusRow = {
   is_active: boolean
 }
 
+type ActiveInviteRow = {
+  invite_id: string
+  interview_id: string
+}
+
 const CREATE_LINK_AI_TIMEOUT_MS = 12000
 const MIN_QUESTION_COUNT = 5
 
@@ -63,6 +68,50 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMes
       clearTimeout(timeoutHandle)
     }
   }
+}
+
+async function revokeActiveInvitesForCandidate(params: {
+  organizationId: string
+  jobId: string
+  email: string
+}) {
+  const activeInvites = await prisma.$queryRaw<ActiveInviteRow[]>(Prisma.sql`
+    select
+      ii.invite_id,
+      ii.interview_id
+    from public.interview_invites ii
+    inner join public.interviews i on i.interview_id = ii.interview_id
+    inner join public.candidates c on c.candidate_id = i.candidate_id
+    where i.organization_id = ${params.organizationId}::uuid
+      and i.job_id = ${params.jobId}::uuid
+      and lower(c.email) = lower(${params.email})
+      and coalesce(ii.status, 'ACTIVE') = 'ACTIVE'
+      and ii.used_at is null
+      and (ii.expires_at is null or ii.expires_at > now())
+  `)
+
+  if (activeInvites.length === 0) {
+    return
+  }
+
+  const inviteIds = activeInvites.map((invite) => invite.invite_id)
+  const interviewIds = activeInvites.map((invite) => invite.interview_id)
+
+  await prisma.$executeRaw(Prisma.sql`
+    update public.interview_invites
+    set
+      status = 'EXPIRED',
+      expires_at = now()
+    where invite_id = any(${inviteIds}::uuid[])
+  `)
+
+  await prisma.$executeRaw(Prisma.sql`
+    update public.interviews
+    set
+      is_active = false,
+      status = 'EXPIRED'
+    where interview_id = any(${interviewIds}::uuid[])
+  `)
 }
 
 export async function POST(request: Request) {
@@ -114,6 +163,12 @@ export async function POST(request: Request) {
     if (!candidate?.email) {
       throw new ApiError(404, "CANDIDATE_NOT_FOUND", "Candidate not found for this organization")
     }
+
+    await revokeActiveInvitesForCandidate({
+      organizationId: auth.organizationId,
+      jobId,
+      email: candidate.email,
+    })
 
     const sanitizedJobSkills = sanitizeSkillList(job.coreSkills ?? [], {
       jobTitle: job.jobTitle ?? undefined,

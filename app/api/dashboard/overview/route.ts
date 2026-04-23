@@ -8,23 +8,12 @@ import { getInterviewAppUrl } from "@/lib/server/interview-url"
 import { getCandidatesDashboard } from "@/lib/server/services/dashboard.service"
 import { getDashboardPipelineData } from "@/lib/server/services/dashboard-pipeline"
 import { getRecruiterProfile } from "@/lib/server/services/recruiter-profile"
+import { getVerisSummaryCards, type VerisSummaryCard } from "@/lib/server/services/reports.service"
 
 type PipelineFunctionRow = {
   fn_get_dashboard_pipeline: {
     recordedInterviews?: Array<Record<string, unknown>>
   }
-}
-
-type VerisRow = {
-  attempt_id: string
-  overall_score: number | null
-  risk_level: string | null
-  strengths: string | null
-  weaknesses: string | null
-  hire_recommendation: string | null
-  created_at: Date | string | null
-  candidate_name: string
-  job_title: string
 }
 
 type OverviewPayload = {
@@ -38,19 +27,7 @@ type OverviewPayload = {
   pendingInterviews: Array<Record<string, unknown>>
   recordedInterviews: Array<Record<string, unknown>>
   candidates: Awaited<ReturnType<typeof getCandidatesDashboard>>
-  veris: Array<{
-    attemptId: string
-    candidateName: string
-    jobTitle: string
-    overallScore: number | null
-    riskLevel: string
-    recommendation: string
-    strengths: string
-    weaknesses: string
-    strengthsShort: string
-    weaknessesShort: string
-    createdAt: Date | string | null
-  }>
+  veris: VerisSummaryCard[]
 }
 
 type CacheEntry = {
@@ -63,25 +40,12 @@ const CACHE_MAX = 50
 const overviewCache = new Map<string, CacheEntry>()
 const inFlight = new Map<string, Promise<OverviewPayload>>()
 
-function shorten(text: string | null, words = 18) {
-  if (!text) {
-    return "-"
-  }
-
-  const parts = text.trim().split(/\s+/).filter(Boolean)
-  if (parts.length <= words) {
-    return parts.join(" ")
-  }
-
-  return `${parts.slice(0, words).join(" ")}...`
-}
-
 async function buildOverview(
   auth: Awaited<ReturnType<typeof getRecruiterRequestContext>>
 ): Promise<OverviewPayload> {
   const appUrl = getInterviewAppUrl()
 
-  const [profile, pipelineRows, verisRows, candidates] = await Promise.all([
+  const [profile, pipelineRows, veris, candidates] = await Promise.all([
     getRecruiterProfile(auth),
     prisma.$queryRaw<PipelineFunctionRow[]>(Prisma.sql`
       select public.fn_get_dashboard_pipeline(
@@ -89,10 +53,7 @@ async function buildOverview(
         ${appUrl}
       )
     `),
-    prisma.$queryRaw<VerisRow[]>(Prisma.sql`
-      select *
-      from public.fn_get_dashboard_veris(${auth.organizationId}::uuid, 6)
-    `),
+    getVerisSummaryCards(auth.organizationId, 6),
     getCandidatesDashboard({
       organizationId: auth.organizationId,
       limit: 5,
@@ -110,19 +71,7 @@ async function buildOverview(
     pendingInterviews: pipelineData.pendingInterviews,
     recordedInterviews: payload.recordedInterviews ?? [],
     candidates: candidates ?? [],
-    veris: verisRows.map((row) => ({
-      attemptId: row.attempt_id,
-      candidateName: row.candidate_name,
-      jobTitle: row.job_title,
-      overallScore: row.overall_score,
-      riskLevel: row.risk_level ?? "-",
-      recommendation: row.hire_recommendation ?? "-",
-      strengths: row.strengths ?? "-",
-      weaknesses: row.weaknesses ?? "-",
-      strengthsShort: shorten(row.strengths),
-      weaknessesShort: shorten(row.weaknesses),
-      createdAt: row.created_at,
-    })),
+    veris,
   }
 }
 

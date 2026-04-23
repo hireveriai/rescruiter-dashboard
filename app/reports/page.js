@@ -58,11 +58,11 @@ function getSeverityClass(severity) {
 function getRecommendationClass(recommendation) {
   const normalized = String(recommendation ?? "").toUpperCase()
 
-  if (normalized === "HIRE") {
+  if (normalized === "STRONG HIRE" || normalized === "HIRE") {
     return "border-emerald-500/30 bg-emerald-500/12 text-emerald-200"
   }
 
-  if (normalized === "HOLD") {
+  if (normalized === "HOLD" || normalized === "REVIEW REQUIRED") {
     return "border-amber-500/30 bg-amber-500/12 text-amber-200"
   }
 
@@ -168,11 +168,10 @@ export default function ReportsPage() {
             <div className="max-w-4xl">
               <p className="text-xs font-semibold uppercase tracking-[0.34em] text-cyan-300/75">HireVeri Reports</p>
               <h1 className="mt-4 text-4xl font-semibold tracking-tight text-white lg:text-5xl">
-                Behavioral intelligence, fraud visibility, and hiring decisions in one command view
+                Hiring Decisions & Risk Intelligence
               </h1>
               <p className="mt-4 max-w-3xl text-base leading-7 text-slate-300">
-                A decision-ready reporting layer for executive summaries, interview funnel analysis, cognitive risk,
-                forensic review, candidate ranking, and recruiter audit traceability.
+                Real-time evaluation of candidate performance, behavioral signals, and fraud risk.
               </p>
             </div>
 
@@ -399,7 +398,7 @@ export default function ReportsPage() {
                           <td className="px-4 py-4 font-semibold text-white">{candidate.rank}</td>
                           <td className="px-4 py-4">{candidate.candidateName}</td>
                           <td className="px-4 py-4 text-slate-400">{candidate.jobTitle}</td>
-                          <td className="px-4 py-4 text-cyan-200">{candidate.score}</td>
+                          <td className="px-4 py-4 text-cyan-200">{candidate.score} / 100</td>
                           <td className="px-4 py-4">
                             <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] ${getRecommendationClass(candidate.recommendation)}`}>
                               {candidate.recommendation}
