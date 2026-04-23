@@ -16,9 +16,9 @@ import {
 function buildResumeQuestion(skill: string, index: number) {
   const displaySkill = presentSkillName(skill)
   const templates = [
-    `How have you used ${displaySkill} in recent work?`,
-    `Walk me through using ${displaySkill} in a project you owned.`,
-    `What would you improve next time using ${displaySkill}?`,
+    `How have you used ${displaySkill} in recent projects to improve outcomes?`,
+    `Walk me through a recent project where you applied ${displaySkill} directly.`,
+    `What would you improve next time when using ${displaySkill} in production work?`,
   ]
 
   return templates[index % templates.length]
@@ -91,7 +91,7 @@ export async function generateInterviewQuestions(
     const questionText = buildResumeQuestion(skill, index)
     const safeQuestion = validateQuestionStrict(questionText).valid
       ? questionText
-      : `How have you used ${presentSkillName(skill)} at work?`
+      : `How have you used ${presentSkillName(skill)} in recent projects at work?`
 
     return mapQuestion(
       {
