@@ -150,11 +150,11 @@ function validateQuestionShield(questions: InterviewQuestion[]) {
     if (!text || text.length < 12) {
       return { ok: false, reason: "Question text is too short or empty." }
     }
-    if (!isAdaptive && !hasGoodQuestionLength(text)) {
+    if (!isAdaptive && !isDynamicGenerated && !hasGoodQuestionLength(text)) {
       return { ok: false, reason: "Question text length is outside the allowed range." }
     }
-    if (isAdaptive && !validateQuestionStrict(text).valid) {
-      return { ok: false, reason: "Adaptive question failed strict validation." }
+    if ((isAdaptive || isDynamicGenerated) && !validateQuestionStrict(text).valid) {
+      return { ok: false, reason: "Generated question failed strict validation." }
     }
 
     if (!skill) {
