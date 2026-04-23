@@ -255,6 +255,10 @@ export async function POST(request: Request) {
           console.error("Interview question generation failed during create-link", generationError)
           aiStatus = "failed"
 
+          if (generationError instanceof ApiError) {
+            throw generationError
+          }
+
           if (requireAiQuestions) {
             throw new ApiError(
               502,
