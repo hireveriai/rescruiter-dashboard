@@ -114,6 +114,22 @@ function cleanQuestionsForSave(questions: InterviewQuestion[]) {
   return cleaned
 }
 
+function dedupeQuestionsForSave(questions: InterviewQuestion[]) {
+  const uniqueQuestions = Array.from(new Set(
+    questions.map((question) => (question.question ?? "").trim()).filter(Boolean)
+  ))
+
+  return uniqueQuestions.map((questionText, index) => {
+    const original = questions.find((question) => (question.question ?? "").trim() === questionText)
+
+    return {
+      ...(original ?? questions[index]),
+      id: original?.id || `q-${index}`,
+      question: questionText,
+    }
+  })
+}
+
 function validateQuestionShield(questions: InterviewQuestion[]) {
   if (!Array.isArray(questions) || questions.length === 0) {
     return { ok: false, reason: "No questions to persist." }
@@ -211,6 +227,23 @@ export async function fetchExistingInterviewQuestions(interviewId: string) {
   } catch (error) {
     console.error("Failed to fetch existing interview questions", error)
     return []
+  }
+}
+
+export async function clearInterviewQuestions(interviewId: string) {
+  try {
+    await prisma.$executeRawUnsafe(
+      `
+        delete from public."${QUESTION_TABLE}"
+        where interview_id = $1::uuid
+      `,
+      interviewId
+    )
+
+    return true
+  } catch (error) {
+    console.error("Failed to clear interview questions", error)
+    return false
   }
 }
 
@@ -383,8 +416,18 @@ export async function replaceInterviewQuestions(
   try {
     const preparedQuestions = await repairQuestionsForPersistence(questions)
     const cleaned = cleanQuestionsForSave(preparedQuestions)
+    const uniqueQuestions = dedupeQuestionsForSave(cleaned)
+    const existing = await fetchExistingInterviewQuestions(interviewId)
+    const existingSet = new Set(existing.map((questionText) => questionText.trim()))
+    const filtered = uniqueQuestions.filter((question) =>
+      !existingSet.has((question.question ?? "").trim())
+    )
 
-    const shield = validateQuestionShield(cleaned)
+    if (filtered.length < MIN_VALID_QUESTIONS) {
+      throw new Error("Rejected: low-quality questions")
+    }
+
+    const shield = validateQuestionShield(filtered)
     if (!shield.ok) {
       console.warn("Question shield blocked insert", {
         interviewId,
@@ -399,15 +442,9 @@ export async function replaceInterviewQuestions(
       return false
     }
 
-    await prisma.$executeRawUnsafe(
-      `
-        delete from public."${QUESTION_TABLE}"
-        where interview_id = $1::uuid
-      `,
-      interviewId
-    )
+    await clearInterviewQuestions(interviewId)
 
-    const insert = buildInsertStatement(columns, interviewId, cleaned)
+    const insert = buildInsertStatement(columns, interviewId, filtered)
     if (!insert) {
       return false
     }

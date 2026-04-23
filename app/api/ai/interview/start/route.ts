@@ -11,6 +11,8 @@ export async function POST(request: Request) {
 
     const requireAi =
       body.require_ai_generation ?? body.requireAiGeneration ?? body.require_ai ?? body.requireAi ?? false
+    const interviewId = body.interview_id ?? body.interviewId
+    console.log("INTERVIEW ID:", interviewId ?? null)
 
     const requestedSkills = Array.isArray(body.core_skills ?? body.coreSkills)
       ? (body.core_skills ?? body.coreSkills)
@@ -29,6 +31,7 @@ export async function POST(request: Request) {
         previousQuestions: body.previous_questions ?? body.previousQuestions,
         similarityThreshold: body.similarity_threshold ?? body.similarityThreshold,
       })
+    console.log("GENERATED QUESTIONS:", questions)
 
     const coveredSkills = Array.from(new Set(questions.map((question) => question.skill)))
     const remainingSkills = requestedSkills.filter((skill: string) =>
@@ -58,7 +61,6 @@ export async function POST(request: Request) {
     }
 
     const attemptId = body.attempt_id ?? body.attemptId
-    const interviewId = body.interview_id ?? body.interviewId
     const organizationId = body.organization_id ?? body.organizationId
 
     if (attemptId) {

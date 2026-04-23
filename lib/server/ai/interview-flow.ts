@@ -2445,7 +2445,8 @@ function buildJobFirstSkillPool(plan: RoleQuestionPlan) {
 }
 
 export function generateBaseInterviewQuestions(input: BaseGenerationInput): BaseGenerationOutput {
-  return buildStrictSkillQuestions(input)
+  void input
+  throw new Error("Old interview pipeline disabled. Use generateInterviewQuestions() from @/lib/interview-flow.")
   const requested = resolveBaseQuestionCount(input) ?? DEFAULT_TOTAL
   const total = Math.min(MAX_BASE_QUESTIONS, Math.max(MIN_BASE_QUESTIONS, requested))
   const {
@@ -2691,6 +2692,9 @@ export async function generateBaseInterviewQuestionsAI(
   input: BaseGenerationInput,
   options?: { requireAi?: boolean }
 ): Promise<BaseGenerationOutputWithError> {
+  void input
+  void options
+  throw new Error("Old interview pipeline disabled. Use generateInterviewQuestions() from @/lib/interview-flow.")
   const apiKey = (process.env.OPENAI_API_KEY ?? "").trim().replace(/^"|"$/g, "")
   const model = process.env.OPENAI_QUESTION_MODEL ?? OPENAI_QUESTION_MODEL
 

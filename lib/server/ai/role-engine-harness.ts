@@ -1,4 +1,5 @@
-import { generateBaseInterviewQuestions, InterviewQuestion } from "@/lib/server/ai/interview-flow"
+import { generateInterviewQuestions } from "@/lib/interview-flow"
+import { InterviewQuestion } from "@/lib/server/ai/interview-flow"
 import {
   getQuestionModeForRoleFamily,
   inferRoleIntelligence,
@@ -489,10 +490,10 @@ function scoreCase(params: {
   }
 }
 
-export function runRoleEngineHarness(): RoleEngineHarnessReport {
+export async function runRoleEngineHarness(): Promise<RoleEngineHarnessReport> {
   const cases = buildHarnessCases()
 
-  const results: HarnessCaseResult[] = cases.map((caseItem) => {
+  const results: HarnessCaseResult[] = await Promise.all(cases.map(async (caseItem) => {
     const roleIntelligence = inferRoleIntelligence({
       jobTitle: caseItem.input.jobTitle,
       jobDescription: caseItem.input.jobDescription,
@@ -500,7 +501,7 @@ export function runRoleEngineHarness(): RoleEngineHarnessReport {
       resumeSkills: caseItem.input.resumeSkills,
     })
 
-    const output = generateBaseInterviewQuestions({
+    const questions = await generateInterviewQuestions({
       jobTitle: caseItem.input.jobTitle,
       jobDescription: caseItem.input.jobDescription,
       coreSkills: caseItem.input.coreSkills,
@@ -514,9 +515,9 @@ export function runRoleEngineHarness(): RoleEngineHarnessReport {
       inferredFamily: roleIntelligence.family,
       inferredSubfamily: roleIntelligence.subfamily,
       roleConfidence: roleIntelligence.confidence,
-      actualQuestionMode: output.meta?.question_mode ?? roleIntelligence.questionMode,
-      adaptiveMode: output.meta?.adaptive_mode ?? roleIntelligence.adaptiveMode,
-      questions: output.questions,
+      actualQuestionMode: roleIntelligence.questionMode,
+      adaptiveMode: false,
+      questions,
     })
 
     return {
@@ -530,19 +531,19 @@ export function runRoleEngineHarness(): RoleEngineHarnessReport {
       inferred_subfamily: roleIntelligence.subfamily,
       role_confidence: roleIntelligence.confidence,
       expected_question_mode: caseItem.expectedQuestionMode,
-      actual_question_mode: output.meta?.question_mode ?? roleIntelligence.questionMode,
+      actual_question_mode: roleIntelligence.questionMode,
       role_family_match: score.roleFamilyMatch,
       question_mode_match: score.questionModeMatch,
-      adaptive_mode: output.meta?.adaptive_mode ?? roleIntelligence.adaptiveMode,
+      adaptive_mode: false,
       adaptive_expected: caseItem.jdStrength !== "strong",
       relevance_score: score.relevanceScore,
       failure_handling_score: score.failureHandlingScore,
       overall_score: score.overallScore,
       status: score.status,
       failures: score.failures,
-      sample_questions: output.questions.slice(0, 3).map((question) => question.question),
+      sample_questions: questions.slice(0, 3).map((question) => question.question),
     }
-  })
+  }))
 
   const summary: HarnessSummary = {
     total_cases: results.length,

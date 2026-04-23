@@ -10,6 +10,7 @@ import { jobPositionsSupportIsActive } from "@/lib/server/services/jobs"
 import { createInterviewLink } from "@/lib/server/services/interview.service"
 import { sanitizeSkillList } from "@/lib/server/ai/skills"
 import {
+  clearInterviewQuestions,
   fetchExistingInterviewQuestions,
   replaceInterviewQuestions,
   verifyInterviewQuestionsPersisted,
@@ -182,6 +183,12 @@ export async function POST(request: Request) {
           ) || undefined
 
         try {
+          console.log("INTERVIEW ID:", result.interviewId)
+          const cleared = await clearInterviewQuestions(result.interviewId)
+          if (!cleared) {
+            throw new Error("Failed to clear existing interview questions")
+          }
+
           const generatedQuestions = await withTimeout(
             generateInterviewQuestions(
               {
@@ -206,6 +213,7 @@ export async function POST(request: Request) {
             CREATE_LINK_AI_TIMEOUT_MS,
             "AI question generation timed out"
           )
+          console.log("GENERATED QUESTIONS:", generatedQuestions)
           if (generatedQuestions.length < MIN_QUESTION_COUNT) {
             throw new Error("Generated too few questions")
           }

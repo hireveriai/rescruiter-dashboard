@@ -48,9 +48,12 @@ export async function generateRoleAwareQuestions(
   if (!apiKey) {
     return null
   }
+  const uniqueSalt = Date.now()
 
   const basePrompt = `
 You are a senior interviewer across ALL job domains.
+
+UNIQUE RUN ID: ${uniqueSalt}
 
 INPUT:
 
@@ -74,6 +77,8 @@ STRICT RULES:
 - NO resume references
 - NO JD copy
 - NO phrases like "you highlighted"
+- Do NOT repeat previous question patterns
+- Generate fresh variations
 
 ALLOWED FORMAT:
 - How do you...
