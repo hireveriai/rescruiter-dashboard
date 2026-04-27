@@ -23,6 +23,13 @@ const quickActions = [
     tone: "secondary",
   },
   {
+    id: "ai-screening",
+    title: "Run AI Screening",
+    description: "Upload resumes, rank candidates, and send interviews in bulk.",
+    tone: "secondary",
+    href: "/ai-screening",
+  },
+  {
     id: "upload-candidate",
     title: "Upload Candidate",
     description: "Review the full candidate registry and uploaded profiles.",

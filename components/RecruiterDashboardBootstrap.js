@@ -94,6 +94,7 @@ export default function RecruiterDashboardBootstrap({ children }) {
   useEffect(() => {
     let active = true
     let cachedOverview = null
+    let profileReady = false
 
     if (typeof window !== "undefined") {
       try {
@@ -104,44 +105,38 @@ export default function RecruiterDashboardBootstrap({ children }) {
       }
     }
 
-    let cachedFrame = null
-
     if (cachedOverview) {
-      cachedFrame = window.requestAnimationFrame(() => {
-        if (!active) {
-          return
-        }
-
-        setState((current) => ({
-          status: "ready",
-          profile: cachedOverview?.profile ?? current.profile,
-          overview: cachedOverview,
-          message: "",
-        }))
-      })
+      setState((current) => ({
+        status: "ready",
+        profile: cachedOverview?.profile ?? current.profile,
+        overview: cachedOverview,
+        message: "",
+      }))
     }
 
     async function bootstrap() {
-      setState((current) => ({
-        status: "loading",
-        profile: current.profile,
-        overview: current.overview,
-        message: "",
-      }))
+      if (!cachedOverview) {
+        setState((current) => ({
+          status: "loading",
+          profile: current.profile,
+          overview: current.overview,
+          message: "",
+        }))
+      }
 
       try {
-        const response = await fetch(buildAuthUrl("/api/dashboard/overview", searchParams), {
+        const profileResponse = await fetch(buildAuthUrl("/api/me", searchParams), {
           credentials: "include",
           cache: "no-store",
         })
 
-        const data = await response.json().catch(() => null)
+        const profileData = await profileResponse.json().catch(() => null)
 
         if (!active) {
           return
         }
 
-        if (response.status === 401) {
+        if (profileResponse.status === 401) {
           setState({
             status: "error",
             profile: null,
@@ -154,12 +149,12 @@ export default function RecruiterDashboardBootstrap({ children }) {
           return
         }
 
-        if (!response.ok || !data?.success) {
+        if (!profileResponse.ok || !profileData?.success) {
           setState({
             status: "error",
             profile: null,
             overview: null,
-            message: data?.error?.message || data?.message || "Unable to load recruiter workspace.",
+            message: profileData?.error?.message || profileData?.message || "Unable to load recruiter workspace.",
           })
           if (typeof window !== "undefined") {
             window.sessionStorage.removeItem("hireveri-overview")
@@ -167,7 +162,33 @@ export default function RecruiterDashboardBootstrap({ children }) {
           return
         }
 
-        const overview = data.data ?? null
+        const profile = profileData.data ?? null
+
+        setState((current) => ({
+          status: "ready",
+          profile,
+          overview: current.overview,
+          message: "",
+        }))
+        profileReady = true
+
+        const overviewResponse = await fetch(buildAuthUrl("/api/dashboard/overview", searchParams), {
+          credentials: "include",
+          cache: "no-store",
+        })
+
+        const overviewData = await overviewResponse.json().catch(() => null)
+
+        if (!active) {
+          return
+        }
+
+        if (!overviewResponse.ok || !overviewData?.success) {
+          console.warn("Dashboard overview refresh skipped", overviewData?.error?.message || overviewData?.message)
+          return
+        }
+
+        const overview = overviewData.data ?? null
 
         if (typeof window !== "undefined" && overview) {
           try {
@@ -179,12 +200,17 @@ export default function RecruiterDashboardBootstrap({ children }) {
 
         setState({
           status: "ready",
-          profile: overview?.profile ?? null,
+          profile: overview?.profile ?? profile,
           overview,
           message: "",
         })
-      } catch {
+      } catch (error) {
         if (!active) {
+          return
+        }
+
+        if (profileReady) {
+          console.warn("Dashboard overview refresh failed after workspace restore", error)
           return
         }
 
@@ -201,9 +227,6 @@ export default function RecruiterDashboardBootstrap({ children }) {
 
     return () => {
       active = false
-      if (cachedFrame !== null) {
-        window.cancelAnimationFrame(cachedFrame)
-      }
     }
   }, [searchParams])
 

@@ -8,6 +8,7 @@ const LOGIN_URL =
 
 const PROTECTED_PAGE_PREFIXES = [
   "/",
+  "/ai-screening",
   "/jobs",
   "/candidates",
   "/interviews",
@@ -20,6 +21,11 @@ const PROTECTED_PAGE_PREFIXES = [
 const PROTECTED_API_PREFIXES = [
   "/api/me",
   "/api/dashboard",
+  "/api/upload-resumes",
+  "/api/process-jd",
+  "/api/match-candidates",
+  "/api/send-interviews",
+  "/api/ai-screening",
   "/api/jobs",
   "/api/candidate",
   "/api/interview/create-link",

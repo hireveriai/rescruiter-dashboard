@@ -13,6 +13,7 @@ import CreateJobModal from "./CreateJobModal";
 
 const navItems = [
   { href: "/", label: "Dashboard", disabled: false },
+  { href: "/ai-screening", label: "AI Screening", disabled: false },
   { href: "/jobs", label: "Jobs", disabled: false },
   { href: "/candidates", label: "Candidates", disabled: false },
   { href: "/interviews", label: "Interviews", disabled: false },
