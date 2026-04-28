@@ -84,8 +84,23 @@ type JobPositionRow = {
   experience_level_id: number
 }
 
+type UploadBatchManifestRow = {
+  batch_id: string
+  candidate_ids: unknown
+}
+
 function toIso(value: Date | string) {
   return value instanceof Date ? value.toISOString() : value
+}
+
+function normalizeUuidList(values: unknown) {
+  if (!Array.isArray(values)) {
+    return []
+  }
+
+  return values
+    .map((value) => (typeof value === "string" ? normalizeUuid(value) : null))
+    .filter((value): value is string => Boolean(value))
 }
 
 function normalizeJob(row: ScreeningJobRow): ScreeningJob {
@@ -263,6 +278,88 @@ export async function getScreeningJobs(organizationId: string) {
   `)
 
   return rows.map(normalizeJob)
+}
+
+export async function recordUploadBatchManifest(input: {
+  batchId: string
+  organizationId: string
+  userId: string
+  candidateIds: string[]
+  fileNames: string[]
+}) {
+  const batchId = normalizeUuid(input.batchId)
+
+  if (!batchId) {
+    return
+  }
+
+  const candidateIds = normalizeUuidList(input.candidateIds)
+
+  try {
+    await prisma.$queryRaw(Prisma.sql`
+      insert into public.ai_screening_upload_batches (
+        batch_id,
+        organization_id,
+        created_by,
+        candidate_ids,
+        file_names
+      )
+      values (
+        ${batchId}::uuid,
+        ${input.organizationId}::uuid,
+        ${input.userId}::uuid,
+        ${JSON.stringify(candidateIds)}::jsonb,
+        ${JSON.stringify(input.fileNames)}::jsonb
+      )
+      on conflict (batch_id) do update
+      set
+        organization_id = excluded.organization_id,
+        created_by = excluded.created_by,
+        candidate_ids = excluded.candidate_ids,
+        file_names = excluded.file_names
+    `)
+  } catch (error) {
+    console.warn("AI screening upload batch manifest write skipped", error)
+  }
+}
+
+export async function getUploadBatchManifest(input: {
+  batchId: string
+  organizationId: string
+}) {
+  const batchId = normalizeUuid(input.batchId)
+
+  if (!batchId) {
+    return null
+  }
+
+  let rows: UploadBatchManifestRow[]
+
+  try {
+    rows = await prisma.$queryRaw<UploadBatchManifestRow[]>(Prisma.sql`
+      select
+        batch_id::text,
+        candidate_ids
+      from public.ai_screening_upload_batches
+      where batch_id = ${batchId}::uuid
+        and organization_id = ${input.organizationId}::uuid
+      limit 1
+    `)
+  } catch (error) {
+    console.warn("AI screening upload batch manifest lookup skipped", error)
+    return null
+  }
+
+  const manifest = rows[0]
+
+  if (!manifest?.batch_id) {
+    return null
+  }
+
+  return {
+    batchId: manifest.batch_id,
+    candidateIds: normalizeUuidList(manifest.candidate_ids),
+  }
 }
 
 export async function getScreeningJob(organizationId: string, jobId: string) {

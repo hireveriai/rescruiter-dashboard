@@ -8,6 +8,7 @@ import {
   getCandidatesForMatching,
   getMatchResults,
   getScreeningJob,
+  getUploadBatchManifest,
   upsertCandidateJobMatch,
 } from "@/lib/server/ai-screening/service"
 
@@ -55,9 +56,18 @@ export async function GET(request: Request) {
       throw new ApiError(400, "JD_NOT_PROCESSED", "Process JD first")
     }
 
+    const manifestCandidateIds =
+      !includeAllCandidates && batchId && candidateIds.length === 0
+        ? (await getUploadBatchManifest({
+            batchId,
+            organizationId: auth.organizationId,
+          }))?.candidateIds ?? []
+        : []
+    const scopedCandidateIds = candidateIds.length > 0 ? candidateIds : manifestCandidateIds
+
     const matches = await getMatchResults(auth.organizationId, jobId, {
       uploadBatchId: batchId || null,
-      candidateIds,
+      candidateIds: scopedCandidateIds,
       includeAllCandidates,
     })
 
@@ -106,6 +116,15 @@ export async function POST(request: Request) {
       throw new ApiError(400, "JD_NOT_PROCESSED", "Process JD first")
     }
 
+    const manifestCandidateIds =
+      !includeAllCandidates && batchId && !candidateIds?.length
+        ? (await getUploadBatchManifest({
+            batchId,
+            organizationId: auth.organizationId,
+          }))?.candidateIds ?? []
+        : []
+    const scopedCandidateIds = candidateIds?.length ? candidateIds : manifestCandidateIds
+
     if (!includeAllCandidates && !batchId && !candidateIds?.length) {
       throw new ApiError(400, "NO_RESUMES_UPLOADED", "No resumes uploaded")
     }
@@ -113,7 +132,7 @@ export async function POST(request: Request) {
     const source = includeAllCandidates ? "full_db" : "batch"
     const candidates = await getCandidatesForMatching({
       organizationId: auth.organizationId,
-      candidateIds,
+      candidateIds: scopedCandidateIds,
       uploadBatchId: batchId || null,
       includeAllCandidates,
     })
@@ -123,7 +142,7 @@ export async function POST(request: Request) {
         organizationId: auth.organizationId,
         jobId,
         batchId: batchId || null,
-        candidateIdsCount: candidateIds?.length ?? 0,
+        candidateIdsCount: scopedCandidateIds.length,
         includeAllCandidates,
       })
       throw new ApiError(
@@ -172,7 +191,7 @@ export async function POST(request: Request) {
 
     const matches = await getMatchResults(auth.organizationId, jobId, {
       uploadBatchId: batchId || null,
-      candidateIds,
+      candidateIds: scopedCandidateIds,
       includeAllCandidates,
     })
 

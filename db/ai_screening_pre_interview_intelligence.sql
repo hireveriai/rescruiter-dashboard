@@ -94,6 +94,18 @@ create index if not exists idx_candidates_ai_screening_upload_batch
   on public.candidates (organization_id, upload_batch_id, created_at desc)
   where upload_batch_id is not null;
 
+create table if not exists public.ai_screening_upload_batches (
+  batch_id uuid primary key,
+  organization_id uuid not null references public.organizations(organization_id) on delete cascade,
+  created_by uuid references public.users(user_id) on delete set null,
+  candidate_ids jsonb not null default '[]'::jsonb,
+  file_names jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_ai_screening_upload_batches_org_created_at
+  on public.ai_screening_upload_batches (organization_id, created_at desc);
+
 create table if not exists public.candidate_job_matches (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(organization_id) on delete cascade,

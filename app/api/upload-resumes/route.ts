@@ -12,7 +12,11 @@ import {
   isSupportedResumeFile,
 } from "@/lib/server/ai-screening/resume-file"
 import { uploadResumeToSupabaseStorage } from "@/lib/server/ai-screening/storage"
-import { normalizeEmail, saveParsedCandidate } from "@/lib/server/ai-screening/service"
+import {
+  normalizeEmail,
+  recordUploadBatchManifest,
+  saveParsedCandidate,
+} from "@/lib/server/ai-screening/service"
 
 export const runtime = "nodejs"
 
@@ -151,9 +155,22 @@ export async function POST(request: Request) {
     })
 
     const uploadedCount = results.filter((result) => result.status === "uploaded").length
+    const uploadedCandidateIds = results
+      .map((result) => result.candidateId)
+      .filter((candidateId): candidateId is string => typeof candidateId === "string" && candidateId.length > 0)
     const firstFailure = results.find((result) => result.status === "failed" && result.error)
     const success = uploadedCount > 0
     const failureMessage = firstFailure?.error || "No resumes could be processed"
+
+    if (uploadedCandidateIds.length > 0) {
+      await recordUploadBatchManifest({
+        batchId,
+        organizationId: auth.organizationId,
+        userId: auth.userId,
+        candidateIds: uploadedCandidateIds,
+        fileNames: results.map((result) => result.fileName),
+      })
+    }
 
     return NextResponse.json({
       success,
