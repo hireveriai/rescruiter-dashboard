@@ -1,12 +1,14 @@
 "use client"
 
-import { useId, useRef, useState } from "react"
+import { type ReactNode, useId, useRef, useState } from "react"
 
 type InsightTooltipProps = {
   text: string
+  preview?: ReactNode
+  showHint?: boolean
 }
 
-export function InsightTooltip({ text }: InsightTooltipProps) {
+export function InsightTooltip({ text, preview, showHint = true }: InsightTooltipProps) {
   const [open, setOpen] = useState(false)
   const [position, setPosition] = useState({ left: 0, top: 0 })
   const buttonRef = useRef<HTMLButtonElement>(null)
@@ -64,11 +66,13 @@ export function InsightTooltip({ text }: InsightTooltipProps) {
         aria-label={hasInsight ? "View full insight" : "No insight available"}
         disabled={!hasInsight}
       >
-        <p className="line-clamp-2 text-sm leading-6 text-slate-400">
-          {insightText}
-        </p>
+        {preview ?? (
+          <p className="line-clamp-2 text-sm leading-6 text-slate-400">
+            {insightText}
+          </p>
+        )}
 
-        {hasInsight ? (
+        {showHint && hasInsight ? (
           <span className="mt-1 block text-xs text-slate-600">Hover to view full insight</span>
         ) : null}
       </button>
@@ -77,7 +81,7 @@ export function InsightTooltip({ text }: InsightTooltipProps) {
         <div
           id={tooltipId}
           role="tooltip"
-          className="fixed z-[80] max-h-40 w-[21rem] max-w-[calc(100vw-2rem)] overflow-y-auto whitespace-normal rounded-lg border border-white/10 bg-[#0B1220] p-3 text-sm leading-6 text-gray-200 shadow-xl"
+          className="fixed z-[80] w-[21rem] max-w-[calc(100vw-2rem)] whitespace-pre-line rounded-lg border border-white/10 bg-[#0B1220] p-3 text-[12px] leading-[1.4] text-gray-200 shadow-xl"
           style={{ left: position.left, top: position.top }}
         >
           {insightText}

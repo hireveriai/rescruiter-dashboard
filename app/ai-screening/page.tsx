@@ -1777,30 +1777,30 @@ export default function AiScreeningPage() {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1420px] table-fixed text-sm">
+          <div className="w-full">
+            <table className="w-full table-fixed text-[13px] leading-[1.4]">
               <colgroup>
-                <col className="w-[72px]" />
-                <col className="w-[92px]" />
-                <col className="w-[18%]" />
-                <col className="w-[18%]" />
-                <col className="w-[12%]" />
-                <col className="w-[12%]" />
-                <col className="w-[12%]" />
-                <col className="w-[28%]" />
-                <col className="w-[104px]" />
+                <col className="w-[6%]" />
+                <col className="w-[6%]" />
+                <col className="w-[14%]" />
+                <col className="w-[14%]" />
+                <col className="w-[9%]" />
+                <col className="w-[8%]" />
+                <col className="w-[10%]" />
+                <col className="w-[25%]" />
+                <col className="w-[8%]" />
               </colgroup>
               <thead className="bg-slate-950/20 text-slate-400">
                 <tr>
-                  <th className="px-4 py-3 text-center font-medium">Compare</th>
-                  <th className="px-4 py-3 text-center font-medium">Selected</th>
-                  <th className="px-4 py-3 text-left font-medium">Candidate Name</th>
-                  <th className="px-4 py-3 text-left font-medium">Email</th>
-                  <th className="px-4 py-3 text-left font-medium">Match Score</th>
-                  <th className="px-4 py-3 text-left font-medium">Risk Level</th>
-                  <th className="px-4 py-3 text-left font-medium">Recommendation</th>
-                  <th className="px-4 py-3 text-left font-medium">Decision Insights</th>
-                  <th className="px-4 py-3 text-right font-medium">Actions</th>
+                  <th className="px-3 py-2.5 text-center text-[12px] font-medium leading-[1.4]">Compare</th>
+                  <th className="px-3 py-2.5 text-center text-[12px] font-medium leading-[1.4]">Selected</th>
+                  <th className="px-3 py-2.5 text-left text-[12px] font-medium leading-[1.4]">Candidate Name</th>
+                  <th className="px-3 py-2.5 text-left text-[12px] font-medium leading-[1.4]">Email</th>
+                  <th className="px-3 py-2.5 text-left text-[12px] font-medium leading-[1.4]">Match Score</th>
+                  <th className="px-3 py-2.5 text-left text-[12px] font-medium leading-[1.4]">Risk Level</th>
+                  <th className="px-3 py-2.5 text-left text-[12px] font-medium leading-[1.4]">Recommendation</th>
+                  <th className="px-3 py-2.5 text-left text-[12px] font-medium leading-[1.4]">Decision Insights</th>
+                  <th className="px-3 py-2.5 text-right text-[12px] font-medium leading-[1.4]">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -1834,10 +1834,19 @@ export default function AiScreeningPage() {
                     const compareLimitReached = compareCandidateIds.length >= 4 && !isCompared
                     const isHighRisk = match.riskLevel === "HIGH"
                     const confidenceLevel = getConfidenceLevel(match)
+                    const strengths = getCandidateStrengths(match)
+                    const gaps = getCandidateWeaknesses(match)
+                    const verdict = getCandidateVerdict(match)
+                    const insightTooltipText = [
+                      `Strengths: ${strengths.join("; ")}`,
+                      `Gaps: ${gaps.join("; ")}`,
+                      `Verdict: ${verdict}`,
+                      match.insights?.short_reasoning ? `Reasoning: ${match.insights.short_reasoning}` : "",
+                    ].filter(Boolean).join("\n")
 
                     return (
                     <tr key={match.id} className="border-t border-slate-800/80 align-middle text-slate-200">
-                      <td className="px-4 py-4 align-middle">
+                      <td className="px-3 py-2.5 align-middle">
                         <label className="flex items-center justify-center text-xs text-slate-400">
                           <input
                             type="checkbox"
@@ -1849,7 +1858,7 @@ export default function AiScreeningPage() {
                           />
                         </label>
                       </td>
-                      <td className="px-4 py-4 align-middle">
+                      <td className="px-3 py-2.5 align-middle">
                         <div className="flex items-center justify-center gap-2">
                           <input
                             type="checkbox"
@@ -1876,12 +1885,12 @@ export default function AiScreeningPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-4 align-middle font-medium text-white">
-                        <span className="block break-words leading-5">{match.candidateName}</span>
+                      <td className="px-3 py-2.5 align-middle font-medium text-white">
+                        <span className="block leading-[1.4]">{match.candidateName}</span>
                       </td>
-                      <td className="px-4 py-4 align-middle">
+                      <td className="px-3 py-2.5 align-middle">
                         {editingCandidateId === match.candidateId ? (
-                          <div className="flex gap-2">
+                          <div className="flex min-w-0 gap-2">
                             <input
                               value={emailDraft}
                               onChange={(event) => setEmailDraft(event.target.value)}
@@ -1893,7 +1902,7 @@ export default function AiScreeningPage() {
                             </button>
                           </div>
                         ) : match.email ? (
-                          <span className="break-all text-slate-200">{match.email}</span>
+                          <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-slate-200" title={match.email}>{match.email}</span>
                         ) : (
                           <button
                             type="button"
@@ -1907,56 +1916,46 @@ export default function AiScreeningPage() {
                           </button>
                         )}
                       </td>
-                      <td className="px-4 py-4 align-middle">
-                        <div className={`text-lg font-semibold leading-6 ${getScoreColor(match.matchScore)}`}>{match.matchScore}%</div>
-                        <p className="mt-1 text-xs leading-5 text-slate-500">
-                          Confidence: <span className={`font-medium ${getConfidenceTone(confidenceLevel)}`}>{getConfidenceLabel(confidenceLevel)}</span>
-                        </p>
+                      <td className="px-3 py-2.5 align-middle">
+                        <span className={`font-semibold leading-[1.4] ${getScoreColor(match.matchScore)}`}>
+                          {match.matchScore}%{" \u2022 "}<span className={getConfidenceTone(confidenceLevel)}>{getConfidenceLabel(confidenceLevel)}</span>
+                        </span>
                       </td>
-                      <td className="px-4 py-4 align-middle">
-                        <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] ${getRiskTone(match.riskLevel)}`}>
+                      <td className="px-3 py-2.5 align-middle">
+                        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[12px] font-medium uppercase tracking-[0.08em] ${getRiskTone(match.riskLevel)}`}>
                           {match.riskLevel}
                         </span>
                       </td>
-                      <td className="px-4 py-4 align-middle">
-                        <span className={`text-sm font-semibold ${getRecommendationTextTone(match.recommendation)}`}>
+                      <td className="px-3 py-2.5 align-middle">
+                        <span className={`text-[13px] font-semibold leading-[1.4] ${getRecommendationTextTone(match.recommendation)}`}>
                           {getRecommendationDisplayLabel(match.recommendation)}
                         </span>
                       </td>
-                      <td className="px-4 py-4 align-top text-slate-400">
-                        <div className="max-h-[120px] space-y-3 overflow-y-auto pr-2">
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">Strengths</p>
-                            <ul className="mt-2 space-y-1 text-xs leading-5 text-slate-300">
-                              {getCandidateStrengths(match).slice(0, 2).map((strength) => (
-                                <li key={strength}>{strength}</li>
-                              ))}
-                            </ul>
-                          </div>
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-300/80">Gaps</p>
-                            <ul className="mt-2 space-y-1 text-xs leading-5 text-slate-300">
-                              {getCandidateWeaknesses(match).slice(0, 2).map((gap) => (
-                                <li key={gap}>{gap}</li>
-                              ))}
-                            </ul>
-                          </div>
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-200/80">Verdict</p>
-                            <p className="mt-2 text-xs leading-5 text-blue-50">{getCandidateVerdict(match)}</p>
-                          </div>
-                          <InsightTooltip text={match.insights?.short_reasoning || "-"} />
-                        </div>
+                      <td className="px-3 py-2.5 align-middle text-slate-400">
+                        <InsightTooltip
+                          text={insightTooltipText}
+                          showHint={false}
+                          preview={(
+                            <div className="space-y-1 text-[12px] leading-[1.4]">
+                              <p className="overflow-hidden text-ellipsis whitespace-nowrap text-slate-300">
+                                <span className="font-semibold text-emerald-300/80">Strengths:</span> {strengths[0]}
+                              </p>
+                              <p className="overflow-hidden text-ellipsis whitespace-nowrap text-slate-300">
+                                <span className="font-semibold text-amber-300/80">Gaps:</span> {gaps[0]}
+                              </p>
+                            </div>
+                          )}
+                        />
                       </td>
-                      <td className="px-4 py-4 align-middle text-right">
-                        <div className="flex justify-end gap-2">
+                      <td className="px-3 py-2.5 align-middle text-right">
+                        <div className="flex justify-end gap-1.5">
                           <button
                             type="button"
                             onClick={() => {
                               setEditingCandidateId(match.candidateId)
                               setEmailDraft(match.email ?? "")
                             }}
-                            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-700 bg-slate-900/80 text-slate-300 transition hover:border-blue-400/40 hover:bg-blue-500/10 hover:text-blue-100"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-700 bg-slate-900/80 text-slate-300 transition hover:border-blue-400/40 hover:bg-blue-500/10 hover:text-blue-100"
                             aria-label={`Edit email for ${match.candidateName}`}
                           >
                             <EditIcon />
@@ -1965,7 +1964,7 @@ export default function AiScreeningPage() {
                             type="button"
                             onClick={() => openSendConfirmation([match.candidateId])}
                             disabled={isBusy || flowStep !== "MATCHED" || !match.email}
-                            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-400/30 bg-cyan-400/10 text-cyan-100 transition hover:border-cyan-300/50 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-cyan-400/30 bg-cyan-400/10 text-cyan-100 transition hover:border-cyan-300/50 disabled:cursor-not-allowed disabled:opacity-50"
                             aria-label={`Send interview to ${match.candidateName}`}
                           >
                             <SendIcon />
