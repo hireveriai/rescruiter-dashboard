@@ -7,6 +7,7 @@ import { matchCandidateToJobWithAI } from "@/lib/server/ai-screening/openai"
 import {
   getCandidatesForMatching,
   getMatchResults,
+  getRecentCandidatesForMatchingFallback,
   getScreeningJob,
   getUploadBatchManifest,
   upsertCandidateJobMatch,
@@ -130,12 +131,19 @@ export async function POST(request: Request) {
     }
 
     const source = includeAllCandidates ? "full_db" : "batch"
-    const candidates = await getCandidatesForMatching({
+    let candidates = await getCandidatesForMatching({
       organizationId: auth.organizationId,
       candidateIds: scopedCandidateIds,
       uploadBatchId: batchId || null,
       includeAllCandidates,
     })
+
+    if (candidates.length === 0 && !includeAllCandidates) {
+      candidates = await getRecentCandidatesForMatchingFallback({
+        organizationId: auth.organizationId,
+        userId: auth.userId,
+      })
+    }
 
     if (candidates.length === 0) {
       console.warn("AI screening matching found no candidates", {

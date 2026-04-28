@@ -26,6 +26,7 @@ type ScreeningJob = {
   requiredSkills: string[]
   experienceNeeded: number | null
   roleTitle: string | null
+  sourceJobPositionId?: string | null
   createdAt: string
 }
 
@@ -86,6 +87,7 @@ type StoredFlowState = {
   currentBatchId: string
   uploadedCandidateIds: string[]
   activeJobId: string
+  selectedExistingJobId: string
   includeAllCandidates: boolean
 }
 
@@ -105,6 +107,7 @@ function getDefaultFlowState(): StoredFlowState {
     currentBatchId: "",
     uploadedCandidateIds: [],
     activeJobId: "",
+    selectedExistingJobId: "",
     includeAllCandidates: false,
   }
 }
@@ -129,6 +132,7 @@ function readStoredFlowState(): StoredFlowState {
       currentBatchId,
       uploadedCandidateIds,
       activeJobId: typeof parsed.activeJobId === "string" ? parsed.activeJobId : "",
+      selectedExistingJobId: typeof parsed.selectedExistingJobId === "string" ? parsed.selectedExistingJobId : "",
       includeAllCandidates: parsed.includeAllCandidates === true,
     }
   } catch {
@@ -376,7 +380,7 @@ export default function AiScreeningPage() {
   const [openSendInterview, setOpenSendInterview] = useState(false)
   const [existingJobs, setExistingJobs] = useState<ExistingJob[]>([])
   const [screeningJobs, setScreeningJobs] = useState<ScreeningJob[]>([])
-  const [selectedExistingJobId, setSelectedExistingJobId] = useState("")
+  const [selectedExistingJobId, setSelectedExistingJobId] = useState(defaultFlowState.selectedExistingJobId)
   const [activeJob, setActiveJob] = useState<ScreeningJob | null>(null)
   const [createJobModalOpen, setCreateJobModalOpen] = useState(false)
   const [newJobTitle, setNewJobTitle] = useState("")
@@ -420,6 +424,7 @@ export default function AiScreeningPage() {
     setCurrentBatchId(storedFlowState.currentBatchId)
     setUploadedCandidateIds(storedFlowState.uploadedCandidateIds)
     setRestoredActiveJobId(storedFlowState.activeJobId)
+    setSelectedExistingJobId(storedFlowState.selectedExistingJobId)
     setRestoredFlowStep(storedFlowState.flowStep)
     setIncludeAllCandidates(storedFlowState.includeAllCandidates)
     setFlowStateHydrated(true)
@@ -459,8 +464,10 @@ export default function AiScreeningPage() {
           setScreeningJobs(jobs)
           if (restoredJob) {
             setActiveJob(restoredJob)
+            setSelectedExistingJobId((current) => current || restoredJob.sourceJobPositionId || restoredJob.id)
           } else if (flowStateHydrated && jobs.length > 0 && restoredFlowStep === "MATCHED") {
             setActiveJob(jobs[0])
+            setSelectedExistingJobId((current) => current || jobs[0].sourceJobPositionId || jobs[0].id)
           }
         }
       } catch (loadError) {
@@ -489,10 +496,11 @@ export default function AiScreeningPage() {
         currentBatchId,
         uploadedCandidateIds,
         activeJobId: activeJobIdForStorage,
+        selectedExistingJobId,
         includeAllCandidates,
       })
     )
-  }, [activeJob?.id, currentBatchId, flowStateHydrated, flowStep, includeAllCandidates, restoredActiveJobId, uploadedCandidateIds])
+  }, [activeJob?.id, currentBatchId, flowStateHydrated, flowStep, includeAllCandidates, restoredActiveJobId, selectedExistingJobId, uploadedCandidateIds])
 
   useEffect(() => {
     const activeJobId = activeJob?.id

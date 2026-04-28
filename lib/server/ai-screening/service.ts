@@ -576,6 +576,38 @@ export async function getCandidatesForMatching(input: {
   return rows
 }
 
+export async function getRecentCandidatesForMatchingFallback(input: {
+  organizationId: string
+  userId: string
+}) {
+  const rows = await prisma.$queryRaw<CandidateRow[]>(Prisma.sql`
+    select
+      candidate_id::text,
+      full_name,
+      email,
+      phone,
+      resume_url,
+      resume_text,
+      extracted_json,
+      upload_batch_id::text,
+      created_at
+    from public.candidates
+    where organization_id = ${input.organizationId}::uuid
+      and created_by = ${input.userId}::uuid
+      and coalesce(ai_screening_status, 'READY') <> 'ARCHIVED'
+      and created_at > now() - interval '6 hours'
+      and resume_text is not null
+      and (
+        upload_batch_id is not null
+        or extracted_json ? 'uploadBatchId'
+      )
+    order by created_at desc
+    limit 25
+  `)
+
+  return rows
+}
+
 export async function upsertCandidateJobMatch(input: {
   organizationId: string
   candidateId: string
