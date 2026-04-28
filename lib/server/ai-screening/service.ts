@@ -441,8 +441,9 @@ export async function getCandidatesForMatching(input: {
   includeAllCandidates?: boolean
 }) {
   const batchId = normalizeUuid(input.uploadBatchId)
+  const candidateIds = (input.candidateIds ?? []).map(normalizeUuid).filter((id): id is string => Boolean(id))
   const includeAllCandidates = input.includeAllCandidates === true
-  const hasCandidateFilter = Array.isArray(input.candidateIds) && input.candidateIds.length > 0
+  const hasCandidateFilter = candidateIds.length > 0
 
   if (!includeAllCandidates && !batchId && !hasCandidateFilter) {
     throw new ApiError(400, "NO_RESUMES_UPLOADED", "No resumes uploaded")
@@ -462,8 +463,15 @@ export async function getCandidatesForMatching(input: {
     from public.candidates
     where organization_id = ${input.organizationId}::uuid
       and coalesce(ai_screening_status, 'READY') <> 'ARCHIVED'
-      ${hasCandidateFilter ? Prisma.sql`and candidate_id = any(${input.candidateIds}::uuid[])` : Prisma.empty}
-      ${!includeAllCandidates && batchId ? Prisma.sql`and upload_batch_id = ${batchId}::uuid` : Prisma.empty}
+      ${
+        !includeAllCandidates && hasCandidateFilter && batchId
+          ? Prisma.sql`and (candidate_id = any(${candidateIds}::uuid[]) or upload_batch_id = ${batchId}::uuid)`
+          : !includeAllCandidates && hasCandidateFilter
+            ? Prisma.sql`and candidate_id = any(${candidateIds}::uuid[])`
+            : !includeAllCandidates && batchId
+              ? Prisma.sql`and upload_batch_id = ${batchId}::uuid`
+              : Prisma.empty
+      }
     order by created_at desc
     limit 250
   `)
@@ -524,10 +532,13 @@ export async function getMatchResults(
   jobId: string,
   options?: {
     uploadBatchId?: string | null
+    candidateIds?: string[]
     includeAllCandidates?: boolean
   }
 ) {
   const batchId = normalizeUuid(options?.uploadBatchId)
+  const candidateIds = (options?.candidateIds ?? []).map(normalizeUuid).filter((id): id is string => Boolean(id))
+  const hasCandidateFilter = candidateIds.length > 0
   const includeAllCandidates = options?.includeAllCandidates === true
   const rows = await prisma.$queryRaw<MatchDbRow[]>(Prisma.sql`
     select
@@ -552,7 +563,15 @@ export async function getMatchResults(
     where m.organization_id = ${organizationId}::uuid
       and m.job_id = ${jobId}::uuid
       and j.organization_id = ${organizationId}::uuid
-      ${!includeAllCandidates && batchId ? Prisma.sql`and c.upload_batch_id = ${batchId}::uuid` : Prisma.empty}
+      ${
+        !includeAllCandidates && hasCandidateFilter && batchId
+          ? Prisma.sql`and (c.candidate_id = any(${candidateIds}::uuid[]) or c.upload_batch_id = ${batchId}::uuid)`
+          : !includeAllCandidates && hasCandidateFilter
+            ? Prisma.sql`and c.candidate_id = any(${candidateIds}::uuid[])`
+            : !includeAllCandidates && batchId
+              ? Prisma.sql`and c.upload_batch_id = ${batchId}::uuid`
+              : Prisma.empty
+      }
     order by m.match_score desc, m.created_at desc
   `)
 
@@ -594,7 +613,8 @@ export async function getMatchesForInviteSelection(input: {
   includeAllCandidates?: boolean
 }) {
   const topN = Math.min(100, Math.max(1, input.topN ?? 10))
-  const hasCandidateIds = Array.isArray(input.candidateIds) && input.candidateIds.length > 0
+  const candidateIds = (input.candidateIds ?? []).map(normalizeUuid).filter((id): id is string => Boolean(id))
+  const hasCandidateIds = candidateIds.length > 0
   const batchId = normalizeUuid(input.uploadBatchId)
   const includeAllCandidates = input.includeAllCandidates === true
 
@@ -626,10 +646,18 @@ export async function getMatchesForInviteSelection(input: {
       }
       ${
         input.mode === "SELECTED" && hasCandidateIds
-          ? Prisma.sql`and c.candidate_id = any(${input.candidateIds}::uuid[])`
+          ? Prisma.sql`and c.candidate_id = any(${candidateIds}::uuid[])`
           : Prisma.empty
       }
-      ${!includeAllCandidates && batchId ? Prisma.sql`and c.upload_batch_id = ${batchId}::uuid` : Prisma.empty}
+      ${
+        input.mode !== "SELECTED" && !includeAllCandidates && hasCandidateIds && batchId
+          ? Prisma.sql`and (c.candidate_id = any(${candidateIds}::uuid[]) or c.upload_batch_id = ${batchId}::uuid)`
+          : input.mode !== "SELECTED" && !includeAllCandidates && hasCandidateIds
+            ? Prisma.sql`and c.candidate_id = any(${candidateIds}::uuid[])`
+            : input.mode !== "SELECTED" && !includeAllCandidates && batchId
+              ? Prisma.sql`and c.upload_batch_id = ${batchId}::uuid`
+              : Prisma.empty
+      }
     order by m.match_score desc, m.created_at desc
     ${input.mode === "TOP_N" ? Prisma.sql`limit ${topN}` : Prisma.empty}
   `)

@@ -33,6 +33,10 @@ export async function GET(request: Request) {
     const url = new URL(request.url)
     const jobId = String(url.searchParams.get("job_id") ?? url.searchParams.get("jobId") ?? "").trim()
     const batchId = String(url.searchParams.get("batchId") ?? url.searchParams.get("batch_id") ?? "").trim()
+    const candidateIds = String(url.searchParams.get("candidateIds") ?? url.searchParams.get("candidate_ids") ?? "")
+      .split(",")
+      .map((candidateId) => candidateId.trim())
+      .filter(Boolean)
     const includeAllCandidates =
       url.searchParams.get("includeAllCandidates") === "true" ||
       url.searchParams.get("include_all_candidates") === "true"
@@ -41,7 +45,7 @@ export async function GET(request: Request) {
       throw new ApiError(400, "JOB_NOT_SELECTED", "Job not selected")
     }
 
-    if (!includeAllCandidates && !batchId) {
+    if (!includeAllCandidates && !batchId && candidateIds.length === 0) {
       throw new ApiError(400, "NO_RESUMES_UPLOADED", "No resumes uploaded")
     }
 
@@ -53,6 +57,7 @@ export async function GET(request: Request) {
 
     const matches = await getMatchResults(auth.organizationId, jobId, {
       uploadBatchId: batchId || null,
+      candidateIds,
       includeAllCandidates,
     })
 
@@ -156,6 +161,7 @@ export async function POST(request: Request) {
 
     const matches = await getMatchResults(auth.organizationId, jobId, {
       uploadBatchId: batchId || null,
+      candidateIds,
       includeAllCandidates,
     })
 

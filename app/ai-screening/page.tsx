@@ -84,6 +84,7 @@ const AUTO_RUN = true
 type StoredFlowState = {
   flowStep: FlowStep
   currentBatchId: string
+  uploadedCandidateIds: string[]
   activeJobId: string
   includeAllCandidates: boolean
 }
@@ -102,6 +103,7 @@ function getDefaultFlowState(): StoredFlowState {
   return {
     flowStep: "UPLOAD",
     currentBatchId: "",
+    uploadedCandidateIds: [],
     activeJobId: "",
     includeAllCandidates: false,
   }
@@ -117,11 +119,15 @@ function readStoredFlowState(): StoredFlowState {
     const parsed = rawValue ? JSON.parse(rawValue) as Record<string, unknown> : {}
 
     const currentBatchId = typeof parsed.currentBatchId === "string" ? parsed.currentBatchId : ""
+    const uploadedCandidateIds = Array.isArray(parsed.uploadedCandidateIds)
+      ? parsed.uploadedCandidateIds.filter((value): value is string => typeof value === "string" && value.length > 0)
+      : []
     const parsedFlowStep = isFlowStep(parsed.flowStep) ? parsed.flowStep : "UPLOAD"
 
     return {
       flowStep: currentBatchId ? parsedFlowStep : "UPLOAD",
       currentBatchId,
+      uploadedCandidateIds,
       activeJobId: typeof parsed.activeJobId === "string" ? parsed.activeJobId : "",
       includeAllCandidates: parsed.includeAllCandidates === true,
     }
@@ -270,6 +276,46 @@ function getCandidateWeaknesses(match: MatchRow) {
   return weaknesses.length > 0 ? weaknesses : ["No major weakness surfaced by the AI screen"]
 }
 
+function getCandidateVerdict(match: MatchRow) {
+  if (isAiRecommendedForInterview(match)) {
+    return "Advance to interview"
+  }
+
+  if (match.riskLevel === "HIGH") {
+    return "Review carefully before any outreach"
+  }
+
+  if (match.matchScore >= 65 || match.recommendation === "POTENTIAL") {
+    return "Keep as a backup candidate"
+  }
+
+  return "Do not prioritize for this role"
+}
+
+function getConfidenceLevel(match: MatchRow): "HIGH" | "MEDIUM" | "LOW" {
+  if (match.matchScore >= 82 && match.skillMatch >= 75 && match.experienceMatch >= 70 && match.riskLevel === "LOW") {
+    return "HIGH"
+  }
+
+  if (match.matchScore >= 62 && match.riskLevel !== "HIGH") {
+    return "MEDIUM"
+  }
+
+  return "LOW"
+}
+
+function getConfidenceTone(confidence: "HIGH" | "MEDIUM" | "LOW") {
+  if (confidence === "HIGH") {
+    return "border-emerald-500/20 bg-emerald-500/10 text-emerald-300"
+  }
+
+  if (confidence === "MEDIUM") {
+    return "border-blue-400/25 bg-blue-500/10 text-blue-200"
+  }
+
+  return "border-amber-400/25 bg-amber-500/10 text-amber-200"
+}
+
 function buildComparisonInsight(matches: MatchRow[]) {
   if (matches.length < 2) {
     return ""
@@ -340,6 +386,7 @@ export default function AiScreeningPage() {
   const [uploadRows, setUploadRows] = useState<UploadRow[]>([])
   const [flowStep, setFlowStep] = useState<FlowStep>(defaultFlowState.flowStep)
   const [currentBatchId, setCurrentBatchId] = useState(defaultFlowState.currentBatchId)
+  const [uploadedCandidateIds, setUploadedCandidateIds] = useState<string[]>(defaultFlowState.uploadedCandidateIds)
   const [restoredActiveJobId, setRestoredActiveJobId] = useState(defaultFlowState.activeJobId)
   const [restoredFlowStep, setRestoredFlowStep] = useState<FlowStep>(defaultFlowState.flowStep)
   const [includeAllCandidates, setIncludeAllCandidates] = useState(defaultFlowState.includeAllCandidates)
@@ -371,6 +418,7 @@ export default function AiScreeningPage() {
     const storedFlowState = readStoredFlowState()
     setFlowStep(storedFlowState.flowStep)
     setCurrentBatchId(storedFlowState.currentBatchId)
+    setUploadedCandidateIds(storedFlowState.uploadedCandidateIds)
     setRestoredActiveJobId(storedFlowState.activeJobId)
     setRestoredFlowStep(storedFlowState.flowStep)
     setIncludeAllCandidates(storedFlowState.includeAllCandidates)
@@ -439,11 +487,12 @@ export default function AiScreeningPage() {
       JSON.stringify({
         flowStep,
         currentBatchId,
+        uploadedCandidateIds,
         activeJobId: activeJobIdForStorage,
         includeAllCandidates,
       })
     )
-  }, [activeJob?.id, currentBatchId, flowStateHydrated, flowStep, includeAllCandidates, restoredActiveJobId])
+  }, [activeJob?.id, currentBatchId, flowStateHydrated, flowStep, includeAllCandidates, restoredActiveJobId, uploadedCandidateIds])
 
   useEffect(() => {
     const activeJobId = activeJob?.id
@@ -460,7 +509,7 @@ export default function AiScreeningPage() {
       return
     }
 
-    if (!includeAllCandidates && !currentBatchId) {
+    if (!includeAllCandidates && !currentBatchId && uploadedCandidateIds.length === 0) {
       setMatches([])
       setSelectedCandidateIds([])
       setCompareCandidateIds([])
@@ -476,7 +525,13 @@ export default function AiScreeningPage() {
         if (includeAllCandidates) {
           params.set("includeAllCandidates", "true")
         } else {
-          params.set("batchId", currentBatchId)
+          if (currentBatchId) {
+            params.set("batchId", currentBatchId)
+          }
+
+          if (uploadedCandidateIds.length > 0) {
+            params.set("candidateIds", uploadedCandidateIds.join(","))
+          }
         }
 
         const response = await fetch(authUrl(`/api/match-candidates?${params.toString()}`), {
@@ -500,7 +555,7 @@ export default function AiScreeningPage() {
     return () => {
       active = false
     }
-  }, [activeJob?.id, currentBatchId, flowStep, includeAllCandidates, searchParams])
+  }, [activeJob?.id, currentBatchId, flowStep, includeAllCandidates, searchParams, uploadedCandidateIds])
 
   const filteredMatches = useMemo(() => {
     const filtered = matches.filter((match) => {
@@ -546,6 +601,32 @@ export default function AiScreeningPage() {
     () => matches.filter(isAiRecommendedForInterview).length,
     [matches]
   )
+  const decisionSummary = useMemo(() => {
+    const totalCandidates = matches.length
+    const topMatches = matches
+      .filter(isAiRecommendedForInterview)
+      .sort((left, right) => right.matchScore - left.matchScore)
+    const borderlineCandidates = matches.filter((match) => {
+      return !isAiRecommendedForInterview(match) && match.riskLevel !== "HIGH" && match.matchScore >= 60
+    }).length
+    const rejectedCandidates = matches.filter((match) => {
+      return match.recommendation === "REJECT" || match.riskLevel === "HIGH" || match.matchScore < 45
+    }).length
+    const reviewCandidates = Math.max(0, totalCandidates - topMatches.length - rejectedCandidates)
+    const commonGaps = matches
+      .flatMap((match) => Array.isArray(match.insights?.missing_skills) ? match.insights.missing_skills : [])
+      .slice(0, 4)
+
+    return {
+      totalCandidates,
+      topMatches,
+      strongMatches: topMatches.length,
+      borderlineCandidates,
+      rejectedCandidates,
+      reviewCandidates,
+      commonGaps,
+    }
+  }, [matches])
   const comparisonMatches = useMemo(
     () => compareCandidateIds
       .map((candidateId) => matches.find((match) => match.candidateId === candidateId))
@@ -568,6 +649,7 @@ export default function AiScreeningPage() {
     [matches, pendingSendCandidateIds]
   )
   const pendingSendMissingEmailCount = pendingSendMatches.filter((match) => !match.email).length
+  const uploadedResumeCount = uploadRows.filter((row) => row.status === "uploaded").length
 
   const selectedExistingJob = useMemo(
     () => existingJobs.find((job) => job.jobId === selectedExistingJobId) ?? null,
@@ -637,6 +719,7 @@ export default function AiScreeningPage() {
     setFiles(nextFiles)
     setUploadRows([])
     setCurrentBatchId("")
+    setUploadedCandidateIds([])
     setActiveJob(null)
     setRestoredActiveJobId("")
     setMatches([])
@@ -690,6 +773,9 @@ export default function AiScreeningPage() {
       const rows = (payload?.data?.results ?? []) as UploadRow[]
       const batchId = payload?.data?.batchId ?? ""
       const uploadedCount = payload?.data?.uploadedCount ?? 0
+      const candidateIds = rows
+        .filter((row) => row.status === "uploaded" && row.candidateId)
+        .map((row) => row.candidateId as string)
       setUploadRows(rows)
 
       if (!response.ok || !payload?.success) {
@@ -703,6 +789,7 @@ export default function AiScreeningPage() {
       }
 
       setCurrentBatchId(batchId)
+      setUploadedCandidateIds(candidateIds)
       setIncludeAllCandidates(false)
       setMatches([])
       setSelectedCandidateIds([])
@@ -717,6 +804,7 @@ export default function AiScreeningPage() {
         if (job) {
           await runMatching(job, {
             batchId,
+            candidateIds,
             includeAllCandidates: false,
             skipFlowGuard: true,
           })
@@ -859,11 +947,13 @@ export default function AiScreeningPage() {
     job: ScreeningJob,
     options?: {
       batchId?: string
+      candidateIds?: string[]
       includeAllCandidates?: boolean
       skipFlowGuard?: boolean
     }
   ) {
     const batchId = options?.batchId ?? currentBatchId
+    const candidateIds = options?.candidateIds ?? uploadedCandidateIds
     const includeAll = options?.includeAllCandidates ?? includeAllCandidates
 
     if (!job) {
@@ -872,7 +962,7 @@ export default function AiScreeningPage() {
       return false
     }
 
-    if (!batchId) {
+    if (!includeAll && !batchId && candidateIds.length === 0) {
       setError("No resumes uploaded")
       setPipelineErrorStep("upload")
       return false
@@ -896,6 +986,7 @@ export default function AiScreeningPage() {
         body: JSON.stringify({
           job_id: job.id,
           batchId: batchId || undefined,
+          candidateIds,
           includeAllCandidates: includeAll,
         }),
       })
@@ -1185,8 +1276,14 @@ export default function AiScreeningPage() {
 
             {currentBatchId ? (
               <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/25 px-4 py-3">
-                <p className="text-xs font-medium uppercase tracking-[0.22em] text-slate-500">Current Batch</p>
-                <p className="mt-2 truncate font-mono text-sm text-cyan-200">{currentBatchId}</p>
+                <p className="text-xs font-medium uppercase tracking-[0.22em] text-slate-500">Current Upload</p>
+                <p className="mt-2 text-sm font-semibold text-cyan-100">
+                  {uploading
+                    ? "Uploading resumes..."
+                    : uploadedResumeCount > 0
+                      ? `${uploadedResumeCount} resume${uploadedResumeCount === 1 ? "" : "s"} ready for matching`
+                      : "Processing resumes..."}
+                </p>
               </div>
             ) : null}
 
@@ -1331,7 +1428,7 @@ export default function AiScreeningPage() {
         </div>
 
         <section ref={resultsSectionRef} className="mt-8 overflow-hidden rounded-[28px] border border-slate-800 bg-[#0f172a] shadow-[0_16px_60px_rgba(2,6,23,0.3)]">
-          <div className="flex flex-col gap-5 border-b border-slate-800 px-6 py-5 xl:flex-row xl:items-center xl:justify-between">
+          <div className="border-b border-slate-800 px-6 py-5">
             <div>
               <h2 className="text-lg font-semibold text-white">Screening Results</h2>
               <p className="mt-1 text-sm text-slate-400">{activeJob ? activeJob.title : "Process a JD to populate ranked candidates."}</p>
@@ -1343,7 +1440,139 @@ export default function AiScreeningPage() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-4">
+                <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Total Candidates</p>
+                <p className="mt-2 text-2xl font-semibold text-white">{decisionSummary.totalCandidates}</p>
+              </div>
+              <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4">
+                <p className="text-xs font-medium uppercase tracking-[0.18em] text-emerald-200/70">Strong Matches</p>
+                <p className="mt-2 text-2xl font-semibold text-emerald-100">{decisionSummary.strongMatches}</p>
+              </div>
+              <div className="rounded-2xl border border-blue-400/20 bg-blue-500/10 p-4">
+                <p className="text-xs font-medium uppercase tracking-[0.18em] text-blue-200/70">Borderline</p>
+                <p className="mt-2 text-2xl font-semibold text-blue-100">{decisionSummary.borderlineCandidates}</p>
+              </div>
+              <div className="rounded-2xl border border-rose-400/20 bg-rose-500/10 p-4">
+                <p className="text-xs font-medium uppercase tracking-[0.18em] text-rose-200/70">Rejected</p>
+                <p className="mt-2 text-2xl font-semibold text-rose-100">{decisionSummary.rejectedCandidates}</p>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-4 xl:grid-cols-[1.35fr_0.65fr]">
+              <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/[0.07] p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-emerald-100">Top Matches</h3>
+                    <p className="mt-1 text-xs text-emerald-100/60">Score 80+ with low risk</p>
+                  </div>
+                  <span className="rounded-full border border-emerald-400/20 px-3 py-1 text-xs font-semibold text-emerald-100">
+                    {decisionSummary.topMatches.length}
+                  </span>
+                </div>
+                {decisionSummary.topMatches.length > 0 ? (
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    {decisionSummary.topMatches.slice(0, 4).map((match) => (
+                      <div key={match.id} className="rounded-xl border border-emerald-400/15 bg-slate-950/35 p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-white">{match.candidateName}</p>
+                            <p className="mt-1 truncate text-xs text-slate-500">{match.email || "No email captured"}</p>
+                          </div>
+                          <span className="text-lg font-semibold text-emerald-200">{match.matchScore}%</span>
+                        </div>
+                        <p className="mt-3 text-xs leading-5 text-emerald-50/80">{getCandidateVerdict(match)}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-xl border border-amber-400/20 bg-amber-500/10 p-3">
+                    <p className="text-sm font-medium text-amber-100">No strong matches yet</p>
+                    <p className="mt-2 text-xs leading-5 text-amber-100/75">
+                      {decisionSummary.commonGaps.length > 0
+                        ? `Likely gaps: ${decisionSummary.commonGaps.join(", ")}.`
+                        : "The current resumes may be below the score or risk threshold."}
+                    </p>
+                    <p className="mt-2 text-xs leading-5 text-amber-100/75">
+                      Try adjusting filters, uploading more resumes, or enabling Full DB mode.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-blue-400/20 bg-blue-500/10 p-4">
+                <h3 className="text-sm font-semibold text-blue-100">Suggested Actions</h3>
+                <div className="mt-4 space-y-3 text-sm leading-6 text-blue-50/85">
+                  <p>Send interview to {decisionSummary.strongMatches} candidate{decisionSummary.strongMatches === 1 ? "" : "s"}.</p>
+                  <p>Review {decisionSummary.reviewCandidates} candidate{decisionSummary.reviewCandidates === 1 ? "" : "s"} before deciding.</p>
+                  {decisionSummary.rejectedCandidates > 0 ? (
+                    <p>Deprioritize {decisionSummary.rejectedCandidates} weak or high-risk profile{decisionSummary.rejectedCandidates === 1 ? "" : "s"}.</p>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 mb-4 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+              <div className="flex flex-wrap items-center gap-3">
+                <select value={recommendationFilter} onChange={(event) => setRecommendationFilter(event.target.value as (typeof recommendationFilters)[number])} disabled={isBusy} className="rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-2 text-sm text-white outline-none">
+                  {recommendationFilters.map((filter) => <option key={filter} value={filter}>{getRecommendationLabel(filter)}</option>)}
+                </select>
+                <select value={riskFilter} onChange={(event) => setRiskFilter(event.target.value as (typeof riskFilters)[number])} disabled={isBusy} className="rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-2 text-sm text-white outline-none">
+                  {riskFilters.map((filter) => <option key={filter} value={filter}>{filter === "ALL" ? "All Risk Levels" : filter}</option>)}
+                </select>
+                <select value={sortMode} onChange={(event) => setSortMode(event.target.value as "score" | "recent")} disabled={isBusy} className="rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-2 text-sm text-white outline-none">
+                  <option value="score">Top Score</option>
+                  <option value="recent">Most Recent</option>
+                </select>
+              </div>
+
+              <div className="flex justify-start xl:justify-center">
+                <label className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-2 text-sm text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={includeAllCandidates}
+                    onChange={(event) => setIncludeAllCandidates(event.target.checked)}
+                    disabled={isBusy}
+                    className="h-4 w-4 accent-cyan-400"
+                  />
+                  Full DB mode
+                </label>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 xl:justify-end">
+                <button
+                  type="button"
+                  onClick={selectRecommendedCandidates}
+                  disabled={isBusy || flowStep !== "MATCHED" || !activeJob || matches.length === 0}
+                  className="inline-flex items-center gap-2 rounded-xl border border-cyan-400/30 bg-transparent px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300/50 hover:bg-cyan-400/10 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Select Recommended
+                </button>
+                <div className="flex items-center overflow-hidden rounded-xl border border-cyan-400/30 bg-cyan-400/10 text-sm text-cyan-100 shadow-[0_0_28px_rgba(34,211,238,0.08)]">
+                  <span className="border-r border-cyan-400/20 px-4 py-2 font-semibold">Send Top</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={topN}
+                    onChange={(event) => setTopN(Number(event.target.value))}
+                    disabled={isBusy}
+                    aria-label="Number of top candidates to send"
+                    className="w-16 bg-transparent px-3 py-2 text-sm font-semibold text-white outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={openTopCandidateSendConfirmation}
+                    disabled={isBusy || flowStep !== "MATCHED" || !activeJob || matches.length === 0}
+                    className="border-l border-cyan-400/20 px-4 py-2 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Candidates
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-end gap-3">
               {comparisonMatches.length >= 2 ? (
                 <button
                   type="button"
@@ -1353,55 +1582,6 @@ export default function AiScreeningPage() {
                   Compare Candidates
                 </button>
               ) : null}
-              <select value={recommendationFilter} onChange={(event) => setRecommendationFilter(event.target.value as (typeof recommendationFilters)[number])} disabled={isBusy} className="rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-2 text-sm text-white outline-none">
-                {recommendationFilters.map((filter) => <option key={filter} value={filter}>{getRecommendationLabel(filter)}</option>)}
-              </select>
-              <select value={riskFilter} onChange={(event) => setRiskFilter(event.target.value as (typeof riskFilters)[number])} disabled={isBusy} className="rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-2 text-sm text-white outline-none">
-                {riskFilters.map((filter) => <option key={filter} value={filter}>{filter === "ALL" ? "All Risk Levels" : filter}</option>)}
-              </select>
-              <select value={sortMode} onChange={(event) => setSortMode(event.target.value as "score" | "recent")} disabled={isBusy} className="rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-2 text-sm text-white outline-none">
-                <option value="score">Top Score</option>
-                <option value="recent">Most Recent</option>
-              </select>
-              <label className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-2 text-sm text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={includeAllCandidates}
-                  onChange={(event) => setIncludeAllCandidates(event.target.checked)}
-                  disabled={isBusy}
-                  className="h-4 w-4 accent-cyan-400"
-                />
-                Full DB mode
-              </label>
-              <button
-                type="button"
-                onClick={selectRecommendedCandidates}
-                disabled={isBusy || flowStep !== "MATCHED" || !activeJob || matches.length === 0}
-                className="inline-flex items-center gap-2 rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300/50 hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Select Recommended
-              </button>
-              <div className="flex items-center overflow-hidden rounded-xl border border-slate-700 bg-slate-950/50 text-sm text-slate-200">
-                <span className="border-r border-slate-700 px-4 py-2 font-semibold">Send Top</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={topN}
-                  onChange={(event) => setTopN(Number(event.target.value))}
-                  disabled={isBusy}
-                  aria-label="Number of top candidates to send"
-                  className="w-16 bg-transparent px-3 py-2 text-sm text-white outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={openTopCandidateSendConfirmation}
-                  disabled={isBusy || flowStep !== "MATCHED" || !activeJob || matches.length === 0}
-                  className="border-l border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Candidates
-                </button>
-              </div>
             </div>
           </div>
 
@@ -1412,10 +1592,10 @@ export default function AiScreeningPage() {
                 <col className="w-[100px]" />
                 <col className="w-[220px]" />
                 <col className="w-[230px]" />
-                <col className="w-[120px]" />
+                <col className="w-[150px]" />
                 <col className="w-[130px]" />
                 <col className="w-[160px]" />
-                <col className="w-[300px]" />
+                <col className="w-[390px]" />
                 <col className="w-[180px]" />
               </colgroup>
               <thead className="bg-slate-950/20 text-slate-400">
@@ -1427,7 +1607,7 @@ export default function AiScreeningPage() {
                   <th className="p-5 text-left font-medium">Match Score</th>
                   <th className="p-5 text-left font-medium">Risk Level</th>
                   <th className="p-5 text-left font-medium">Recommendation</th>
-                  <th className="p-5 text-left font-medium">Insights</th>
+                  <th className="p-5 text-left font-medium">Decision Insights</th>
                   <th className="p-5 text-right font-medium">Actions</th>
                 </tr>
               </thead>
@@ -1435,7 +1615,23 @@ export default function AiScreeningPage() {
                 {filteredMatches.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="p-10 text-center text-slate-400">
-                      {isMatching ? "Matching candidates..." : "No candidate matches available"}
+                      {isMatching ? (
+                        "Matching candidates..."
+                      ) : (
+                        <div>
+                          <p className="font-medium text-slate-300">No matching candidates found</p>
+                          <p className="mt-2 text-sm text-slate-500">Try adjusting filters or uploading more resumes</p>
+                          <div className="mx-auto mt-4 max-w-xl rounded-2xl border border-slate-800 bg-slate-950/35 p-4 text-left">
+                            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Possible reasons</p>
+                            <ul className="mt-3 space-y-2 text-sm text-slate-400">
+                              <li>Required skills are missing from the uploaded resumes.</li>
+                              <li>Experience alignment may be below the selected role threshold.</li>
+                              <li>Current filters may be hiding medium-fit candidates.</li>
+                            </ul>
+                            <p className="mt-3 text-sm text-slate-400">Suggestions: adjust filters, upload more resumes, or enable Full DB mode.</p>
+                          </div>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ) : (
@@ -1517,7 +1713,12 @@ export default function AiScreeningPage() {
                           </button>
                         )}
                       </td>
-                      <td className={`p-5 text-xl font-semibold ${getScoreColor(match.matchScore)}`}>{match.matchScore}%</td>
+                      <td className="p-5">
+                        <div className={`text-xl font-semibold ${getScoreColor(match.matchScore)}`}>{match.matchScore}%</div>
+                        <span className={`mt-2 inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${getConfidenceTone(getConfidenceLevel(match))}`}>
+                          {getConfidenceLevel(match)} confidence
+                        </span>
+                      </td>
                       <td className="p-5">
                         <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] ${getRiskTone(match.riskLevel)}`}>
                           {match.riskLevel}
@@ -1529,7 +1730,29 @@ export default function AiScreeningPage() {
                         </span>
                       </td>
                       <td className="p-5 text-slate-400">
-                        <InsightTooltip text={match.insights?.short_reasoning || "-"} />
+                        <div className="space-y-3">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">Strengths</p>
+                            <ul className="mt-2 space-y-1 text-xs leading-5 text-slate-300">
+                              {getCandidateStrengths(match).slice(0, 2).map((strength) => (
+                                <li key={strength}>{strength}</li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-300/80">Gaps</p>
+                            <ul className="mt-2 space-y-1 text-xs leading-5 text-slate-300">
+                              {getCandidateWeaknesses(match).slice(0, 2).map((gap) => (
+                                <li key={gap}>{gap}</li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-200/80">Verdict</p>
+                            <p className="mt-2 text-xs leading-5 text-blue-50">{getCandidateVerdict(match)}</p>
+                          </div>
+                          <InsightTooltip text={match.insights?.short_reasoning || "-"} />
+                        </div>
                       </td>
                       <td className="p-5 text-right">
                         <div className="flex justify-end gap-2">
