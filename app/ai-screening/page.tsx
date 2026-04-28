@@ -973,12 +973,6 @@ export default function AiScreeningPage() {
       return false
     }
 
-    if (!includeAll && !batchId && candidateIds.length === 0) {
-      setError("No resumes uploaded")
-      setPipelineErrorStep("upload")
-      return false
-    }
-
     if (!options?.skipFlowGuard && flowStep !== "JD_PROCESSED" && flowStep !== "MATCHED") {
       setError("Process JD first")
       setPipelineErrorStep("job")

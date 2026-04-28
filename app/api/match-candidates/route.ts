@@ -47,10 +47,6 @@ export async function GET(request: Request) {
       throw new ApiError(400, "JOB_NOT_SELECTED", "Job not selected")
     }
 
-    if (!includeAllCandidates && !batchId && candidateIds.length === 0) {
-      throw new ApiError(400, "NO_RESUMES_UPLOADED", "No resumes uploaded")
-    }
-
     const job = await getScreeningJob(auth.organizationId, jobId)
 
     if (!job) {
@@ -126,10 +122,6 @@ export async function POST(request: Request) {
         : []
     const scopedCandidateIds = candidateIds?.length ? candidateIds : manifestCandidateIds
 
-    if (!includeAllCandidates && !batchId && !candidateIds?.length) {
-      throw new ApiError(400, "NO_RESUMES_UPLOADED", "No resumes uploaded")
-    }
-
     const source = includeAllCandidates ? "full_db" : "batch"
     let candidates = await getCandidatesForMatching({
       organizationId: auth.organizationId,
@@ -144,6 +136,9 @@ export async function POST(request: Request) {
         userId: auth.userId,
       })
     }
+    const resolvedCandidateIds = scopedCandidateIds.length > 0
+      ? scopedCandidateIds
+      : candidates.map((candidate) => candidate.candidate_id)
 
     if (candidates.length === 0) {
       console.warn("AI screening matching found no candidates", {
@@ -156,7 +151,7 @@ export async function POST(request: Request) {
       throw new ApiError(
         400,
         "NO_CANDIDATES_FOR_UPLOAD",
-        "Uploaded resumes were saved, but no candidates were found for matching. Re-upload once or enable Full DB mode."
+        "Uploaded resumes were saved, but no matching-ready candidate rows were found. Please upload again or enable Full DB mode."
       )
     }
 
@@ -199,7 +194,7 @@ export async function POST(request: Request) {
 
     const matches = await getMatchResults(auth.organizationId, jobId, {
       uploadBatchId: batchId || null,
-      candidateIds: scopedCandidateIds,
+      candidateIds: resolvedCandidateIds,
       includeAllCandidates,
     })
 

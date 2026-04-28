@@ -543,7 +543,7 @@ export async function getCandidatesForMatching(input: {
   const hasCandidateFilter = candidateIds.length > 0
 
   if (!includeAllCandidates && !batchId && !hasCandidateFilter) {
-    throw new ApiError(400, "NO_RESUMES_UPLOADED", "No resumes uploaded")
+    return []
   }
 
   const rows = await prisma.$queryRaw<CandidateRow[]>(Prisma.sql`
@@ -593,7 +593,7 @@ export async function getRecentCandidatesForMatchingFallback(input: {
       created_at
     from public.candidates
     where organization_id = ${input.organizationId}::uuid
-      and created_by = ${input.userId}::uuid
+      and (created_by = ${input.userId}::uuid or created_by is null)
       and coalesce(ai_screening_status, 'READY') <> 'ARCHIVED'
       and created_at > now() - interval '6 hours'
       and resume_text is not null
