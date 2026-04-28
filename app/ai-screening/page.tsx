@@ -953,7 +953,10 @@ export default function AiScreeningPage() {
     }
   ) {
     const batchId = options?.batchId ?? currentBatchId
-    const candidateIds = options?.candidateIds ?? uploadedCandidateIds
+    const rowCandidateIds = uploadRows
+      .filter((row) => row.status === "uploaded" && row.candidateId)
+      .map((row) => row.candidateId as string)
+    const candidateIds = options?.candidateIds ?? (uploadedCandidateIds.length > 0 ? uploadedCandidateIds : rowCandidateIds)
     const includeAll = options?.includeAllCandidates ?? includeAllCandidates
 
     if (!job) {

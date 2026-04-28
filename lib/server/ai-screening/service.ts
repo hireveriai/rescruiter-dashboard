@@ -465,11 +465,11 @@ export async function getCandidatesForMatching(input: {
       and coalesce(ai_screening_status, 'READY') <> 'ARCHIVED'
       ${
         !includeAllCandidates && hasCandidateFilter && batchId
-          ? Prisma.sql`and (candidate_id = any(${candidateIds}::uuid[]) or upload_batch_id = ${batchId}::uuid)`
+          ? Prisma.sql`and (candidate_id::text in (${Prisma.join(candidateIds)}) or upload_batch_id = ${batchId}::uuid or extracted_json->>'uploadBatchId' = ${batchId})`
           : !includeAllCandidates && hasCandidateFilter
-            ? Prisma.sql`and candidate_id = any(${candidateIds}::uuid[])`
+            ? Prisma.sql`and candidate_id::text in (${Prisma.join(candidateIds)})`
             : !includeAllCandidates && batchId
-              ? Prisma.sql`and upload_batch_id = ${batchId}::uuid`
+              ? Prisma.sql`and (upload_batch_id = ${batchId}::uuid or extracted_json->>'uploadBatchId' = ${batchId})`
               : Prisma.empty
       }
     order by created_at desc
@@ -565,11 +565,11 @@ export async function getMatchResults(
       and j.organization_id = ${organizationId}::uuid
       ${
         !includeAllCandidates && hasCandidateFilter && batchId
-          ? Prisma.sql`and (c.candidate_id = any(${candidateIds}::uuid[]) or c.upload_batch_id = ${batchId}::uuid)`
+          ? Prisma.sql`and (c.candidate_id::text in (${Prisma.join(candidateIds)}) or c.upload_batch_id = ${batchId}::uuid or c.extracted_json->>'uploadBatchId' = ${batchId})`
           : !includeAllCandidates && hasCandidateFilter
-            ? Prisma.sql`and c.candidate_id = any(${candidateIds}::uuid[])`
+            ? Prisma.sql`and c.candidate_id::text in (${Prisma.join(candidateIds)})`
             : !includeAllCandidates && batchId
-              ? Prisma.sql`and c.upload_batch_id = ${batchId}::uuid`
+              ? Prisma.sql`and (c.upload_batch_id = ${batchId}::uuid or c.extracted_json->>'uploadBatchId' = ${batchId})`
               : Prisma.empty
       }
     order by m.match_score desc, m.created_at desc
@@ -646,16 +646,16 @@ export async function getMatchesForInviteSelection(input: {
       }
       ${
         input.mode === "SELECTED" && hasCandidateIds
-          ? Prisma.sql`and c.candidate_id = any(${candidateIds}::uuid[])`
+          ? Prisma.sql`and c.candidate_id::text in (${Prisma.join(candidateIds)})`
           : Prisma.empty
       }
       ${
         input.mode !== "SELECTED" && !includeAllCandidates && hasCandidateIds && batchId
-          ? Prisma.sql`and (c.candidate_id = any(${candidateIds}::uuid[]) or c.upload_batch_id = ${batchId}::uuid)`
+          ? Prisma.sql`and (c.candidate_id::text in (${Prisma.join(candidateIds)}) or c.upload_batch_id = ${batchId}::uuid or c.extracted_json->>'uploadBatchId' = ${batchId})`
           : input.mode !== "SELECTED" && !includeAllCandidates && hasCandidateIds
-            ? Prisma.sql`and c.candidate_id = any(${candidateIds}::uuid[])`
+            ? Prisma.sql`and c.candidate_id::text in (${Prisma.join(candidateIds)})`
             : input.mode !== "SELECTED" && !includeAllCandidates && batchId
-              ? Prisma.sql`and c.upload_batch_id = ${batchId}::uuid`
+              ? Prisma.sql`and (c.upload_batch_id = ${batchId}::uuid or c.extracted_json->>'uploadBatchId' = ${batchId})`
               : Prisma.empty
       }
     order by m.match_score desc, m.created_at desc

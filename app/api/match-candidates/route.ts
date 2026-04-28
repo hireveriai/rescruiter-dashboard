@@ -119,7 +119,18 @@ export async function POST(request: Request) {
     })
 
     if (candidates.length === 0) {
-      throw new ApiError(400, "NO_RESUMES_UPLOADED", "No resumes uploaded")
+      console.warn("AI screening matching found no candidates", {
+        organizationId: auth.organizationId,
+        jobId,
+        batchId: batchId || null,
+        candidateIdsCount: candidateIds?.length ?? 0,
+        includeAllCandidates,
+      })
+      throw new ApiError(
+        400,
+        "NO_CANDIDATES_FOR_UPLOAD",
+        "Uploaded resumes were saved, but no candidates were found for matching. Re-upload once or enable Full DB mode."
+      )
     }
 
     await processInBatches(candidates, BATCH_SIZE, async (candidate) => {
