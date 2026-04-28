@@ -151,16 +151,27 @@ export async function POST(request: Request) {
     })
 
     const uploadedCount = results.filter((result) => result.status === "uploaded").length
+    const firstFailure = results.find((result) => result.status === "failed" && result.error)
+    const success = uploadedCount > 0
+    const failureMessage = firstFailure?.error || "No resumes could be processed"
 
     return NextResponse.json({
-      success: uploadedCount > 0,
+      success,
+      ...(!success
+        ? {
+            error: {
+              code: "RESUME_UPLOAD_FAILED",
+              message: failureMessage,
+            },
+          }
+        : {}),
       data: {
         batchId,
         uploadedCount,
         failedCount: results.length - uploadedCount,
         results,
       },
-    }, { status: uploadedCount > 0 ? 201 : 400 })
+    }, { status: success ? 201 : 400 })
   } catch (error) {
     return errorResponse(error)
   }

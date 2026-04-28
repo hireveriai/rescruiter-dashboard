@@ -686,11 +686,22 @@ export default function AiScreeningPage() {
         credentials: "include",
         body: formData,
       })
-      const payload = await readJsonResponse(response)
-      const rows = payload.data?.results ?? []
-      const batchId = payload.data?.batchId ?? ""
-      const uploadedCount = payload.data?.uploadedCount ?? 0
+      const payload = await response.json().catch(() => null)
+      const rows = (payload?.data?.results ?? []) as UploadRow[]
+      const batchId = payload?.data?.batchId ?? ""
+      const uploadedCount = payload?.data?.uploadedCount ?? 0
       setUploadRows(rows)
+
+      if (!response.ok || !payload?.success) {
+        const firstFailure = rows.find((row: UploadRow) => row.status === "failed" && row.error)
+        throw new Error(
+          payload?.error?.message ||
+            payload?.message ||
+            firstFailure?.error ||
+            "Resume upload failed"
+        )
+      }
+
       setCurrentBatchId(batchId)
       setIncludeAllCandidates(false)
       setMatches([])
