@@ -23,13 +23,6 @@ const quickActions = [
     tone: "secondary",
   },
   {
-    id: "ai-screening",
-    title: "Run AI Screening",
-    description: "Upload resumes, rank candidates, and send interviews in bulk.",
-    tone: "secondary",
-    href: "/ai-screening",
-  },
-  {
     id: "upload-candidate",
     title: "Upload Candidate",
     description: "Review the full candidate registry and uploaded profiles.",
@@ -67,15 +60,6 @@ export default function Sidebar({ initialProfile = null }) {
   const [profileError, setProfileError] = useState("")
   const [openCreateJob, setOpenCreateJob] = useState(false)
   const [openSendInterview, setOpenSendInterview] = useState(false)
-
-  useEffect(() => {
-    if (!initialProfile) {
-      return
-    }
-
-    setUser(initialProfile)
-    setProfileError("")
-  }, [initialProfile])
 
   useEffect(() => {
     let isMounted = true
@@ -120,13 +104,16 @@ export default function Sidebar({ initialProfile = null }) {
     }
   }, [initialProfile, searchParams])
 
+  const displayUser = initialProfile ?? user
+  const displayProfileError = initialProfile ? "" : profileError
+
   const initials = useMemo(
     () =>
-      user?.name
+      displayUser?.name
         ?.split(" ")
         .map((part) => part[0])
         .join("") || "..",
-    [user]
+    [displayUser]
   )
 
   const handleAction = (id) => {
@@ -152,15 +139,15 @@ export default function Sidebar({ initialProfile = null }) {
 
           <div className="min-w-0 flex-1">
             <div className="truncate text-[1.1rem] font-semibold leading-tight text-white xl:text-base">
-              {user?.name || "Loading..."}
+              {displayUser?.name || "Loading..."}
             </div>
-            <div className="truncate text-sm text-slate-400 xl:text-[13px]">{user?.organization || ""}</div>
+            <div className="truncate text-sm text-slate-400 xl:text-[13px]">{displayUser?.organization || ""}</div>
           </div>
         </div>
 
-        {profileError ? (
+        {displayProfileError ? (
           <div className="mt-4 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-            {profileError}
+            {displayProfileError}
           </div>
         ) : null}
 

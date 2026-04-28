@@ -32,23 +32,35 @@ export async function GET(request: Request) {
     const auth = await getRecruiterRequestContext(request)
     const url = new URL(request.url)
     const jobId = String(url.searchParams.get("job_id") ?? url.searchParams.get("jobId") ?? "").trim()
+    const batchId = String(url.searchParams.get("batchId") ?? url.searchParams.get("batch_id") ?? "").trim()
+    const includeAllCandidates =
+      url.searchParams.get("includeAllCandidates") === "true" ||
+      url.searchParams.get("include_all_candidates") === "true"
 
     if (!jobId) {
-      throw new ApiError(400, "JOB_ID_REQUIRED", "job_id is required")
+      throw new ApiError(400, "JOB_NOT_SELECTED", "Job not selected")
+    }
+
+    if (!includeAllCandidates && !batchId) {
+      throw new ApiError(400, "NO_RESUMES_UPLOADED", "No resumes uploaded")
     }
 
     const job = await getScreeningJob(auth.organizationId, jobId)
 
     if (!job) {
-      throw new ApiError(404, "JOB_NOT_FOUND", "Screening job was not found")
+      throw new ApiError(400, "JD_NOT_PROCESSED", "Process JD first")
     }
 
-    const matches = await getMatchResults(auth.organizationId, jobId)
+    const matches = await getMatchResults(auth.organizationId, jobId, {
+      uploadBatchId: batchId || null,
+      includeAllCandidates,
+    })
 
     return NextResponse.json({
       success: true,
       data: {
         job,
+        source: includeAllCandidates ? "full_db" : "batch",
         matches,
       },
     })
@@ -65,8 +77,14 @@ export async function POST(request: Request) {
       jobId?: string
       candidateIds?: string[]
       candidate_ids?: string[]
+      batchId?: string
+      batch_id?: string
+      includeAllCandidates?: boolean
+      include_all_candidates?: boolean
     }
     const jobId = String(body.job_id ?? body.jobId ?? "").trim()
+    const batchId = String(body.batchId ?? body.batch_id ?? "").trim()
+    const includeAllCandidates = body.includeAllCandidates === true || body.include_all_candidates === true
     const candidateIds = Array.isArray(body.candidateIds)
       ? body.candidateIds
       : Array.isArray(body.candidate_ids)
@@ -74,19 +92,29 @@ export async function POST(request: Request) {
         : undefined
 
     if (!jobId) {
-      throw new ApiError(400, "JOB_ID_REQUIRED", "job_id is required")
+      throw new ApiError(400, "JOB_NOT_SELECTED", "Job not selected")
     }
 
     const job = await getScreeningJob(auth.organizationId, jobId)
 
     if (!job) {
-      throw new ApiError(404, "JOB_NOT_FOUND", "Screening job was not found")
+      throw new ApiError(400, "JD_NOT_PROCESSED", "Process JD first")
     }
 
-    const candidates = await getCandidatesForMatching(auth.organizationId, candidateIds)
+    if (!includeAllCandidates && !batchId && !candidateIds?.length) {
+      throw new ApiError(400, "NO_RESUMES_UPLOADED", "No resumes uploaded")
+    }
+
+    const source = includeAllCandidates ? "full_db" : "batch"
+    const candidates = await getCandidatesForMatching({
+      organizationId: auth.organizationId,
+      candidateIds,
+      uploadBatchId: batchId || null,
+      includeAllCandidates,
+    })
 
     if (candidates.length === 0) {
-      throw new ApiError(400, "NO_CANDIDATES", "Upload candidates before running matching")
+      throw new ApiError(400, "NO_RESUMES_UPLOADED", "No resumes uploaded")
     }
 
     await processInBatches(candidates, BATCH_SIZE, async (candidate) => {
@@ -126,13 +154,17 @@ export async function POST(request: Request) {
       })
     })
 
-    const matches = await getMatchResults(auth.organizationId, jobId)
+    const matches = await getMatchResults(auth.organizationId, jobId, {
+      uploadBatchId: batchId || null,
+      includeAllCandidates,
+    })
 
     return NextResponse.json({
       success: true,
       data: {
         job,
-        matchedCount: matches.length,
+        matchedCount: candidates.length,
+        source,
         matches,
       },
     })

@@ -48,10 +48,16 @@ export async function POST(request: Request) {
       top_n?: number
       candidateIds?: string[]
       candidate_ids?: string[]
+      batchId?: string
+      batch_id?: string
+      includeAllCandidates?: boolean
+      include_all_candidates?: boolean
     }
     const screeningJobId = String(body.job_id ?? body.jobId ?? "").trim()
     const mode = body.mode ?? body.selection ?? "STRONG_FIT"
     const topN = Number(body.topN ?? body.top_n ?? 10)
+    const batchId = String(body.batchId ?? body.batch_id ?? "").trim()
+    const includeAllCandidates = body.includeAllCandidates === true || body.include_all_candidates === true
     const candidateIds = Array.isArray(body.candidateIds)
       ? body.candidateIds
       : Array.isArray(body.candidate_ids)
@@ -59,17 +65,21 @@ export async function POST(request: Request) {
         : undefined
 
     if (!screeningJobId) {
-      throw new ApiError(400, "JOB_ID_REQUIRED", "job_id is required")
+      throw new ApiError(400, "JOB_NOT_SELECTED", "Job not selected")
     }
 
     if (mode !== "STRONG_FIT" && mode !== "TOP_N" && mode !== "SELECTED") {
       throw new ApiError(400, "INVALID_SELECTION_MODE", "Invalid interview selection mode")
     }
 
+    if (!includeAllCandidates && !batchId && mode !== "SELECTED") {
+      throw new ApiError(400, "NO_RESUMES_UPLOADED", "No resumes uploaded")
+    }
+
     const job = await getScreeningJob(auth.organizationId, screeningJobId)
 
     if (!job) {
-      throw new ApiError(404, "JOB_NOT_FOUND", "Screening job was not found")
+      throw new ApiError(400, "JD_NOT_PROCESSED", "Process JD first")
     }
 
     const interviewJobId = job.sourceJobPositionId || job.id
@@ -79,6 +89,8 @@ export async function POST(request: Request) {
       mode,
       topN: Number.isFinite(topN) ? topN : 10,
       candidateIds,
+      uploadBatchId: batchId || null,
+      includeAllCandidates,
     })
 
     if (selected.length === 0) {

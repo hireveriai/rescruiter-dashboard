@@ -1,10 +1,6 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
-
-import { buildAuthUrl } from "@/lib/client/auth-query";
-import { useAuthSearchParams } from "@/lib/client/use-auth-search-params";
 
 import Navbar from "../components/Navbar";
 import OverlayLoader from "../components/OverlayLoader";
@@ -21,7 +17,6 @@ import RecruiterDashboardBootstrap from "../components/RecruiterDashboardBootstr
 
 function DashboardContent({ profile, showRestoreOverlay, overview }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const searchParams = useAuthSearchParams();
 
   return (
     <div className="relative min-h-screen bg-[#0b1220] text-white">
@@ -36,13 +31,6 @@ function DashboardContent({ profile, showRestoreOverlay, overview }) {
                 Overview of interviews, candidates and hiring insights
               </p>
             </div>
-
-            <Link
-              href={buildAuthUrl("/ai-screening", searchParams)}
-              className="inline-flex w-fit items-center justify-center rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-4 py-2.5 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300/50 hover:bg-cyan-400/15"
-            >
-              Run AI Screening
-            </Link>
           </div>
 
           <Pipeline initialPipeline={overview?.pipeline} />

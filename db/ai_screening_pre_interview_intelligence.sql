@@ -60,6 +60,7 @@ alter table if exists public.candidates
 
 alter table if exists public.candidates
   add column if not exists extracted_json jsonb not null default '{}'::jsonb,
+  add column if not exists upload_batch_id uuid,
   add column if not exists ai_screening_status text not null default 'READY',
   add column if not exists created_by uuid references public.users(user_id) on delete set null,
   add column if not exists updated_at timestamptz not null default now();
@@ -88,6 +89,10 @@ create index if not exists idx_candidates_ai_screening_org_created_at
 create index if not exists idx_candidates_ai_screening_email
   on public.candidates (organization_id, lower(email))
   where email is not null;
+
+create index if not exists idx_candidates_ai_screening_upload_batch
+  on public.candidates (organization_id, upload_batch_id, created_at desc)
+  where upload_batch_id is not null;
 
 create table if not exists public.candidate_job_matches (
   id uuid primary key default gen_random_uuid(),
@@ -150,7 +155,7 @@ for each row execute function public.set_ai_screening_updated_at();
 
 drop trigger if exists trg_candidates_ai_screening_updated_at on public.candidates;
 create trigger trg_candidates_ai_screening_updated_at
-before update of extracted_json, ai_screening_status, resume_url, resume_text, email, phone on public.candidates
+before update of extracted_json, upload_batch_id, ai_screening_status, resume_url, resume_text, email, phone on public.candidates
 for each row execute function public.set_ai_screening_updated_at();
 
 create or replace function public.current_recruiter_organization_id()

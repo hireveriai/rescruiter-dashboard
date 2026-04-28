@@ -6,6 +6,7 @@ import type { ParsedResume } from "@/lib/server/resumeParser"
 import type { CandidateMatchResult, ParsedJobDescription } from "@/lib/server/ai-screening/openai"
 
 const EMAIL_REGEX = /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i
 
 export type ScreeningJob = {
   id: string
@@ -39,6 +40,7 @@ type CandidateRow = {
   resume_url: string | null
   resume_text: string | null
   extracted_json: ParsedResume | Record<string, unknown> | null
+  upload_batch_id: string | null
   created_at: Date | string
 }
 
@@ -139,6 +141,7 @@ export function getDisplayNameFromFile(fileName: string) {
 export async function saveParsedCandidate(input: {
   organizationId: string
   userId: string
+  uploadBatchId: string
   fileName: string
   resumeUrl: string | null
   resumeText: string
@@ -155,6 +158,7 @@ export async function saveParsedCandidate(input: {
     email,
     sourceFileName: input.fileName,
     storage: input.storage ?? null,
+    uploadBatchId: input.uploadBatchId,
     extractedAt: new Date().toISOString(),
   }
 
@@ -179,6 +183,7 @@ export async function saveParsedCandidate(input: {
           resume_url = ${input.resumeUrl},
           resume_text = ${input.resumeText},
           extracted_json = ${JSON.stringify(extractedJson)}::jsonb,
+          upload_batch_id = ${input.uploadBatchId}::uuid,
           ai_screening_status = 'READY',
           created_by = coalesce(created_by, ${input.userId}::uuid)
         where candidate_id = ${existing.candidate_id}::uuid
@@ -205,6 +210,7 @@ export async function saveParsedCandidate(input: {
       resume_url,
       resume_text,
       extracted_json,
+      upload_batch_id,
       ai_screening_status,
       created_by
     )
@@ -216,6 +222,7 @@ export async function saveParsedCandidate(input: {
       ${input.resumeUrl},
       ${input.resumeText},
       ${JSON.stringify(extractedJson)}::jsonb,
+      ${input.uploadBatchId}::uuid,
       'READY',
       ${input.userId}::uuid
     )
@@ -422,8 +429,25 @@ export async function upsertScreeningJob(input: {
   return normalizeJob(job)
 }
 
-export async function getCandidatesForMatching(organizationId: string, candidateIds?: string[]) {
-  const hasCandidateFilter = Array.isArray(candidateIds) && candidateIds.length > 0
+function normalizeUuid(value: string | null | undefined) {
+  const trimmed = value?.trim()
+  return trimmed && UUID_REGEX.test(trimmed) ? trimmed : null
+}
+
+export async function getCandidatesForMatching(input: {
+  organizationId: string
+  candidateIds?: string[]
+  uploadBatchId?: string | null
+  includeAllCandidates?: boolean
+}) {
+  const batchId = normalizeUuid(input.uploadBatchId)
+  const includeAllCandidates = input.includeAllCandidates === true
+  const hasCandidateFilter = Array.isArray(input.candidateIds) && input.candidateIds.length > 0
+
+  if (!includeAllCandidates && !batchId && !hasCandidateFilter) {
+    throw new ApiError(400, "NO_RESUMES_UPLOADED", "No resumes uploaded")
+  }
+
   const rows = await prisma.$queryRaw<CandidateRow[]>(Prisma.sql`
     select
       candidate_id::text,
@@ -433,11 +457,13 @@ export async function getCandidatesForMatching(organizationId: string, candidate
       resume_url,
       resume_text,
       extracted_json,
+      upload_batch_id::text,
       created_at
     from public.candidates
-    where organization_id = ${organizationId}::uuid
+    where organization_id = ${input.organizationId}::uuid
       and coalesce(ai_screening_status, 'READY') <> 'ARCHIVED'
-      ${hasCandidateFilter ? Prisma.sql`and candidate_id = any(${candidateIds}::uuid[])` : Prisma.empty}
+      ${hasCandidateFilter ? Prisma.sql`and candidate_id = any(${input.candidateIds}::uuid[])` : Prisma.empty}
+      ${!includeAllCandidates && batchId ? Prisma.sql`and upload_batch_id = ${batchId}::uuid` : Prisma.empty}
     order by created_at desc
     limit 250
   `)
@@ -493,7 +519,16 @@ export async function upsertCandidateJobMatch(input: {
   return rows[0]?.id ?? null
 }
 
-export async function getMatchResults(organizationId: string, jobId: string) {
+export async function getMatchResults(
+  organizationId: string,
+  jobId: string,
+  options?: {
+    uploadBatchId?: string | null
+    includeAllCandidates?: boolean
+  }
+) {
+  const batchId = normalizeUuid(options?.uploadBatchId)
+  const includeAllCandidates = options?.includeAllCandidates === true
   const rows = await prisma.$queryRaw<MatchDbRow[]>(Prisma.sql`
     select
       m.id::text,
@@ -517,6 +552,7 @@ export async function getMatchResults(organizationId: string, jobId: string) {
     where m.organization_id = ${organizationId}::uuid
       and m.job_id = ${jobId}::uuid
       and j.organization_id = ${organizationId}::uuid
+      ${!includeAllCandidates && batchId ? Prisma.sql`and c.upload_batch_id = ${batchId}::uuid` : Prisma.empty}
     order by m.match_score desc, m.created_at desc
   `)
 
@@ -554,9 +590,13 @@ export async function getMatchesForInviteSelection(input: {
   mode: "STRONG_FIT" | "TOP_N" | "SELECTED"
   topN?: number
   candidateIds?: string[]
+  uploadBatchId?: string | null
+  includeAllCandidates?: boolean
 }) {
   const topN = Math.min(100, Math.max(1, input.topN ?? 10))
   const hasCandidateIds = Array.isArray(input.candidateIds) && input.candidateIds.length > 0
+  const batchId = normalizeUuid(input.uploadBatchId)
+  const includeAllCandidates = input.includeAllCandidates === true
 
   const rows = await prisma.$queryRaw<
     Array<{
@@ -589,6 +629,7 @@ export async function getMatchesForInviteSelection(input: {
           ? Prisma.sql`and c.candidate_id = any(${input.candidateIds}::uuid[])`
           : Prisma.empty
       }
+      ${!includeAllCandidates && batchId ? Prisma.sql`and c.upload_batch_id = ${batchId}::uuid` : Prisma.empty}
     order by m.match_score desc, m.created_at desc
     ${input.mode === "TOP_N" ? Prisma.sql`limit ${topN}` : Prisma.empty}
   `)

@@ -1,3 +1,5 @@
+import { randomUUID } from "crypto"
+
 import { NextResponse } from "next/server"
 
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
@@ -22,6 +24,7 @@ type UploadResult = {
   fileName: string
   status: "uploaded" | "failed"
   candidateId: string | null
+  uploadBatchId: string | null
   name: string | null
   email: string | null
   resumeUrl: string | null
@@ -70,6 +73,7 @@ export async function POST(request: Request) {
       throw new ApiError(400, "TOO_MANY_FILES", `Upload at most ${MAX_FILES} resumes at a time`)
     }
 
+    const batchId = randomUUID()
     const results = await processInBatches(files, BATCH_SIZE, async (file): Promise<UploadResult> => {
       try {
         if (!isSupportedResumeFile(file)) {
@@ -102,6 +106,7 @@ export async function POST(request: Request) {
         const candidate = await saveParsedCandidate({
           organizationId: auth.organizationId,
           userId: auth.userId,
+          uploadBatchId: batchId,
           fileName: file.name,
           resumeUrl: uploaded.url,
           resumeText,
@@ -119,6 +124,7 @@ export async function POST(request: Request) {
           fileName: file.name,
           status: "uploaded",
           candidateId: candidate.candidateId,
+          uploadBatchId: batchId,
           name: candidate.name,
           email: candidate.email,
           resumeUrl: uploaded.url,
@@ -135,6 +141,7 @@ export async function POST(request: Request) {
           fileName: file.name,
           status: "failed",
           candidateId: null,
+          uploadBatchId: null,
           name: null,
           email: null,
           resumeUrl: null,
@@ -148,6 +155,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: uploadedCount > 0,
       data: {
+        batchId,
         uploadedCount,
         failedCount: results.length - uploadedCount,
         results,
