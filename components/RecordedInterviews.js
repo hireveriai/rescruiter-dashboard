@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl, hasAuthQuery } from "@/lib/client/auth-query"
+import { openWarRoom } from "@/lib/client/war-room"
 
 function formatDate(dateValue) {
   if (!dateValue) {
@@ -192,7 +193,7 @@ export default function RecordedInterviews({ initialRecordedInterviews }) {
                   <button
                     type="button"
                     className="border border-blue-400 px-3 py-1 rounded text-sm text-blue-400 transition hover:bg-blue-500/10"
-                    onClick={() => window.open("https://war-room.hireveri.com/recruiter/war-room", "_blank", "noopener,noreferrer")}
+                    onClick={openWarRoom}
                   >
                     War Room
                   </button>
