@@ -9,6 +9,11 @@ type UploadResumeInput = {
   buffer: Buffer
 }
 
+type DeleteResumeInput = {
+  bucket: string
+  key: string
+}
+
 function getConfig() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim().replace(/\/+$/, "")
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
@@ -75,5 +80,28 @@ export async function uploadResumeToSupabaseStorage(input: UploadResumeInput) {
     bucket,
     key: objectKey,
     url: `${supabaseUrl}/storage/v1/object/${encodeURIComponent(bucket)}/${encodedPath}`,
+  }
+}
+
+export async function deleteResumeFromSupabaseStorage(input: DeleteResumeInput) {
+  const { supabaseUrl, serviceRoleKey } = getConfig()
+  const encodedPath = encodeObjectPath(input.key)
+  const deleteUrl = `${supabaseUrl}/storage/v1/object/${encodeURIComponent(input.bucket)}/${encodedPath}`
+
+  const response = await fetch(deleteUrl, {
+    method: "DELETE",
+    headers: {
+      apikey: serviceRoleKey,
+      Authorization: `Bearer ${serviceRoleKey}`,
+    },
+  })
+
+  if (!response.ok && response.status !== 404) {
+    const errorText = await response.text().catch(() => "")
+    throw new ApiError(
+      502,
+      "SUPABASE_STORAGE_DELETE_FAILED",
+      errorText || `Supabase storage delete failed with status ${response.status}`
+    )
   }
 }

@@ -89,6 +89,17 @@ type UploadBatchManifestRow = {
   candidate_ids: unknown
 }
 
+export type ResumeStorageObject = {
+  bucket: string
+  key: string
+}
+
+type CandidateStorageRow = {
+  candidate_id: string
+  bucket: string | null
+  key: string | null
+}
+
 function toIso(value: Date | string) {
   return value instanceof Date ? value.toISOString() : value
 }
@@ -531,6 +542,28 @@ function normalizeUuid(value: string | null | undefined) {
   return trimmed && UUID_REGEX.test(trimmed) ? trimmed : null
 }
 
+function getCandidateScopeSql(batchId: string | null, candidateIds: string[]) {
+  if (batchId && candidateIds.length > 0) {
+    return Prisma.sql`and (c.candidate_id::text in (${Prisma.join(candidateIds)}) or c.upload_batch_id = ${batchId}::uuid or c.extracted_json->>'uploadBatchId' = ${batchId})`
+  }
+
+  if (candidateIds.length > 0) {
+    return Prisma.sql`and c.candidate_id::text in (${Prisma.join(candidateIds)})`
+  }
+
+  if (batchId) {
+    return Prisma.sql`and (c.upload_batch_id = ${batchId}::uuid or c.extracted_json->>'uploadBatchId' = ${batchId})`
+  }
+
+  return Prisma.empty
+}
+
+function requireCleanupScope(batchId: string | null, candidateIds: string[]) {
+  if (!batchId && candidateIds.length === 0) {
+    throw new ApiError(400, "CLEANUP_SCOPE_REQUIRED", "Current upload scope is required")
+  }
+}
+
 export async function getCandidatesForMatching(input: {
   organizationId: string
   candidateIds?: string[]
@@ -705,6 +738,99 @@ export async function getMatchResults(
   `)
 
   return rows.map(normalizeMatch)
+}
+
+export async function clearScreeningResultsForUpload(input: {
+  organizationId: string
+  jobId: string
+  uploadBatchId?: string | null
+  candidateIds?: string[]
+}) {
+  const jobId = normalizeUuid(input.jobId)
+  const batchId = normalizeUuid(input.uploadBatchId)
+  const candidateIds = normalizeUuidList(input.candidateIds ?? [])
+
+  if (!jobId) {
+    throw new ApiError(400, "JOB_NOT_SELECTED", "Job not selected")
+  }
+
+  requireCleanupScope(batchId, candidateIds)
+
+  const rows = await prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
+    delete from public.candidate_job_matches m
+    using public.candidates c
+    where c.candidate_id = m.candidate_id
+      and c.organization_id = ${input.organizationId}::uuid
+      and m.organization_id = ${input.organizationId}::uuid
+      and m.job_id = ${jobId}::uuid
+      ${getCandidateScopeSql(batchId, candidateIds)}
+    returning m.id::text
+  `)
+
+  return {
+    deletedResults: rows.length,
+  }
+}
+
+export async function deleteUploadAndAnalysis(input: {
+  organizationId: string
+  uploadBatchId?: string | null
+  candidateIds?: string[]
+}) {
+  const batchId = normalizeUuid(input.uploadBatchId)
+  const candidateIds = normalizeUuidList(input.candidateIds ?? [])
+
+  requireCleanupScope(batchId, candidateIds)
+
+  const storageRows = await prisma.$queryRaw<CandidateStorageRow[]>(Prisma.sql`
+    select
+      c.candidate_id::text,
+      c.extracted_json->'storage'->>'bucket' as bucket,
+      c.extracted_json->'storage'->>'key' as key
+    from public.candidates c
+    where c.organization_id = ${input.organizationId}::uuid
+      ${getCandidateScopeSql(batchId, candidateIds)}
+  `)
+
+  const deletedMatches = await prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
+    delete from public.candidate_job_matches m
+    using public.candidates c
+    where c.candidate_id = m.candidate_id
+      and c.organization_id = ${input.organizationId}::uuid
+      and m.organization_id = ${input.organizationId}::uuid
+      ${getCandidateScopeSql(batchId, candidateIds)}
+    returning m.id::text
+  `)
+
+  const deletedCandidates = await prisma.$queryRaw<{ candidate_id: string }[]>(Prisma.sql`
+    delete from public.candidates c
+    where c.organization_id = ${input.organizationId}::uuid
+      ${getCandidateScopeSql(batchId, candidateIds)}
+    returning c.candidate_id::text
+  `)
+
+  if (batchId) {
+    await prisma.$queryRaw(Prisma.sql`
+      delete from public.ai_screening_upload_batches b
+      where b.organization_id = ${input.organizationId}::uuid
+        and b.batch_id = ${batchId}::uuid
+    `).catch((error) => {
+      console.warn("AI screening upload batch manifest cleanup skipped", error)
+    })
+  }
+
+  const storageObjects = storageRows
+    .filter((row): row is CandidateStorageRow & ResumeStorageObject => Boolean(row.bucket && row.key))
+    .map((row) => ({
+      bucket: row.bucket,
+      key: row.key,
+    }))
+
+  return {
+    deletedResults: deletedMatches.length,
+    deletedCandidates: deletedCandidates.length,
+    storageObjects,
+  }
 }
 
 export async function updateCandidateEmail(input: {
