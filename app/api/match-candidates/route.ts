@@ -5,7 +5,9 @@ import { ApiError } from "@/lib/server/errors"
 import { errorResponse } from "@/lib/server/response"
 import { matchCandidateToJobWithAI } from "@/lib/server/ai-screening/openai"
 import {
+  attachCandidatesToUploadBatch,
   getCandidatesForMatching,
+  getCandidatesForMatchingByUploadFiles,
   getMatchResults,
   getScreeningJob,
   getUploadBatchManifest,
@@ -127,6 +129,8 @@ export async function POST(request: Request) {
       candidate_ids?: string[]
       batchId?: string
       batch_id?: string
+      uploadFileNames?: string[]
+      upload_file_names?: string[]
       matchScope?: string
       match_scope?: string
       includeAllCandidates?: boolean
@@ -142,6 +146,11 @@ export async function POST(request: Request) {
       : Array.isArray(body.candidate_ids)
         ? body.candidate_ids
         : undefined
+    const uploadFileNames = Array.isArray(body.uploadFileNames)
+      ? body.uploadFileNames
+      : Array.isArray(body.upload_file_names)
+        ? body.upload_file_names
+        : []
 
     if (!jobId) {
       throw new ApiError(400, "JOB_NOT_SELECTED", "Job not selected")
@@ -188,6 +197,24 @@ export async function POST(request: Request) {
       usedBatchFallback = candidates.length > 0
     }
 
+    if (candidates.length === 0 && !includeAllCandidates && uploadFileNames.length > 0) {
+      candidates = await getCandidatesForMatchingByUploadFiles({
+        organizationId: auth.organizationId,
+        userId: auth.userId,
+        uploadBatchId: batchId || null,
+        fileNames: uploadFileNames,
+      })
+      usedBatchFallback = candidates.length > 0
+
+      if (candidates.length > 0 && batchId) {
+        await attachCandidatesToUploadBatch({
+          organizationId: auth.organizationId,
+          uploadBatchId: batchId,
+          candidateIds: candidates.map((candidate) => candidate.candidate_id),
+        })
+      }
+    }
+
     const resolvedCandidateIds = scopedCandidateIds.length > 0 && !usedBatchFallback
       ? scopedCandidateIds
       : candidates.map((candidate) => candidate.candidate_id)
@@ -198,6 +225,7 @@ export async function POST(request: Request) {
         jobId,
         batchId: batchId || null,
         candidateIdsCount: scopedCandidateIds.length,
+        uploadFileNamesCount: uploadFileNames.length,
         includeAllCandidates,
       })
       throw new ApiError(

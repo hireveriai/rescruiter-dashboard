@@ -609,6 +609,102 @@ export async function getCandidatesForMatching(input: {
   return rows
 }
 
+function normalizeFileNames(values: unknown) {
+  if (!Array.isArray(values)) {
+    return []
+  }
+
+  return [...new Set(values
+    .map((value) => (typeof value === "string" ? value.trim().toLowerCase() : ""))
+    .filter(Boolean))]
+    .slice(0, 50)
+}
+
+export async function getCandidatesForMatchingByUploadFiles(input: {
+  organizationId: string
+  userId: string
+  uploadBatchId?: string | null
+  fileNames?: string[]
+}) {
+  const batchId = normalizeUuid(input.uploadBatchId)
+  const fileNames = normalizeFileNames(input.fileNames ?? [])
+
+  if (fileNames.length === 0) {
+    return []
+  }
+
+  const rows = await prisma.$queryRaw<CandidateRow[]>(Prisma.sql`
+    select
+      candidate_id::text,
+      full_name,
+      email,
+      phone,
+      resume_url,
+      resume_text,
+      extracted_json,
+      upload_batch_id::text,
+      created_at
+    from public.candidates
+    where organization_id = ${input.organizationId}::uuid
+      and coalesce(ai_screening_status, 'READY') <> 'ARCHIVED'
+      and lower(coalesce(extracted_json->>'sourceFileName', '')) in (${Prisma.join(fileNames)})
+      and (
+        ${
+          batchId
+            ? Prisma.sql`upload_batch_id = ${batchId}::uuid or extracted_json->>'uploadBatchId' = ${batchId} or`
+            : Prisma.empty
+        }
+        coalesce(
+          case
+            when extracted_json->>'extractedAt' ~ '^\\d{4}-\\d{2}-\\d{2}T'
+              then (extracted_json->>'extractedAt')::timestamptz
+            else null
+          end,
+          created_at
+        ) > now() - interval '2 hours'
+      )
+      and (created_by = ${input.userId}::uuid or created_by is null)
+    order by coalesce(
+      case
+        when extracted_json->>'extractedAt' ~ '^\\d{4}-\\d{2}-\\d{2}T'
+          then (extracted_json->>'extractedAt')::timestamptz
+        else null
+      end,
+      created_at
+    ) desc
+    limit 50
+  `)
+
+  return rows
+}
+
+export async function attachCandidatesToUploadBatch(input: {
+  organizationId: string
+  uploadBatchId: string
+  candidateIds: string[]
+}) {
+  const batchId = normalizeUuid(input.uploadBatchId)
+  const candidateIds = normalizeUuidList(input.candidateIds)
+
+  if (!batchId || candidateIds.length === 0) {
+    return
+  }
+
+  await prisma.$executeRaw(Prisma.sql`
+    update public.candidates
+    set
+      upload_batch_id = ${batchId}::uuid,
+      extracted_json = jsonb_set(
+        coalesce(extracted_json, '{}'::jsonb),
+        '{uploadBatchId}',
+        to_jsonb(${batchId}::text),
+        true
+      )
+    where organization_id = ${input.organizationId}::uuid
+      and candidate_id::text in (${Prisma.join(candidateIds)})
+  `)
+}
+
 export async function upsertCandidateJobMatch(input: {
   organizationId: string
   candidateId: string

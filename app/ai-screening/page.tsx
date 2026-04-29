@@ -1116,6 +1116,9 @@ export default function AiScreeningPage() {
       .map((row) => row.candidateId as string)
     const candidateIds = options?.candidateIds ?? (uploadedCandidateIds.length > 0 ? uploadedCandidateIds : rowCandidateIds)
     const includeAll = options?.includeAllCandidates ?? includeAllCandidates
+    const uploadFileNames = uploadRows.length > 0
+      ? uploadRows.map((row) => row.fileName).filter(Boolean)
+      : files.map((file) => file.name).filter(Boolean)
 
     if (!job) {
       setError("Process a job description before matching candidates.")
@@ -1142,6 +1145,7 @@ export default function AiScreeningPage() {
           job_id: job.id,
           batchId: batchId || undefined,
           candidateIds,
+          uploadFileNames,
           matchScope: getMatchScope(includeAll),
           includeAllCandidates: includeAll,
         }),
@@ -1911,34 +1915,32 @@ export default function AiScreeningPage() {
               </div>
             </div>
 
-            <div className="mt-5 mb-4 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-              <div className="flex flex-wrap items-center gap-3">
-                <select value={recommendationFilter} onChange={(event) => setRecommendationFilter(event.target.value as (typeof recommendationFilters)[number])} disabled={isBusy} className="rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-2 text-sm text-white outline-none">
-                  {recommendationFilters.map((filter) => <option key={filter} value={filter}>{getRecommendationLabel(filter)}</option>)}
+            <div className="mt-5 mb-4 flex flex-col gap-4 2xl:flex-row 2xl:items-center 2xl:justify-between">
+              <div className="flex flex-1 flex-wrap items-center gap-3">
+                <select value={recommendationFilter} onChange={(event) => setRecommendationFilter(event.target.value as (typeof recommendationFilters)[number])} disabled={isBusy} className="h-11 rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-2 text-sm text-white outline-none">
+                  {recommendationFilters.map((filter) => <option key={filter} value={filter} className="bg-slate-950 text-white">{getRecommendationLabel(filter)}</option>)}
                 </select>
-                <select value={riskFilter} onChange={(event) => setRiskFilter(event.target.value as (typeof riskFilters)[number])} disabled={isBusy} className="rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-2 text-sm text-white outline-none">
-                  {riskFilters.map((filter) => <option key={filter} value={filter}>{filter === "ALL" ? "All Risk Levels" : filter}</option>)}
+                <select value={riskFilter} onChange={(event) => setRiskFilter(event.target.value as (typeof riskFilters)[number])} disabled={isBusy} className="h-11 rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-2 text-sm text-white outline-none">
+                  {riskFilters.map((filter) => <option key={filter} value={filter} className="bg-slate-950 text-white">{filter === "ALL" ? "All Risk Levels" : filter}</option>)}
                 </select>
-                <select value={sortMode} onChange={(event) => setSortMode(event.target.value as "score" | "recent")} disabled={isBusy} className="rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-2 text-sm text-white outline-none">
-                  <option value="score">Top Score</option>
-                  <option value="recent">Most Recent</option>
+                <select value={sortMode} onChange={(event) => setSortMode(event.target.value as "score" | "recent")} disabled={isBusy} className="h-11 rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-2 text-sm text-white outline-none">
+                  <option value="score" className="bg-slate-950 text-white">Top Score</option>
+                  <option value="recent" className="bg-slate-950 text-white">Most Recent</option>
                 </select>
-                <label className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-2 text-sm text-slate-300" title="Choose whether to match only uploaded resumes or include your full candidate database">
-                  <span className="text-slate-500">Scope</span>
-                  <select
-                    value={includeAllCandidates ? "GLOBAL" : "BATCH"}
-                    onChange={(event) => setIncludeAllCandidates(event.target.value === "GLOBAL")}
-                    disabled={isBusy}
-                    aria-label="Match scope"
-                    className="bg-transparent text-sm text-white outline-none"
-                  >
-                    <option value="BATCH">Uploaded Resumes Only</option>
-                    <option value="GLOBAL">All Candidates (Database)</option>
-                  </select>
-                </label>
+                <select
+                  value={includeAllCandidates ? "GLOBAL" : "BATCH"}
+                  onChange={(event) => setIncludeAllCandidates(event.target.value === "GLOBAL")}
+                  disabled={isBusy}
+                  aria-label="Scope"
+                  title="Choose whether to match only uploaded resumes or include your full candidate database"
+                  className="h-11 rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-2 text-sm text-white outline-none"
+                >
+                  <option value="BATCH" className="bg-slate-950 text-white">Scope: Uploaded Resumes Only</option>
+                  <option value="GLOBAL" className="bg-slate-950 text-white">Scope: All Candidates (Database)</option>
+                </select>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3 xl:justify-end">
+              <div className="flex shrink-0 flex-wrap items-center gap-3 2xl:justify-end">
                 <button
                   type="button"
                   onClick={selectRecommendedCandidates}
