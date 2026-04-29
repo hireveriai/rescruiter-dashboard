@@ -833,10 +833,11 @@ export async function clearScreeningResultsForUpload(input: {
 
   const rows = await prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
     delete from public.candidate_job_matches m
-    using public.candidates c
+    using public.candidates c, public.jobs j
     where c.candidate_id = m.candidate_id
+      and j.id = m.job_id
       and c.organization_id = ${input.organizationId}::uuid
-      and m.organization_id = ${input.organizationId}::uuid
+      and j.organization_id = ${input.organizationId}::uuid
       and m.job_id = ${jobId}::uuid
       ${getCandidateScopeSql(batchId, candidateIds)}
     returning m.id::text
@@ -872,7 +873,6 @@ export async function deleteUploadAndAnalysis(input: {
     using public.candidates c
     where c.candidate_id = m.candidate_id
       and c.organization_id = ${input.organizationId}::uuid
-      and m.organization_id = ${input.organizationId}::uuid
       ${getCandidateScopeSql(batchId, candidateIds)}
     returning m.id::text
   `)

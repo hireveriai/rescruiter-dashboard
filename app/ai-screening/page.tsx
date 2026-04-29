@@ -1584,7 +1584,10 @@ export default function AiScreeningPage() {
   }
 
   async function handleDeleteUploadAndAnalysis() {
-    const candidateIds = getCurrentUploadCandidateIds()
+    const scopedCandidateIds = getCurrentUploadCandidateIds()
+    const candidateIds = scopedCandidateIds.length > 0
+      ? scopedCandidateIds
+      : matches.map((match) => match.candidateId)
 
     try {
       setCleanupBusy(true)
@@ -1884,7 +1887,7 @@ export default function AiScreeningPage() {
           </section>
         </div>
 
-        <section ref={resultsSectionRef} className="mt-8 overflow-hidden rounded-[28px] border border-slate-800 bg-[#0f172a] shadow-[0_16px_60px_rgba(2,6,23,0.3)]">
+        <section ref={resultsSectionRef} className="mt-8 overflow-visible rounded-[28px] border border-slate-800 bg-[#0f172a] shadow-[0_16px_60px_rgba(2,6,23,0.3)]">
           <div className="border-b border-slate-800 px-6 py-5">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -2005,15 +2008,15 @@ export default function AiScreeningPage() {
               </div>
             </div>
 
-            <div className="mt-5 mb-4 flex flex-wrap items-center gap-3">
-              <div className="flex flex-wrap items-center gap-3">
-                <select value={recommendationFilter} onChange={(event) => setRecommendationFilter(event.target.value as (typeof recommendationFilters)[number])} disabled={isBusy} className="h-11 rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-2 text-sm text-white outline-none">
+            <div className="mt-5 mb-4 flex flex-nowrap items-center gap-3 overflow-x-auto pb-1">
+              <div className="flex shrink-0 flex-nowrap items-center gap-3">
+                <select value={recommendationFilter} onChange={(event) => setRecommendationFilter(event.target.value as (typeof recommendationFilters)[number])} disabled={isBusy} className="h-10 w-[220px] rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-2 text-[13px] text-white outline-none">
                   {recommendationFilters.map((filter) => <option key={filter} value={filter} className="bg-slate-950 text-white">{getRecommendationLabel(filter)}</option>)}
                 </select>
-                <select value={riskFilter} onChange={(event) => setRiskFilter(event.target.value as (typeof riskFilters)[number])} disabled={isBusy} className="h-11 rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-2 text-sm text-white outline-none">
+                <select value={riskFilter} onChange={(event) => setRiskFilter(event.target.value as (typeof riskFilters)[number])} disabled={isBusy} className="h-10 w-[175px] rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-2 text-[13px] text-white outline-none">
                   {riskFilters.map((filter) => <option key={filter} value={filter} className="bg-slate-950 text-white">{filter === "ALL" ? "All Risk Levels" : filter}</option>)}
                 </select>
-                <select value={sortMode} onChange={(event) => setSortMode(event.target.value as "score" | "recent")} disabled={isBusy} className="h-11 rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-2 text-sm text-white outline-none">
+                <select value={sortMode} onChange={(event) => setSortMode(event.target.value as "score" | "recent")} disabled={isBusy} className="h-10 w-[150px] rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-2 text-[13px] text-white outline-none">
                   <option value="score" className="bg-slate-950 text-white">Top Score</option>
                   <option value="recent" className="bg-slate-950 text-white">Most Recent</option>
                 </select>
@@ -2023,24 +2026,24 @@ export default function AiScreeningPage() {
                   disabled={isBusy}
                   aria-label="Scope"
                   title="Choose whether to match only uploaded resumes or include your full candidate database"
-                  className="h-11 rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-2 text-sm text-white outline-none"
+                  className="h-10 w-[310px] rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-2 text-[13px] text-white outline-none"
                 >
                   <option value="BATCH" className="bg-slate-950 text-white">Scope: Uploaded Resumes Only</option>
                   <option value="GLOBAL" className="bg-slate-950 text-white">Scope: All Candidates (Database)</option>
                 </select>
               </div>
 
-              <div className="flex shrink-0 flex-wrap items-center gap-3">
+              <div className="flex shrink-0 flex-nowrap items-center gap-3">
                 <button
                   type="button"
                   onClick={selectRecommendedCandidates}
                   disabled={isBusy || flowStep !== "MATCHED" || !activeJob || matches.length === 0}
-                  className="inline-flex h-11 items-center gap-2 rounded-xl border border-cyan-400/30 bg-transparent px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300/50 hover:bg-cyan-400/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-cyan-400/30 bg-transparent px-4 py-2 text-[13px] font-semibold text-cyan-100 transition hover:border-cyan-300/50 hover:bg-cyan-400/10 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Select Recommended
                 </button>
-                <div className="flex h-11 items-center overflow-hidden rounded-xl border border-cyan-400/30 bg-cyan-400/10 text-sm text-cyan-100 shadow-[0_0_28px_rgba(34,211,238,0.08)]">
-                  <span className="flex h-full items-center border-r border-cyan-400/20 px-4 font-semibold">Send Top</span>
+                <div className="flex h-10 items-center overflow-hidden rounded-xl border border-cyan-400/30 bg-cyan-400/10 text-[13px] text-cyan-100 shadow-[0_0_28px_rgba(34,211,238,0.08)]">
+                  <span className="flex h-full items-center border-r border-cyan-400/20 px-3 font-semibold">Send Top</span>
                   <input
                     type="number"
                     min={1}
@@ -2049,13 +2052,13 @@ export default function AiScreeningPage() {
                     onChange={(event) => setTopN(Number(event.target.value))}
                     disabled={isBusy}
                     aria-label="Number of top candidates to send"
-                    className="h-full w-16 bg-transparent px-3 text-sm font-semibold text-white outline-none"
+                    className="h-full w-12 bg-transparent px-2 text-[13px] font-semibold text-white outline-none"
                   />
                   <button
                     type="button"
                     onClick={openTopCandidateSendConfirmation}
                     disabled={isBusy || flowStep !== "MATCHED" || !activeJob || matches.length === 0}
-                    className="h-full border-l border-cyan-400/20 px-4 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="h-full border-l border-cyan-400/20 px-3 text-[13px] font-semibold text-cyan-50 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Candidates
                   </button>
