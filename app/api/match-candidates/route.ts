@@ -90,11 +90,18 @@ export async function GET(request: Request) {
         : []
     const scopedCandidateIds = candidateIds.length > 0 ? candidateIds : manifestCandidateIds
 
-    const matches = await getMatchResults(auth.organizationId, jobId, {
+    let matches = await getMatchResults(auth.organizationId, jobId, {
       uploadBatchId: batchId || null,
       candidateIds: scopedCandidateIds,
       includeAllCandidates,
     })
+
+    if (matches.length === 0 && !includeAllCandidates && batchId && scopedCandidateIds.length > 0) {
+      matches = await getMatchResults(auth.organizationId, jobId, {
+        uploadBatchId: batchId,
+        includeAllCandidates: false,
+      })
+    }
 
     return NextResponse.json({
       success: true,
@@ -164,14 +171,24 @@ export async function POST(request: Request) {
     const scopedCandidateIds = candidateIds?.length ? candidateIds : manifestCandidateIds
 
     const source = includeAllCandidates ? "full_db" : "batch"
-    const candidates = await getCandidatesForMatching({
+    let usedBatchFallback = false
+    let candidates = await getCandidatesForMatching({
       organizationId: auth.organizationId,
       candidateIds: scopedCandidateIds,
       uploadBatchId: batchId || null,
       includeAllCandidates,
     })
 
-    const resolvedCandidateIds = scopedCandidateIds.length > 0
+    if (candidates.length === 0 && !includeAllCandidates && batchId && scopedCandidateIds.length > 0) {
+      candidates = await getCandidatesForMatching({
+        organizationId: auth.organizationId,
+        uploadBatchId: batchId,
+        includeAllCandidates: false,
+      })
+      usedBatchFallback = candidates.length > 0
+    }
+
+    const resolvedCandidateIds = scopedCandidateIds.length > 0 && !usedBatchFallback
       ? scopedCandidateIds
       : candidates.map((candidate) => candidate.candidate_id)
 
@@ -186,7 +203,7 @@ export async function POST(request: Request) {
       throw new ApiError(
         400,
         "NO_CANDIDATES_FOR_UPLOAD",
-        "Uploaded resumes were saved, but no matching-ready candidate rows were found. Please upload again or switch Match Scope to Search All Candidates."
+        "Uploaded resumes were saved, but matching could not find the current upload. Please refresh and run matching again, or use Scope: All Candidates (Database)."
       )
     }
 

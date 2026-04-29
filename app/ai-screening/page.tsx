@@ -696,7 +696,7 @@ export default function AiScreeningPage() {
           const rowCandidateIds = uploadRows
             .filter((row) => row.status === "uploaded" && row.candidateId)
             .map((row) => row.candidateId as string)
-          const scopeCandidateIds = includeAllCandidates ? [] : [...new Set([...uploadedCandidateIds, ...rowCandidateIds])]
+          const scopeCandidateIds = includeAllCandidates || currentBatchId ? [] : [...new Set([...uploadedCandidateIds, ...rowCandidateIds])]
           const loadedMatches = filterMatchesToCandidateScope(payload.data?.matches ?? [], scopeCandidateIds)
           setMatches(loadedMatches)
           setSelectedCandidateIds(getDefaultSelectedCandidateIds(loadedMatches))
@@ -1149,7 +1149,7 @@ export default function AiScreeningPage() {
       const payload = await readJsonResponse(response)
       const rankedMatches = filterMatchesToCandidateScope(
         payload.data?.matches ?? [],
-        includeAll ? [] : candidateIds
+        includeAll || batchId ? [] : candidateIds
       )
       setMatches(rankedMatches)
       setSelectedCandidateIds(getDefaultSelectedCandidateIds(rankedMatches))
@@ -1923,43 +1923,19 @@ export default function AiScreeningPage() {
                   <option value="score">Top Score</option>
                   <option value="recent">Most Recent</option>
                 </select>
-              </div>
-
-              <div className="flex justify-start xl:justify-center">
-                <fieldset className="rounded-xl border border-slate-700 bg-slate-950/50 p-2 text-sm text-slate-300">
-                  <legend className="px-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Match Scope</legend>
-                  <div className="flex flex-wrap gap-2">
-                    <label className={`flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 transition ${!includeAllCandidates ? "bg-cyan-400/10 text-cyan-100" : "hover:bg-slate-900/70"}`}>
-                      <input
-                        type="radio"
-                        name="matchScope"
-                        value="BATCH"
-                        checked={!includeAllCandidates}
-                        onChange={() => setIncludeAllCandidates(false)}
-                        disabled={isBusy}
-                        className="h-4 w-4 accent-cyan-400"
-                      />
-                      Uploaded Resumes Only
-                    </label>
-                    <label className={`flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 transition ${includeAllCandidates ? "bg-cyan-400/10 text-cyan-100" : "hover:bg-slate-900/70"}`}>
-                      <input
-                        type="radio"
-                        name="matchScope"
-                        value="GLOBAL"
-                        checked={includeAllCandidates}
-                        onChange={() => setIncludeAllCandidates(true)}
-                        disabled={isBusy}
-                        className="h-4 w-4 accent-cyan-400"
-                      />
-                      Search All Candidates
-                    </label>
-                  </div>
-                  {includeAllCandidates ? (
-                    <p className="mt-2 max-w-md px-1 text-xs leading-5 text-cyan-100/75">
-                      Matching will include all candidates in your database, not just uploaded resumes.
-                    </p>
-                  ) : null}
-                </fieldset>
+                <label className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-2 text-sm text-slate-300" title="Choose whether to match only uploaded resumes or include your full candidate database">
+                  <span className="text-slate-500">Scope</span>
+                  <select
+                    value={includeAllCandidates ? "GLOBAL" : "BATCH"}
+                    onChange={(event) => setIncludeAllCandidates(event.target.value === "GLOBAL")}
+                    disabled={isBusy}
+                    aria-label="Match scope"
+                    className="bg-transparent text-sm text-white outline-none"
+                  >
+                    <option value="BATCH">Uploaded Resumes Only</option>
+                    <option value="GLOBAL">All Candidates (Database)</option>
+                  </select>
+                </label>
               </div>
 
               <div className="flex flex-wrap items-center gap-3 xl:justify-end">
