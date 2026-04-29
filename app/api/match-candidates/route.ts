@@ -7,7 +7,6 @@ import { matchCandidateToJobWithAI } from "@/lib/server/ai-screening/openai"
 import {
   getCandidatesForMatching,
   getMatchResults,
-  getRecentCandidatesForMatchingFallback,
   getScreeningJob,
   getUploadBatchManifest,
   upsertCandidateJobMatch,
@@ -16,6 +15,22 @@ import {
 export const runtime = "nodejs"
 
 const BATCH_SIZE = 3
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+type MatchScope = "BATCH" | "GLOBAL"
+
+function resolveMatchScope(value: unknown, includeAllCandidates: boolean): MatchScope {
+  const normalized = typeof value === "string" ? value.trim().toUpperCase() : ""
+
+  if (normalized === "GLOBAL") {
+    return "GLOBAL"
+  }
+
+  if (normalized === "BATCH") {
+    return "BATCH"
+  }
+
+  return includeAllCandidates ? "GLOBAL" : "BATCH"
+}
 
 async function processInBatches<T, R>(items: T[], batchSize: number, worker: (item: T) => Promise<R>) {
   const results: R[] = []
@@ -39,9 +54,14 @@ export async function GET(request: Request) {
       .split(",")
       .map((candidateId) => candidateId.trim())
       .filter(Boolean)
-    const includeAllCandidates =
+    const legacyIncludeAllCandidates =
       url.searchParams.get("includeAllCandidates") === "true" ||
       url.searchParams.get("include_all_candidates") === "true"
+    const matchScope = resolveMatchScope(
+      url.searchParams.get("matchScope") ?? url.searchParams.get("match_scope"),
+      legacyIncludeAllCandidates
+    )
+    const includeAllCandidates = matchScope === "GLOBAL"
 
     if (!jobId) {
       throw new ApiError(400, "JOB_NOT_SELECTED", "Job not selected")
@@ -51,6 +71,14 @@ export async function GET(request: Request) {
 
     if (!job) {
       throw new ApiError(400, "JD_NOT_PROCESSED", "Process JD first")
+    }
+
+    if (batchId && !UUID_REGEX.test(batchId)) {
+      throw new ApiError(400, "INVALID_UPLOAD_BATCH", "Current upload is invalid. Please upload resumes again.")
+    }
+
+    if (!includeAllCandidates && !batchId && candidateIds.length === 0) {
+      throw new ApiError(400, "UPLOAD_BATCH_REQUIRED", "Current upload is required. Upload resumes before matching.")
     }
 
     const manifestCandidateIds =
@@ -72,6 +100,7 @@ export async function GET(request: Request) {
       success: true,
       data: {
         job,
+        matchScope,
         source: includeAllCandidates ? "full_db" : "batch",
         matches,
       },
@@ -91,12 +120,16 @@ export async function POST(request: Request) {
       candidate_ids?: string[]
       batchId?: string
       batch_id?: string
+      matchScope?: string
+      match_scope?: string
       includeAllCandidates?: boolean
       include_all_candidates?: boolean
     }
     const jobId = String(body.job_id ?? body.jobId ?? "").trim()
     const batchId = String(body.batchId ?? body.batch_id ?? "").trim()
-    const includeAllCandidates = body.includeAllCandidates === true || body.include_all_candidates === true
+    const legacyIncludeAllCandidates = body.includeAllCandidates === true || body.include_all_candidates === true
+    const matchScope = resolveMatchScope(body.matchScope ?? body.match_scope, legacyIncludeAllCandidates)
+    const includeAllCandidates = matchScope === "GLOBAL"
     const candidateIds = Array.isArray(body.candidateIds)
       ? body.candidateIds
       : Array.isArray(body.candidate_ids)
@@ -113,6 +146,14 @@ export async function POST(request: Request) {
       throw new ApiError(400, "JD_NOT_PROCESSED", "Process JD first")
     }
 
+    if (batchId && !UUID_REGEX.test(batchId)) {
+      throw new ApiError(400, "INVALID_UPLOAD_BATCH", "Current upload is invalid. Please upload resumes again.")
+    }
+
+    if (!includeAllCandidates && !batchId && !candidateIds?.length) {
+      throw new ApiError(400, "UPLOAD_BATCH_REQUIRED", "Current upload is required. Upload resumes before matching.")
+    }
+
     const manifestCandidateIds =
       !includeAllCandidates && batchId && !candidateIds?.length
         ? (await getUploadBatchManifest({
@@ -123,25 +164,19 @@ export async function POST(request: Request) {
     const scopedCandidateIds = candidateIds?.length ? candidateIds : manifestCandidateIds
 
     const source = includeAllCandidates ? "full_db" : "batch"
-    let candidates = await getCandidatesForMatching({
+    const candidates = await getCandidatesForMatching({
       organizationId: auth.organizationId,
       candidateIds: scopedCandidateIds,
       uploadBatchId: batchId || null,
       includeAllCandidates,
     })
 
-    if (candidates.length === 0 && !includeAllCandidates) {
-      candidates = await getRecentCandidatesForMatchingFallback({
-        organizationId: auth.organizationId,
-        userId: auth.userId,
-      })
-    }
     const resolvedCandidateIds = scopedCandidateIds.length > 0
       ? scopedCandidateIds
       : candidates.map((candidate) => candidate.candidate_id)
 
     if (candidates.length === 0) {
-      console.warn("AI screening matching found no candidates", {
+      console.warn("VERIS screening matching found no candidates", {
         organizationId: auth.organizationId,
         jobId,
         batchId: batchId || null,
@@ -151,7 +186,7 @@ export async function POST(request: Request) {
       throw new ApiError(
         400,
         "NO_CANDIDATES_FOR_UPLOAD",
-        "Uploaded resumes were saved, but no matching-ready candidate rows were found. Please upload again or enable Full DB mode."
+        "Uploaded resumes were saved, but no matching-ready candidate rows were found. Please upload again or switch Match Scope to Search All Candidates."
       )
     }
 
@@ -203,6 +238,7 @@ export async function POST(request: Request) {
       data: {
         job,
         matchedCount: candidates.length,
+        matchScope,
         source,
         matches,
       },

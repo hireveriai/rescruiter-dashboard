@@ -77,7 +77,7 @@ export async function POST(request: Request) {
     }
 
     const parsed = await parseJobDescriptionWithAI(pastedDescription, titleHint)
-    const title = parsed.roleTitle || titleHint || "AI Screening Role"
+    const title = parsed.roleTitle || titleHint || "VERIS Screening Role"
     const jobPositionId = await createJobPositionForPastedJd({
       organizationId: auth.organizationId,
       title,

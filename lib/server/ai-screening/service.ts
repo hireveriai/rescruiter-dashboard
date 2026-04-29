@@ -330,7 +330,7 @@ export async function recordUploadBatchManifest(input: {
         file_names = excluded.file_names
     `)
   } catch (error) {
-    console.warn("AI screening upload batch manifest write skipped", error)
+    console.warn("VERIS screening upload batch manifest write skipped", error)
   }
 }
 
@@ -357,7 +357,7 @@ export async function getUploadBatchManifest(input: {
       limit 1
     `)
   } catch (error) {
-    console.warn("AI screening upload batch manifest lookup skipped", error)
+    console.warn("VERIS screening upload batch manifest lookup skipped", error)
     return null
   }
 
@@ -544,7 +544,7 @@ function normalizeUuid(value: string | null | undefined) {
 
 function getCandidateScopeSql(batchId: string | null, candidateIds: string[]) {
   if (batchId && candidateIds.length > 0) {
-    return Prisma.sql`and (c.candidate_id::text in (${Prisma.join(candidateIds)}) or c.upload_batch_id = ${batchId}::uuid or c.extracted_json->>'uploadBatchId' = ${batchId})`
+    return Prisma.sql`and c.candidate_id::text in (${Prisma.join(candidateIds)})`
   }
 
   if (candidateIds.length > 0) {
@@ -595,7 +595,7 @@ export async function getCandidatesForMatching(input: {
       and coalesce(ai_screening_status, 'READY') <> 'ARCHIVED'
       ${
         !includeAllCandidates && hasCandidateFilter && batchId
-          ? Prisma.sql`and (candidate_id::text in (${Prisma.join(candidateIds)}) or upload_batch_id = ${batchId}::uuid or extracted_json->>'uploadBatchId' = ${batchId})`
+          ? Prisma.sql`and candidate_id::text in (${Prisma.join(candidateIds)})`
           : !includeAllCandidates && hasCandidateFilter
             ? Prisma.sql`and candidate_id::text in (${Prisma.join(candidateIds)})`
             : !includeAllCandidates && batchId
@@ -604,38 +604,6 @@ export async function getCandidatesForMatching(input: {
       }
     order by created_at desc
     limit 250
-  `)
-
-  return rows
-}
-
-export async function getRecentCandidatesForMatchingFallback(input: {
-  organizationId: string
-  userId: string
-}) {
-  const rows = await prisma.$queryRaw<CandidateRow[]>(Prisma.sql`
-    select
-      candidate_id::text,
-      full_name,
-      email,
-      phone,
-      resume_url,
-      resume_text,
-      extracted_json,
-      upload_batch_id::text,
-      created_at
-    from public.candidates
-    where organization_id = ${input.organizationId}::uuid
-      and (created_by = ${input.userId}::uuid or created_by is null)
-      and coalesce(ai_screening_status, 'READY') <> 'ARCHIVED'
-      and created_at > now() - interval '6 hours'
-      and resume_text is not null
-      and (
-        upload_batch_id is not null
-        or extracted_json ? 'uploadBatchId'
-      )
-    order by created_at desc
-    limit 25
   `)
 
   return rows
@@ -702,6 +670,11 @@ export async function getMatchResults(
   const candidateIds = (options?.candidateIds ?? []).map(normalizeUuid).filter((id): id is string => Boolean(id))
   const hasCandidateFilter = candidateIds.length > 0
   const includeAllCandidates = options?.includeAllCandidates === true
+
+  if (!includeAllCandidates && !batchId && !hasCandidateFilter) {
+    return []
+  }
+
   const rows = await prisma.$queryRaw<MatchDbRow[]>(Prisma.sql`
     select
       m.id::text,
@@ -727,7 +700,7 @@ export async function getMatchResults(
       and j.organization_id = ${organizationId}::uuid
       ${
         !includeAllCandidates && hasCandidateFilter && batchId
-          ? Prisma.sql`and (c.candidate_id::text in (${Prisma.join(candidateIds)}) or c.upload_batch_id = ${batchId}::uuid or c.extracted_json->>'uploadBatchId' = ${batchId})`
+          ? Prisma.sql`and c.candidate_id::text in (${Prisma.join(candidateIds)})`
           : !includeAllCandidates && hasCandidateFilter
             ? Prisma.sql`and c.candidate_id::text in (${Prisma.join(candidateIds)})`
             : !includeAllCandidates && batchId
@@ -815,7 +788,7 @@ export async function deleteUploadAndAnalysis(input: {
       where b.organization_id = ${input.organizationId}::uuid
         and b.batch_id = ${batchId}::uuid
     `).catch((error) => {
-      console.warn("AI screening upload batch manifest cleanup skipped", error)
+      console.warn("VERIS screening upload batch manifest cleanup skipped", error)
     })
   }
 
@@ -906,7 +879,7 @@ export async function getMatchesForInviteSelection(input: {
       }
       ${
         input.mode !== "SELECTED" && !includeAllCandidates && hasCandidateIds && batchId
-          ? Prisma.sql`and (c.candidate_id::text in (${Prisma.join(candidateIds)}) or c.upload_batch_id = ${batchId}::uuid or c.extracted_json->>'uploadBatchId' = ${batchId})`
+          ? Prisma.sql`and c.candidate_id::text in (${Prisma.join(candidateIds)})`
           : input.mode !== "SELECTED" && !includeAllCandidates && hasCandidateIds
             ? Prisma.sql`and c.candidate_id::text in (${Prisma.join(candidateIds)})`
             : input.mode !== "SELECTED" && !includeAllCandidates && batchId

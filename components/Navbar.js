@@ -13,7 +13,7 @@ import CreateJobModal from "./CreateJobModal";
 
 const navItems = [
   { href: "/", label: "Dashboard", disabled: false },
-  { href: "/ai-screening", label: "AI Screening", disabled: false },
+  { href: "/ai-screening", label: "VERIS Screening", disabled: false },
   { href: "/jobs", label: "Jobs", disabled: false },
   { href: "/candidates", label: "Candidates", disabled: false },
   { href: "/interviews", label: "Interviews", disabled: false },
@@ -75,14 +75,6 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null }) 
   const [openCreateJob, setOpenCreateJob] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profile, setProfile] = useState(initialProfile);
-
-  useEffect(() => {
-    if (!initialProfile) {
-      return;
-    }
-
-    setProfile(initialProfile);
-  }, [initialProfile]);
 
   useEffect(() => {
     if (initialProfile || !hasAuthQuery(searchParams)) {

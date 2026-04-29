@@ -28,7 +28,7 @@ export function StepProgress({ currentStep }: StepProgressProps) {
   const activeIndex = getActiveIndex(currentStep)
 
   return (
-    <nav aria-label="AI screening progress" className="rounded-2xl border border-slate-800 bg-[#0f172a] px-5 py-5">
+    <nav aria-label="VERIS screening progress" className="rounded-2xl border border-slate-800 bg-[#0f172a] px-5 py-5">
       <ol className="flex items-start">
         {steps.map((step, index) => {
           const completed = index < activeIndex

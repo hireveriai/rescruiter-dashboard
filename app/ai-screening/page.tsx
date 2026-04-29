@@ -68,6 +68,18 @@ type SendResult = {
   inviteLink: string | null
 }
 
+type InterviewAccessType = "FLEXIBLE" | "SCHEDULED"
+type CandidateScheduleDraft = {
+  startTime: string
+  endTime: string
+}
+type CandidateInterviewSchedule = {
+  candidateId: string
+  accessType: InterviewAccessType
+  startTime: string | null
+  endTime: string | null
+}
+
 type FlowStep =
   | "UPLOAD"
   | "JD_READY"
@@ -75,6 +87,7 @@ type FlowStep =
   | "MATCH_READY"
   | "MATCHED"
 
+type MatchScope = "BATCH" | "GLOBAL"
 type PipelineErrorStep = "upload" | "parse" | "job" | "match" | null
 type CleanupModal = "CLEAR_RESULTS" | "DELETE_UPLOAD" | null
 
@@ -89,6 +102,7 @@ type StoredFlowState = {
   uploadedCandidateIds: string[]
   activeJobId: string
   selectedExistingJobId: string
+  matchScope: MatchScope
   includeAllCandidates: boolean
 }
 
@@ -109,6 +123,7 @@ function getDefaultFlowState(): StoredFlowState {
     uploadedCandidateIds: [],
     activeJobId: "",
     selectedExistingJobId: "",
+    matchScope: "BATCH",
     includeAllCandidates: false,
   }
 }
@@ -127,6 +142,9 @@ function readStoredFlowState(): StoredFlowState {
       ? parsed.uploadedCandidateIds.filter((value): value is string => typeof value === "string" && value.length > 0)
       : []
     const parsedFlowStep = isFlowStep(parsed.flowStep) ? parsed.flowStep : "UPLOAD"
+    const parsedMatchScope = parsed.matchScope === "GLOBAL" || parsed.match_scope === "GLOBAL" || parsed.includeAllCandidates === true
+      ? "GLOBAL"
+      : "BATCH"
 
     return {
       flowStep: currentBatchId ? parsedFlowStep : "UPLOAD",
@@ -134,11 +152,26 @@ function readStoredFlowState(): StoredFlowState {
       uploadedCandidateIds,
       activeJobId: typeof parsed.activeJobId === "string" ? parsed.activeJobId : "",
       selectedExistingJobId: typeof parsed.selectedExistingJobId === "string" ? parsed.selectedExistingJobId : "",
-      includeAllCandidates: parsed.includeAllCandidates === true,
+      matchScope: parsedMatchScope,
+      includeAllCandidates: parsedMatchScope === "GLOBAL" || parsed.includeAllCandidates === true,
     }
   } catch {
     return getDefaultFlowState()
   }
+}
+
+function getMatchScope(includeAllCandidates: boolean): MatchScope {
+  return includeAllCandidates ? "GLOBAL" : "BATCH"
+}
+
+function getDateTimeValue(value: string) {
+  if (!value) {
+    return null
+  }
+
+  const date = new Date(value)
+
+  return Number.isNaN(date.getTime()) ? null : date
 }
 
 function UploadIcon() {
@@ -176,6 +209,47 @@ function MoreIcon() {
       <path d="M19 12h.01" />
       <path d="M5 12h.01" />
     </svg>
+  )
+}
+
+function CalendarIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 text-cyan-300/80" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M16 3v4" />
+      <path d="M8 3v4" />
+      <path d="M3 10h18" />
+    </svg>
+  )
+}
+
+function DateTimeField({
+  label,
+  value,
+  onChange,
+  disabled,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  disabled?: boolean
+}) {
+  return (
+    <div>
+      <label className="mb-2 block text-xs font-medium text-slate-400">{label}</label>
+      <div className="relative">
+        <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2">
+          <CalendarIcon />
+        </div>
+        <input
+          type="datetime-local"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          disabled={disabled}
+          className="w-full rounded-xl border border-slate-700 bg-slate-950/70 px-10 py-2.5 text-sm text-white outline-none transition focus:border-cyan-400/60 disabled:cursor-not-allowed disabled:opacity-60"
+        />
+      </div>
+    </div>
   )
 }
 
@@ -267,6 +341,16 @@ function getDefaultSelectedCandidateIds(matches: MatchRow[]) {
   return matches
     .filter(isAiRecommendedForInterview)
     .map((match) => match.candidateId)
+}
+
+function filterMatchesToCandidateScope(matches: MatchRow[], candidateIds: string[]) {
+  const scopedCandidateIds = new Set(candidateIds.filter(Boolean))
+
+  if (scopedCandidateIds.size === 0) {
+    return matches
+  }
+
+  return matches.filter((match) => scopedCandidateIds.has(match.candidateId))
 }
 
 function getCandidateRankValue(match: MatchRow) {
@@ -448,6 +532,13 @@ export default function AiScreeningPage() {
   const [compareModalOpen, setCompareModalOpen] = useState(false)
   const [pendingSendCandidateIds, setPendingSendCandidateIds] = useState<string[]>([])
   const [confirmSendOpen, setConfirmSendOpen] = useState(false)
+  const [sendAccessType, setSendAccessType] = useState<InterviewAccessType>("FLEXIBLE")
+  const [defaultScheduleStartTime, setDefaultScheduleStartTime] = useState("")
+  const [defaultScheduleEndTime, setDefaultScheduleEndTime] = useState("")
+  const [customScheduleEnabled, setCustomScheduleEnabled] = useState(false)
+  const [customScheduleExpanded, setCustomScheduleExpanded] = useState(false)
+  const [candidateScheduleDrafts, setCandidateScheduleDrafts] = useState<Record<string, CandidateScheduleDraft>>({})
+  const [sendScheduleError, setSendScheduleError] = useState("")
   const [cleanupMenuOpen, setCleanupMenuOpen] = useState(false)
   const [cleanupModal, setCleanupModal] = useState<CleanupModal>(null)
   const [deleteConfirmationText, setDeleteConfirmationText] = useState("")
@@ -522,7 +613,7 @@ export default function AiScreeningPage() {
           }
         }
       } catch (loadError) {
-        console.error("Failed to load AI screening data", loadError)
+        console.error("Failed to load VERIS screening data", loadError)
       }
     }
 
@@ -548,6 +639,7 @@ export default function AiScreeningPage() {
         uploadedCandidateIds,
         activeJobId: activeJobIdForStorage,
         selectedExistingJobId,
+        matchScope: getMatchScope(includeAllCandidates),
         includeAllCandidates,
       })
     )
@@ -580,6 +672,7 @@ export default function AiScreeningPage() {
     async function loadMatches() {
       try {
         const params = new URLSearchParams({ job_id: jobIdForRequest })
+        params.set("matchScope", getMatchScope(includeAllCandidates))
 
         if (includeAllCandidates) {
           params.set("includeAllCandidates", "true")
@@ -600,7 +693,11 @@ export default function AiScreeningPage() {
         const payload = await response.json()
 
         if (active && payload.success) {
-          const loadedMatches = payload.data?.matches ?? []
+          const rowCandidateIds = uploadRows
+            .filter((row) => row.status === "uploaded" && row.candidateId)
+            .map((row) => row.candidateId as string)
+          const scopeCandidateIds = includeAllCandidates ? [] : [...new Set([...uploadedCandidateIds, ...rowCandidateIds])]
+          const loadedMatches = filterMatchesToCandidateScope(payload.data?.matches ?? [], scopeCandidateIds)
           setMatches(loadedMatches)
           setSelectedCandidateIds(getDefaultSelectedCandidateIds(loadedMatches))
         }
@@ -614,7 +711,7 @@ export default function AiScreeningPage() {
     return () => {
       active = false
     }
-  }, [activeJob?.id, currentBatchId, flowStep, includeAllCandidates, searchParams, uploadedCandidateIds])
+  }, [activeJob?.id, currentBatchId, flowStep, includeAllCandidates, searchParams, uploadRows, uploadedCandidateIds])
 
   const filteredMatches = useMemo(() => {
     const filtered = matches.filter((match) => {
@@ -708,6 +805,7 @@ export default function AiScreeningPage() {
     [matches, pendingSendCandidateIds]
   )
   const pendingSendMissingEmailCount = pendingSendMatches.filter((match) => !match.email).length
+  const shouldCollapseCustomSchedule = customScheduleEnabled && pendingSendMatches.length > 10 && !customScheduleExpanded
   const uploadedResumeCount = uploadRows.filter((row) => row.status === "uploaded").length
 
   const selectedExistingJob = useMemo(
@@ -1044,11 +1142,15 @@ export default function AiScreeningPage() {
           job_id: job.id,
           batchId: batchId || undefined,
           candidateIds,
+          matchScope: getMatchScope(includeAll),
           includeAllCandidates: includeAll,
         }),
       })
       const payload = await readJsonResponse(response)
-      const rankedMatches = payload.data?.matches ?? []
+      const rankedMatches = filterMatchesToCandidateScope(
+        payload.data?.matches ?? [],
+        includeAll ? [] : candidateIds
+      )
       setMatches(rankedMatches)
       setSelectedCandidateIds(getDefaultSelectedCandidateIds(rankedMatches))
       setFlowStep("MATCHED")
@@ -1079,7 +1181,11 @@ export default function AiScreeningPage() {
     await runMatching(activeJob)
   }
 
-  async function handleSendInterviews(mode: "STRONG_FIT" | "TOP_N" | "SELECTED", candidateIds?: string[]) {
+  async function handleSendInterviews(
+    mode: "STRONG_FIT" | "TOP_N" | "SELECTED",
+    candidateIds?: string[],
+    candidates?: CandidateInterviewSchedule[]
+  ) {
     if (!activeJob) {
       setError("Choose a processed job before sending interviews.")
       return
@@ -1103,7 +1209,9 @@ export default function AiScreeningPage() {
           mode,
           topN,
           candidateIds,
+          candidates,
           batchId: currentBatchId || undefined,
+          matchScope: getMatchScope(includeAllCandidates),
           includeAllCandidates,
         }),
       })
@@ -1160,6 +1268,16 @@ export default function AiScreeningPage() {
     openSendConfirmation(topCandidateIds)
   }
 
+  function resetSendScheduleState() {
+    setSendAccessType("FLEXIBLE")
+    setDefaultScheduleStartTime("")
+    setDefaultScheduleEndTime("")
+    setCustomScheduleEnabled(false)
+    setCustomScheduleExpanded(false)
+    setCandidateScheduleDrafts({})
+    setSendScheduleError("")
+  }
+
   function openSendConfirmation(candidateIds: string[]) {
     const uniqueCandidateIds = [...new Set(candidateIds)].filter(Boolean)
 
@@ -1168,21 +1286,110 @@ export default function AiScreeningPage() {
     }
 
     setPendingSendCandidateIds(uniqueCandidateIds)
+    resetSendScheduleState()
     setConfirmSendOpen(true)
+  }
+
+  function closeSendConfirmation() {
+    setConfirmSendOpen(false)
+    setPendingSendCandidateIds([])
+    resetSendScheduleState()
+  }
+
+  function getCandidateScheduleDraft(candidateId: string): CandidateScheduleDraft {
+    return candidateScheduleDrafts[candidateId] ?? {
+      startTime: defaultScheduleStartTime,
+      endTime: defaultScheduleEndTime,
+    }
+  }
+
+  function updateCandidateScheduleDraft(candidateId: string, patch: Partial<CandidateScheduleDraft>) {
+    setCandidateScheduleDrafts((current) => ({
+      ...current,
+      [candidateId]: {
+        startTime: current[candidateId]?.startTime ?? defaultScheduleStartTime,
+        endTime: current[candidateId]?.endTime ?? defaultScheduleEndTime,
+        ...patch,
+      },
+    }))
+    setSendScheduleError("")
+  }
+
+  function validateScheduleWindow(startTime: string, endTime: string, label: string) {
+    const start = getDateTimeValue(startTime)
+    const end = getDateTimeValue(endTime)
+
+    if (!start || !end) {
+      return `${label} needs a valid start and end time.`
+    }
+
+    if (end <= start) {
+      return `${label} end time must be after start time.`
+    }
+
+    return ""
+  }
+
+  function buildCandidateInterviewSchedules(): CandidateInterviewSchedule[] | null {
+    if (sendAccessType === "FLEXIBLE") {
+      return pendingSendMatches.map((match) => ({
+        candidateId: match.candidateId,
+        accessType: "FLEXIBLE",
+        startTime: null,
+        endTime: null,
+      }))
+    }
+
+    const defaultScheduleError = validateScheduleWindow(defaultScheduleStartTime, defaultScheduleEndTime, "Default schedule")
+
+    if (defaultScheduleError) {
+      setSendScheduleError(defaultScheduleError)
+      return null
+    }
+
+    const scheduledCandidates: CandidateInterviewSchedule[] = []
+
+    for (const match of pendingSendMatches) {
+      const draft = customScheduleEnabled
+        ? getCandidateScheduleDraft(match.candidateId)
+        : { startTime: defaultScheduleStartTime, endTime: defaultScheduleEndTime }
+      const scheduleError = validateScheduleWindow(draft.startTime, draft.endTime, match.candidateName)
+
+      if (scheduleError) {
+        setSendScheduleError(scheduleError)
+        return null
+      }
+
+      scheduledCandidates.push({
+        candidateId: match.candidateId,
+        accessType: "SCHEDULED",
+        startTime: getDateTimeValue(draft.startTime)?.toISOString() ?? null,
+        endTime: getDateTimeValue(draft.endTime)?.toISOString() ?? null,
+      })
+    }
+
+    setSendScheduleError("")
+    return scheduledCandidates
   }
 
   async function confirmPendingSend() {
     const candidateIds = pendingSendMatches.map((match) => match.candidateId)
 
     if (candidateIds.length === 0) {
-      setConfirmSendOpen(false)
-      setPendingSendCandidateIds([])
+      closeSendConfirmation()
+      return
+    }
+
+    const candidates = buildCandidateInterviewSchedules()
+
+    if (!candidates) {
       return
     }
 
     setConfirmSendOpen(false)
     setPendingSendCandidateIds([])
-    await handleSendInterviews("SELECTED", candidateIds)
+    await handleSendInterviews("SELECTED", candidateIds, candidates)
+    resetSendScheduleState()
   }
 
   async function handleSaveEmail(candidateId: string) {
@@ -1331,7 +1538,7 @@ export default function AiScreeningPage() {
         <section className="rounded-[28px] border border-slate-800 bg-[linear-gradient(180deg,rgba(15,23,42,0.96),rgba(8,17,31,0.98))] p-8 shadow-[0_24px_80px_rgba(2,6,23,0.45)]">
           <div className="flex flex-col gap-8 xl:flex-row xl:items-end xl:justify-between">
             <div className="max-w-3xl">
-              <p className="text-xs font-semibold uppercase tracking-[0.32em] text-slate-500">AI Screening</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.32em] text-slate-500">VERIS Screening</p>
               <h1 className="mt-4 text-4xl font-semibold tracking-tight text-white">Pre-Interview Intelligence Layer</h1>
               <p className="mt-4 text-base leading-7 text-slate-400">
                 Bulk resume parsing, JD intelligence, candidate ranking, email capture, and interview invitation dispatch in one recruiter workflow.
@@ -1591,8 +1798,8 @@ export default function AiScreeningPage() {
                 <p className="mt-1 text-sm text-slate-400">{activeJob ? activeJob.title : "Process a JD to populate ranked candidates."}</p>
                 <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
                   <span className="font-medium text-blue-100">{recommendedCount} candidates recommended for interview</span>
-                  <span className="rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-xs text-blue-100" title="AI recommended based on match score and risk analysis">
-                    AI recommended based on match score and risk analysis
+                  <span className="rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-xs text-blue-100" title="VERIS recommended based on match score and risk analysis">
+                    VERIS recommended based on match score and risk analysis
                   </span>
                 </div>
               </div>
@@ -1686,7 +1893,7 @@ export default function AiScreeningPage() {
                         : "The current resumes may be below the score or risk threshold."}
                     </p>
                     <p className="mt-2 text-xs leading-5 text-amber-100/75">
-                      Try adjusting filters, uploading more resumes, or enabling Full DB mode.
+                      Try adjusting filters, uploading more resumes, or switching to Search All Candidates.
                     </p>
                   </div>
                 )}
@@ -1719,16 +1926,40 @@ export default function AiScreeningPage() {
               </div>
 
               <div className="flex justify-start xl:justify-center">
-                <label className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-2 text-sm text-slate-300">
-                  <input
-                    type="checkbox"
-                    checked={includeAllCandidates}
-                    onChange={(event) => setIncludeAllCandidates(event.target.checked)}
-                    disabled={isBusy}
-                    className="h-4 w-4 accent-cyan-400"
-                  />
-                  Full DB mode
-                </label>
+                <fieldset className="rounded-xl border border-slate-700 bg-slate-950/50 p-2 text-sm text-slate-300">
+                  <legend className="px-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Match Scope</legend>
+                  <div className="flex flex-wrap gap-2">
+                    <label className={`flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 transition ${!includeAllCandidates ? "bg-cyan-400/10 text-cyan-100" : "hover:bg-slate-900/70"}`}>
+                      <input
+                        type="radio"
+                        name="matchScope"
+                        value="BATCH"
+                        checked={!includeAllCandidates}
+                        onChange={() => setIncludeAllCandidates(false)}
+                        disabled={isBusy}
+                        className="h-4 w-4 accent-cyan-400"
+                      />
+                      Uploaded Resumes Only
+                    </label>
+                    <label className={`flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 transition ${includeAllCandidates ? "bg-cyan-400/10 text-cyan-100" : "hover:bg-slate-900/70"}`}>
+                      <input
+                        type="radio"
+                        name="matchScope"
+                        value="GLOBAL"
+                        checked={includeAllCandidates}
+                        onChange={() => setIncludeAllCandidates(true)}
+                        disabled={isBusy}
+                        className="h-4 w-4 accent-cyan-400"
+                      />
+                      Search All Candidates
+                    </label>
+                  </div>
+                  {includeAllCandidates ? (
+                    <p className="mt-2 max-w-md px-1 text-xs leading-5 text-cyan-100/75">
+                      Matching will include all candidates in your database, not just uploaded resumes.
+                    </p>
+                  ) : null}
+                </fieldset>
               </div>
 
               <div className="flex flex-wrap items-center gap-3 xl:justify-end">
@@ -1820,7 +2051,7 @@ export default function AiScreeningPage() {
                               <li>Experience alignment may be below the selected role threshold.</li>
                               <li>Current filters may be hiding medium-fit candidates.</li>
                             </ul>
-                            <p className="mt-3 text-sm text-slate-400">Suggestions: adjust filters, upload more resumes, or enable Full DB mode.</p>
+                            <p className="mt-3 text-sm text-slate-400">Suggestions: adjust filters, upload more resumes, or switch to Search All Candidates.</p>
                           </div>
                         </div>
                       )}
@@ -1870,8 +2101,8 @@ export default function AiScreeningPage() {
                           />
                           <div className="flex min-w-0 items-center gap-1">
                             {isRecommended ? (
-                              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-blue-400/20 bg-blue-500/10 text-[11px] font-semibold text-blue-100" title="AI recommended based on match score and risk analysis" aria-label="AI recommended">
-                                AI
+                              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-blue-400/20 bg-blue-500/10 text-[9px] font-semibold text-blue-100" title="VERIS recommended based on match score and risk analysis" aria-label="VERIS recommended">
+                                V
                               </span>
                             ) : null}
                             {isHighRisk ? (
@@ -2185,7 +2416,7 @@ export default function AiScreeningPage() {
 
       {confirmSendOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="confirm-send-title">
-          <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-[#0B1220] p-6 shadow-[0_24px_90px_rgba(2,6,23,0.7)]">
+          <div className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-800 bg-[#0B1220] p-6 shadow-[0_24px_90px_rgba(2,6,23,0.7)]">
             <h2 id="confirm-send-title" className="text-lg font-semibold text-white">
               Confirm Interview Send
             </h2>
@@ -2197,6 +2428,127 @@ export default function AiScreeningPage() {
                 {pendingSendMissingEmailCount} selected candidate{pendingSendMissingEmailCount === 1 ? "" : "s"} without email will be skipped.
               </p>
             ) : null}
+
+            <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/35 p-4">
+              <p className="text-sm font-semibold text-white">Interview Access</p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <label className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2 text-sm transition ${sendAccessType === "FLEXIBLE" ? "border-cyan-400/30 bg-cyan-400/10 text-cyan-100" : "border-slate-700 text-slate-300 hover:border-slate-500"}`}>
+                  <input
+                    type="radio"
+                    value="FLEXIBLE"
+                    checked={sendAccessType === "FLEXIBLE"}
+                    onChange={() => {
+                      setSendAccessType("FLEXIBLE")
+                      setSendScheduleError("")
+                    }}
+                    className="h-4 w-4 accent-cyan-400"
+                  />
+                  Flexible access
+                </label>
+                <label className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2 text-sm transition ${sendAccessType === "SCHEDULED" ? "border-cyan-400/30 bg-cyan-400/10 text-cyan-100" : "border-slate-700 text-slate-300 hover:border-slate-500"}`}>
+                  <input
+                    type="radio"
+                    value="SCHEDULED"
+                    checked={sendAccessType === "SCHEDULED"}
+                    onChange={() => {
+                      setSendAccessType("SCHEDULED")
+                      setSendScheduleError("")
+                    }}
+                    className="h-4 w-4 accent-cyan-400"
+                  />
+                  Fixed Schedule
+                </label>
+              </div>
+
+              {sendAccessType === "SCHEDULED" ? (
+                <div className="mt-4 rounded-2xl border border-cyan-400/15 bg-cyan-400/[0.06] p-4">
+                  <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.24em] text-cyan-200/75">
+                    <CalendarIcon />
+                    <span>Default Schedule</span>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <DateTimeField label="Start Time" value={defaultScheduleStartTime} onChange={(value) => {
+                      setDefaultScheduleStartTime(value)
+                      setSendScheduleError("")
+                    }} />
+                    <DateTimeField label="End Time" value={defaultScheduleEndTime} onChange={(value) => {
+                      setDefaultScheduleEndTime(value)
+                      setSendScheduleError("")
+                    }} />
+                  </div>
+                  <p className="mt-3 text-xs leading-5 text-slate-400">This schedule applies to all candidates unless you enable custom schedules.</p>
+
+                  <label className="mt-4 flex cursor-pointer items-center gap-3 rounded-xl border border-slate-700 bg-slate-950/45 px-3 py-2 text-sm text-slate-200 transition hover:border-cyan-400/30">
+                    <input
+                      type="checkbox"
+                      checked={customScheduleEnabled}
+                      onChange={(event) => {
+                        const enabled = event.target.checked
+                        setCustomScheduleEnabled(enabled)
+                        setCustomScheduleExpanded(enabled && pendingSendMatches.length <= 10)
+                        setCandidateScheduleDrafts({})
+                        setSendScheduleError("")
+                      }}
+                      className="h-4 w-4 accent-cyan-400"
+                    />
+                    Set custom schedule per candidate
+                  </label>
+
+                  {customScheduleEnabled ? (
+                    shouldCollapseCustomSchedule ? (
+                      <div className="mt-4 flex flex-col gap-3 rounded-xl border border-slate-700 bg-slate-950/45 p-3 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-sm text-slate-300">Custom schedule enabled for {pendingSendMatches.length} candidates.</p>
+                        <button
+                          type="button"
+                          onClick={() => setCustomScheduleExpanded(true)}
+                          className="rounded-xl border border-cyan-400/30 px-3 py-2 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300/50 hover:bg-cyan-400/10"
+                        >
+                          Edit
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="mt-4 space-y-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Candidate Schedules</p>
+                          {pendingSendMatches.length > 10 ? (
+                            <button
+                              type="button"
+                              onClick={() => setCustomScheduleExpanded(false)}
+                              className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition hover:border-slate-500 hover:text-white"
+                            >
+                              Collapse
+                            </button>
+                          ) : null}
+                        </div>
+                        <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
+                          {pendingSendMatches.map((match) => {
+                            const draft = getCandidateScheduleDraft(match.candidateId)
+
+                            return (
+                              <div key={match.candidateId} className="rounded-xl border border-slate-800 bg-slate-950/45 p-3">
+                                <div className="mb-3 min-w-0">
+                                  <p className="truncate text-sm font-semibold text-white">{match.candidateName}</p>
+                                  <p className="truncate text-xs text-slate-500">{match.email || "No email"}</p>
+                                </div>
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                  <DateTimeField label="Start Time" value={draft.startTime} onChange={(value) => updateCandidateScheduleDraft(match.candidateId, { startTime: value })} />
+                                  <DateTimeField label="End Time" value={draft.endTime} onChange={(value) => updateCandidateScheduleDraft(match.candidateId, { endTime: value })} />
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+
+            {sendScheduleError ? (
+              <p className="mt-3 rounded-xl border border-rose-400/20 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">{sendScheduleError}</p>
+            ) : null}
+
             <div className="mt-5 max-h-48 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950/35">
               {pendingSendMatches.map((match) => (
                 <div key={match.candidateId} className="flex items-center justify-between gap-3 border-b border-slate-800 px-3 py-2 last:border-b-0">
@@ -2213,10 +2565,7 @@ export default function AiScreeningPage() {
             <div className="mt-6 flex justify-end gap-3">
               <button
                 type="button"
-                onClick={() => {
-                  setConfirmSendOpen(false)
-                  setPendingSendCandidateIds([])
-                }}
+                onClick={closeSendConfirmation}
                 className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-300 transition hover:border-slate-500 hover:text-white"
               >
                 Cancel

@@ -15,6 +15,87 @@ import {
 export const runtime = "nodejs"
 
 const BATCH_SIZE = 4
+type MatchScope = "BATCH" | "GLOBAL"
+type InterviewAccessType = "FLEXIBLE" | "SCHEDULED"
+type CandidateInterviewSchedule = {
+  candidateId: string
+  accessType: InterviewAccessType
+  startTime: string | null
+  endTime: string | null
+}
+
+function resolveMatchScope(value: unknown, includeAllCandidates: boolean): MatchScope {
+  const normalized = typeof value === "string" ? value.trim().toUpperCase() : ""
+
+  if (normalized === "GLOBAL") {
+    return "GLOBAL"
+  }
+
+  if (normalized === "BATCH") {
+    return "BATCH"
+  }
+
+  return includeAllCandidates ? "GLOBAL" : "BATCH"
+}
+
+function resolveAccessType(value: unknown): InterviewAccessType {
+  const normalized = typeof value === "string" ? value.trim().toUpperCase() : ""
+
+  if (normalized === "SCHEDULED") {
+    return "SCHEDULED"
+  }
+
+  return "FLEXIBLE"
+}
+
+function normalizeScheduleTime(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) {
+    return null
+  }
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return null
+  }
+
+  return date.toISOString()
+}
+
+function parseCandidateSchedules(value: unknown): CandidateInterviewSchedule[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value.map((item) => {
+    const record = item && typeof item === "object" ? item as Record<string, unknown> : {}
+    const candidateId = String(record.candidateId ?? record.candidate_id ?? "").trim()
+    const accessType = resolveAccessType(record.accessType ?? record.access_type)
+    const startTime = normalizeScheduleTime(record.startTime ?? record.start_time)
+    const endTime = normalizeScheduleTime(record.endTime ?? record.end_time)
+
+    if (!candidateId) {
+      throw new ApiError(400, "INVALID_CANDIDATE_SCHEDULE", "Candidate schedule is missing a candidate.")
+    }
+
+    if (accessType === "SCHEDULED") {
+      if (!startTime || !endTime) {
+        throw new ApiError(400, "INVALID_CANDIDATE_SCHEDULE", "Start time and end time are required for scheduled interviews.")
+      }
+
+      if (new Date(endTime) <= new Date(startTime)) {
+        throw new ApiError(400, "INVALID_CANDIDATE_SCHEDULE", "End time must be after start time for every scheduled candidate.")
+      }
+    }
+
+    return {
+      candidateId,
+      accessType,
+      startTime: accessType === "SCHEDULED" ? startTime : null,
+      endTime: accessType === "SCHEDULED" ? endTime : null,
+    }
+  })
+}
 
 async function processInBatches<T, R>(items: T[], batchSize: number, worker: (item: T) => Promise<R>) {
   const results: R[] = []
@@ -48,8 +129,20 @@ export async function POST(request: Request) {
       top_n?: number
       candidateIds?: string[]
       candidate_ids?: string[]
+      candidates?: Array<{
+        candidateId?: string
+        candidate_id?: string
+        accessType?: string
+        access_type?: string
+        startTime?: string | null
+        start_time?: string | null
+        endTime?: string | null
+        end_time?: string | null
+      }>
       batchId?: string
       batch_id?: string
+      matchScope?: string
+      match_scope?: string
       includeAllCandidates?: boolean
       include_all_candidates?: boolean
     }
@@ -57,12 +150,18 @@ export async function POST(request: Request) {
     const mode = body.mode ?? body.selection ?? "STRONG_FIT"
     const topN = Number(body.topN ?? body.top_n ?? 10)
     const batchId = String(body.batchId ?? body.batch_id ?? "").trim()
-    const includeAllCandidates = body.includeAllCandidates === true || body.include_all_candidates === true
+    const legacyIncludeAllCandidates = body.includeAllCandidates === true || body.include_all_candidates === true
+    const matchScope = resolveMatchScope(body.matchScope ?? body.match_scope, legacyIncludeAllCandidates)
+    const includeAllCandidates = matchScope === "GLOBAL"
+    const candidateSchedules = parseCandidateSchedules(body.candidates)
     const candidateIds = Array.isArray(body.candidateIds)
       ? body.candidateIds
       : Array.isArray(body.candidate_ids)
         ? body.candidate_ids
-        : undefined
+        : candidateSchedules.length > 0
+          ? candidateSchedules.map((schedule) => schedule.candidateId)
+          : undefined
+    const scheduleByCandidateId = new Map(candidateSchedules.map((schedule) => [schedule.candidateId, schedule]))
 
     if (!screeningJobId) {
       throw new ApiError(400, "JOB_NOT_SELECTED", "Job not selected")
@@ -73,7 +172,7 @@ export async function POST(request: Request) {
     }
 
     if (!includeAllCandidates && !batchId && mode !== "SELECTED") {
-      throw new ApiError(400, "NO_RESUMES_UPLOADED", "No resumes uploaded")
+      throw new ApiError(400, "UPLOAD_BATCH_REQUIRED", "Current upload is required. Use Search All Candidates to send from the full database.")
     }
 
     const job = await getScreeningJob(auth.organizationId, screeningJobId)
@@ -116,7 +215,9 @@ export async function POST(request: Request) {
           organizationId: auth.organizationId,
           jobId: interviewJobId,
           candidateId: match.candidate_id,
-          accessType: "FLEXIBLE",
+          accessType: scheduleByCandidateId.get(match.candidate_id)?.accessType ?? "FLEXIBLE",
+          startTime: scheduleByCandidateId.get(match.candidate_id)?.startTime ?? undefined,
+          endTime: scheduleByCandidateId.get(match.candidate_id)?.endTime ?? undefined,
         })
 
         try {
@@ -183,6 +284,7 @@ export async function POST(request: Request) {
         sentCount: results.filter((result) => result.status === "SENT").length,
         skippedCount: results.filter((result) => result.status === "SKIPPED").length,
         failedCount: results.filter((result) => result.status === "FAILED").length,
+        matchScope,
         results,
       },
     })

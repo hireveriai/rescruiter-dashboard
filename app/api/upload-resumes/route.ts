@@ -135,7 +135,7 @@ export async function POST(request: Request) {
           error: null,
         }
       } catch (error) {
-        console.error("AI screening resume upload failed", {
+        console.error("VERIS screening resume upload failed", {
           fileName: file.name,
           fileKind: getResumeFileKind(file),
           error,
