@@ -741,6 +741,7 @@ export async function upsertCandidateJobMatch(input: {
     )
     on conflict (candidate_id, job_id) do update
     set
+      organization_id = excluded.organization_id,
       match_score = excluded.match_score,
       skill_match = excluded.skill_match,
       experience_match = excluded.experience_match,
