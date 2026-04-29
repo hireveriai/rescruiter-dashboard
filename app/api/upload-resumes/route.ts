@@ -26,7 +26,7 @@ const BATCH_SIZE = 3
 
 type UploadResult = {
   fileName: string
-  status: "uploaded" | "failed"
+  status: "ready" | "failed"
   candidateId: string | null
   uploadBatchId: string | null
   name: string | null
@@ -126,7 +126,7 @@ export async function POST(request: Request) {
 
         return {
           fileName: file.name,
-          status: "uploaded",
+          status: "ready",
           candidateId: candidate.candidateId,
           uploadBatchId: batchId,
           name: candidate.name,
@@ -154,7 +154,7 @@ export async function POST(request: Request) {
       }
     })
 
-    const uploadedCount = results.filter((result) => result.status === "uploaded").length
+    const uploadedCount = results.filter((result) => result.status === "ready").length
     const uploadedCandidateIds = results
       .map((result) => result.candidateId)
       .filter((candidateId): candidateId is string => typeof candidateId === "string" && candidateId.length > 0)

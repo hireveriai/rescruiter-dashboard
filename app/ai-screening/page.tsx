@@ -51,12 +51,24 @@ type MatchRow = {
 
 type UploadRow = {
   fileName: string
-  status: "uploaded" | "failed"
+  status: "uploading" | "uploaded" | "processing" | "ready" | "failed"
   candidateId: string | null
   uploadBatchId: string | null
   name: string | null
   email: string | null
   error: string | null
+}
+
+type ResumeDisplayStatus = "UPLOADING" | "UPLOADED" | "PROCESSING" | "READY" | "FAILED"
+
+type ResumeDisplayRow = {
+  id: string
+  fileName: string
+  fileSizeKb: number | null
+  name: string | null
+  email: string | null
+  error: string | null
+  status: ResumeDisplayStatus
 }
 
 type SendResult = {
@@ -162,6 +174,40 @@ function readStoredFlowState(): StoredFlowState {
 
 function getMatchScope(includeAllCandidates: boolean): MatchScope {
   return includeAllCandidates ? "GLOBAL" : "BATCH"
+}
+
+function isResumeReady(row: UploadRow) {
+  return row.status === "ready" || row.status === "uploaded"
+}
+
+function getResumeStatusLabel(status: ResumeDisplayStatus) {
+  switch (status) {
+    case "UPLOADING":
+      return "Uploading..."
+    case "UPLOADED":
+      return "Uploaded"
+    case "PROCESSING":
+      return "Processing..."
+    case "READY":
+      return "Ready"
+    case "FAILED":
+      return "Failed"
+  }
+}
+
+function getResumeStatusClass(status: ResumeDisplayStatus) {
+  switch (status) {
+    case "UPLOADING":
+      return "border-blue-500/25 bg-blue-500/10 text-blue-200"
+    case "UPLOADED":
+      return "border-cyan-500/25 bg-cyan-500/10 text-cyan-200"
+    case "PROCESSING":
+      return "border-amber-500/25 bg-amber-500/10 text-amber-200"
+    case "READY":
+      return "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
+    case "FAILED":
+      return "border-rose-500/25 bg-rose-500/10 text-rose-300"
+  }
 }
 
 function getDateTimeValue(value: string) {
@@ -684,6 +730,14 @@ export default function AiScreeningPage() {
           if (uploadedCandidateIds.length > 0) {
             params.set("candidateIds", uploadedCandidateIds.join(","))
           }
+
+          const uploadFileNames = uploadRows
+            .map((row) => row.fileName)
+            .filter(Boolean)
+
+          if (uploadFileNames.length > 0) {
+            params.set("uploadFileNames", uploadFileNames.join(","))
+          }
         }
 
         const response = await fetch(authUrl(`/api/match-candidates?${params.toString()}`), {
@@ -694,12 +748,14 @@ export default function AiScreeningPage() {
 
         if (active && payload.success) {
           const rowCandidateIds = uploadRows
-            .filter((row) => row.status === "uploaded" && row.candidateId)
+            .filter((row) => isResumeReady(row) && row.candidateId)
             .map((row) => row.candidateId as string)
           const scopeCandidateIds = includeAllCandidates || currentBatchId ? [] : [...new Set([...uploadedCandidateIds, ...rowCandidateIds])]
           const loadedMatches = filterMatchesToCandidateScope(payload.data?.matches ?? [], scopeCandidateIds)
-          setMatches(loadedMatches)
-          setSelectedCandidateIds(getDefaultSelectedCandidateIds(loadedMatches))
+          setMatches((currentMatches) => loadedMatches.length === 0 && currentMatches.length > 0 ? currentMatches : loadedMatches)
+          if (loadedMatches.length > 0) {
+            setSelectedCandidateIds(getDefaultSelectedCandidateIds(loadedMatches))
+          }
         }
       } catch (loadError) {
         console.error("Failed to load match results", loadError)
@@ -806,7 +862,45 @@ export default function AiScreeningPage() {
   )
   const pendingSendMissingEmailCount = pendingSendMatches.filter((match) => !match.email).length
   const shouldCollapseCustomSchedule = customScheduleEnabled && pendingSendMatches.length > 10 && !customScheduleExpanded
-  const uploadedResumeCount = uploadRows.filter((row) => row.status === "uploaded").length
+  const uploadedResumeCount = uploadRows.filter(isResumeReady).length
+  const resumeDisplayRows = useMemo<ResumeDisplayRow[]>(() => {
+    const fileSizeByName = new Map(files.map((file) => [file.name, Math.max(1, Math.round(file.size / 1024))]))
+
+    if (uploadRows.length > 0) {
+      return uploadRows.map((row) => ({
+        id: row.candidateId ?? row.fileName,
+        fileName: row.fileName,
+        fileSizeKb: fileSizeByName.get(row.fileName) ?? null,
+        name: row.name,
+        email: row.email,
+        error: row.error,
+        status:
+          row.status === "failed"
+            ? "FAILED"
+            : row.status === "uploading"
+              ? "UPLOADING"
+              : row.status === "processing"
+                ? "PROCESSING"
+                : row.status === "uploaded"
+                  ? "UPLOADED"
+                  : "READY",
+      }))
+    }
+
+    if (!uploading) {
+      return []
+    }
+
+    return files.map((file) => ({
+      id: `${file.name}-${file.size}`,
+      fileName: file.name,
+      fileSizeKb: Math.max(1, Math.round(file.size / 1024)),
+      name: null,
+      email: null,
+      error: null,
+      status: "UPLOADING",
+    }))
+  }, [files, uploadRows, uploading])
 
   const selectedExistingJob = useMemo(
     () => existingJobs.find((job) => job.jobId === selectedExistingJobId) ?? null,
@@ -920,6 +1014,15 @@ export default function AiScreeningPage() {
       setError("")
       setPipelineErrorStep(null)
       setNotice("Uploading and parsing resumes...")
+      setUploadRows(files.map((file) => ({
+        fileName: file.name,
+        status: "uploading",
+        candidateId: null,
+        uploadBatchId: null,
+        name: null,
+        email: null,
+        error: null,
+      })))
       const formData = new FormData()
       files.forEach((file) => formData.append("files", file))
       const response = await fetch(authUrl("/api/upload-resumes"), {
@@ -928,11 +1031,14 @@ export default function AiScreeningPage() {
         body: formData,
       })
       const payload = await response.json().catch(() => null)
-      const rows = (payload?.data?.results ?? []) as UploadRow[]
+      const rows = ((payload?.data?.results ?? []) as UploadRow[]).map((row) => ({
+        ...row,
+        status: row.status === "uploaded" ? "ready" : row.status,
+      }))
       const batchId = payload?.data?.batchId ?? ""
       const uploadedCount = payload?.data?.uploadedCount ?? 0
       const candidateIds = rows
-        .filter((row) => row.status === "uploaded" && row.candidateId)
+        .filter((row) => isResumeReady(row) && row.candidateId)
         .map((row) => row.candidateId as string)
       setUploadRows(rows)
 
@@ -1112,7 +1218,7 @@ export default function AiScreeningPage() {
   ) {
     const batchId = options?.batchId ?? currentBatchId
     const rowCandidateIds = uploadRows
-      .filter((row) => row.status === "uploaded" && row.candidateId)
+      .filter((row) => isResumeReady(row) && row.candidateId)
       .map((row) => row.candidateId as string)
     const candidateIds = options?.candidateIds ?? (uploadedCandidateIds.length > 0 ? uploadedCandidateIds : rowCandidateIds)
     const includeAll = options?.includeAllCandidates ?? includeAllCandidates
@@ -1421,7 +1527,7 @@ export default function AiScreeningPage() {
 
   function getCurrentUploadCandidateIds() {
     const rowCandidateIds = uploadRows
-      .filter((row) => row.status === "uploaded" && row.candidateId)
+      .filter((row) => isResumeReady(row) && row.candidateId)
       .map((row) => row.candidateId as string)
 
     return [...new Set([...uploadedCandidateIds, ...rowCandidateIds])]
@@ -1599,7 +1705,7 @@ export default function AiScreeningPage() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold text-white">Resume Intake</h2>
-                <p className="mt-1 text-sm text-slate-400">{files.length} selected, {uploadRows.filter((row) => row.status === "uploaded").length} saved</p>
+                <p className="mt-1 text-sm text-slate-400">{files.length} selected, {uploadedResumeCount} ready</p>
               </div>
               <button
                 type="button"
@@ -1654,32 +1760,16 @@ export default function AiScreeningPage() {
               </div>
             ) : null}
 
-            {files.length > 0 ? (
-              <div className="mt-5 max-h-52 overflow-y-auto rounded-2xl border border-slate-800 bg-slate-950/25">
-                {files.map((file) => (
-                  <div key={`${file.name}-${file.size}`} className="flex items-center justify-between gap-4 border-b border-slate-800/80 px-4 py-3 last:border-b-0">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-white">{file.name}</p>
-                      <p className="mt-1 text-xs text-slate-500">{Math.max(1, Math.round(file.size / 1024))} KB</p>
-                    </div>
-                    <span className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300">
-                      Queued
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
-            {uploadRows.length > 0 ? (
-              <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/25">
-                {uploadRows.map((row) => (
-                  <div key={row.fileName} className="flex items-start justify-between gap-4 border-b border-slate-800/80 px-4 py-3 last:border-b-0">
+            {resumeDisplayRows.length > 0 ? (
+              <div className="mt-5 max-h-72 overflow-y-auto rounded-2xl border border-slate-800 bg-slate-950/25">
+                {resumeDisplayRows.map((row) => (
+                  <div key={row.id} className="flex items-center justify-between gap-4 border-b border-slate-800/80 px-4 py-3 last:border-b-0">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-white">{row.name || row.fileName}</p>
                       <p className="mt-1 truncate text-xs text-slate-500">{row.email || row.error || "No Email ⚠️"}</p>
                     </div>
-                    <span className={`rounded-full border px-3 py-1 text-xs uppercase tracking-[0.18em] ${row.status === "uploaded" ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-300" : "border-rose-500/20 bg-rose-500/10 text-rose-300"}`}>
-                      {row.status}
+                    <span className={`shrink-0 rounded-full border px-3 py-1 text-xs font-semibold ${getResumeStatusClass(row.status)}`}>
+                      {getResumeStatusLabel(row.status)}
                     </span>
                   </div>
                 ))}
@@ -1915,8 +2005,8 @@ export default function AiScreeningPage() {
               </div>
             </div>
 
-            <div className="mt-5 mb-4 flex flex-col gap-4 2xl:flex-row 2xl:items-center 2xl:justify-between">
-              <div className="flex flex-1 flex-wrap items-center gap-3">
+            <div className="mt-5 mb-4 flex flex-wrap items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <select value={recommendationFilter} onChange={(event) => setRecommendationFilter(event.target.value as (typeof recommendationFilters)[number])} disabled={isBusy} className="h-11 rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-2 text-sm text-white outline-none">
                   {recommendationFilters.map((filter) => <option key={filter} value={filter} className="bg-slate-950 text-white">{getRecommendationLabel(filter)}</option>)}
                 </select>
@@ -1940,17 +2030,17 @@ export default function AiScreeningPage() {
                 </select>
               </div>
 
-              <div className="flex shrink-0 flex-wrap items-center gap-3 2xl:justify-end">
+              <div className="flex shrink-0 flex-wrap items-center gap-3">
                 <button
                   type="button"
                   onClick={selectRecommendedCandidates}
                   disabled={isBusy || flowStep !== "MATCHED" || !activeJob || matches.length === 0}
-                  className="inline-flex items-center gap-2 rounded-xl border border-cyan-400/30 bg-transparent px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300/50 hover:bg-cyan-400/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-11 items-center gap-2 rounded-xl border border-cyan-400/30 bg-transparent px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300/50 hover:bg-cyan-400/10 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Select Recommended
                 </button>
-                <div className="flex items-center overflow-hidden rounded-xl border border-cyan-400/30 bg-cyan-400/10 text-sm text-cyan-100 shadow-[0_0_28px_rgba(34,211,238,0.08)]">
-                  <span className="border-r border-cyan-400/20 px-4 py-2 font-semibold">Send Top</span>
+                <div className="flex h-11 items-center overflow-hidden rounded-xl border border-cyan-400/30 bg-cyan-400/10 text-sm text-cyan-100 shadow-[0_0_28px_rgba(34,211,238,0.08)]">
+                  <span className="flex h-full items-center border-r border-cyan-400/20 px-4 font-semibold">Send Top</span>
                   <input
                     type="number"
                     min={1}
@@ -1959,13 +2049,13 @@ export default function AiScreeningPage() {
                     onChange={(event) => setTopN(Number(event.target.value))}
                     disabled={isBusy}
                     aria-label="Number of top candidates to send"
-                    className="w-16 bg-transparent px-3 py-2 text-sm font-semibold text-white outline-none"
+                    className="h-full w-16 bg-transparent px-3 text-sm font-semibold text-white outline-none"
                   />
                   <button
                     type="button"
                     onClick={openTopCandidateSendConfirmation}
                     disabled={isBusy || flowStep !== "MATCHED" || !activeJob || matches.length === 0}
-                    className="border-l border-cyan-400/20 px-4 py-2 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="h-full border-l border-cyan-400/20 px-4 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Candidates
                   </button>

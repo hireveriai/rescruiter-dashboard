@@ -56,6 +56,10 @@ export async function GET(request: Request) {
       .split(",")
       .map((candidateId) => candidateId.trim())
       .filter(Boolean)
+    const uploadFileNames = String(url.searchParams.get("uploadFileNames") ?? url.searchParams.get("upload_file_names") ?? "")
+      .split(",")
+      .map((fileName) => fileName.trim())
+      .filter(Boolean)
     const legacyIncludeAllCandidates =
       url.searchParams.get("includeAllCandidates") === "true" ||
       url.searchParams.get("include_all_candidates") === "true"
@@ -95,12 +99,21 @@ export async function GET(request: Request) {
     let matches = await getMatchResults(auth.organizationId, jobId, {
       uploadBatchId: batchId || null,
       candidateIds: scopedCandidateIds,
+      fileNames: uploadFileNames,
       includeAllCandidates,
     })
 
     if (matches.length === 0 && !includeAllCandidates && batchId && scopedCandidateIds.length > 0) {
       matches = await getMatchResults(auth.organizationId, jobId, {
         uploadBatchId: batchId,
+        fileNames: uploadFileNames,
+        includeAllCandidates: false,
+      })
+    }
+
+    if (matches.length === 0 && !includeAllCandidates && uploadFileNames.length > 0) {
+      matches = await getMatchResults(auth.organizationId, jobId, {
+        fileNames: uploadFileNames,
         includeAllCandidates: false,
       })
     }
@@ -235,7 +248,7 @@ export async function POST(request: Request) {
       )
     }
 
-    await processInBatches(candidates, BATCH_SIZE, async (candidate) => {
+    const generatedMatches = await processInBatches(candidates, BATCH_SIZE, async (candidate) => {
       const result = await matchCandidateToJobWithAI({
         candidateJson: candidate.extracted_json ?? {},
         resumeText: candidate.resume_text,
@@ -270,13 +283,45 @@ export async function POST(request: Request) {
         jobId,
         result,
       })
+
+      return {
+        id: `generated-${candidate.candidate_id}`,
+        candidateId: candidate.candidate_id,
+        candidateName: candidate.full_name,
+        email: candidate.email,
+        phone: candidate.phone,
+        resumeUrl: candidate.resume_url,
+        matchScore: result.matchScore,
+        skillMatch: result.skillMatch,
+        experienceMatch: result.experienceMatch,
+        riskLevel: result.riskLevel,
+        recommendation: result.recommendation,
+        insights: {
+          missing_skills: result.missingSkills,
+          short_reasoning: result.shortReasoning,
+          evaluated_at: new Date().toISOString(),
+        },
+        createdAt: new Date().toISOString(),
+      }
     })
 
-    const matches = await getMatchResults(auth.organizationId, jobId, {
+    let matches = await getMatchResults(auth.organizationId, jobId, {
       uploadBatchId: batchId || null,
       candidateIds: resolvedCandidateIds,
+      fileNames: uploadFileNames,
       includeAllCandidates,
     })
+
+    if (matches.length === 0 && !includeAllCandidates && uploadFileNames.length > 0) {
+      matches = await getMatchResults(auth.organizationId, jobId, {
+        fileNames: uploadFileNames,
+        includeAllCandidates: false,
+      })
+    }
+
+    if (matches.length === 0) {
+      matches = generatedMatches
+    }
 
     return NextResponse.json({
       success: true,

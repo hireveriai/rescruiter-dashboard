@@ -760,15 +760,18 @@ export async function getMatchResults(
   options?: {
     uploadBatchId?: string | null
     candidateIds?: string[]
+    fileNames?: string[]
     includeAllCandidates?: boolean
   }
 ) {
   const batchId = normalizeUuid(options?.uploadBatchId)
   const candidateIds = (options?.candidateIds ?? []).map(normalizeUuid).filter((id): id is string => Boolean(id))
+  const fileNames = normalizeFileNames(options?.fileNames ?? [])
   const hasCandidateFilter = candidateIds.length > 0
+  const hasFileFilter = fileNames.length > 0
   const includeAllCandidates = options?.includeAllCandidates === true
 
-  if (!includeAllCandidates && !batchId && !hasCandidateFilter) {
+  if (!includeAllCandidates && !batchId && !hasCandidateFilter && !hasFileFilter) {
     return []
   }
 
@@ -792,14 +795,16 @@ export async function getMatchResults(
       on c.candidate_id = m.candidate_id
     inner join public.jobs j
       on j.id = m.job_id
-    where m.organization_id = ${organizationId}::uuid
-      and m.job_id = ${jobId}::uuid
+    where m.job_id = ${jobId}::uuid
+      and c.organization_id = ${organizationId}::uuid
       and j.organization_id = ${organizationId}::uuid
       ${
         !includeAllCandidates && hasCandidateFilter && batchId
           ? Prisma.sql`and c.candidate_id::text in (${Prisma.join(candidateIds)})`
-          : !includeAllCandidates && hasCandidateFilter
+        : !includeAllCandidates && hasCandidateFilter
             ? Prisma.sql`and c.candidate_id::text in (${Prisma.join(candidateIds)})`
+            : !includeAllCandidates && hasFileFilter
+              ? Prisma.sql`and lower(coalesce(c.extracted_json->>'sourceFileName', '')) in (${Prisma.join(fileNames)})`
             : !includeAllCandidates && batchId
               ? Prisma.sql`and (c.upload_batch_id = ${batchId}::uuid or c.extracted_json->>'uploadBatchId' = ${batchId})`
               : Prisma.empty
