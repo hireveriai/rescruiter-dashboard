@@ -49,6 +49,14 @@ type MatchRow = {
   createdAt: string
 }
 
+type SelectedInsight = {
+  candidateName: string
+  strengths: string[]
+  gaps: string[]
+  verdict: string
+  reasoning: string
+}
+
 type UploadRow = {
   fileName: string
   status: "uploading" | "uploaded" | "processing" | "ready" | "failed"
@@ -98,6 +106,12 @@ type FlowStep =
   | "JD_PROCESSED"
   | "MATCH_READY"
   | "MATCHED"
+
+type ResumeState =
+  | "IDLE"
+  | "UPLOADING"
+  | "PROCESSING"
+  | "READY"
 
 type MatchScope = "BATCH" | "GLOBAL"
 type PipelineErrorStep = "upload" | "parse" | "job" | "match" | null
@@ -296,6 +310,15 @@ function DateTimeField({
         />
       </div>
     </div>
+  )
+}
+
+function EyeIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
   )
 }
 
@@ -567,6 +590,7 @@ export default function AiScreeningPage() {
   const [uploadRows, setUploadRows] = useState<UploadRow[]>([])
   const [flowStep, setFlowStep] = useState<FlowStep>(defaultFlowState.flowStep)
   const [currentBatchId, setCurrentBatchId] = useState(defaultFlowState.currentBatchId)
+  const [resumeState, setResumeState] = useState<ResumeState>("IDLE")
   const [uploadedCandidateIds, setUploadedCandidateIds] = useState<string[]>(defaultFlowState.uploadedCandidateIds)
   const [restoredActiveJobId, setRestoredActiveJobId] = useState(defaultFlowState.activeJobId)
   const [restoredFlowStep, setRestoredFlowStep] = useState<FlowStep>(defaultFlowState.flowStep)
@@ -605,6 +629,7 @@ export default function AiScreeningPage() {
   const [editingCandidateId, setEditingCandidateId] = useState("")
   const [emailDraft, setEmailDraft] = useState("")
   const [sendResults, setSendResults] = useState<SendResult[]>([])
+  const [selectedInsight, setSelectedInsight] = useState<SelectedInsight | null>(null)
 
   useEffect(() => {
     const storedFlowState = readStoredFlowState()
@@ -863,6 +888,14 @@ export default function AiScreeningPage() {
   const pendingSendMissingEmailCount = pendingSendMatches.filter((match) => !match.email).length
   const shouldCollapseCustomSchedule = customScheduleEnabled && pendingSendMatches.length > 10 && !customScheduleExpanded
   const uploadedResumeCount = uploadRows.filter(isResumeReady).length
+  const resumeStatusText =
+    resumeState === "IDLE"
+      ? "No resumes uploaded yet"
+      : resumeState === "UPLOADING"
+        ? "Uploading resumes..."
+        : resumeState === "PROCESSING"
+          ? "Analyzing resumes..."
+          : `${uploadedResumeCount} resume${uploadedResumeCount === 1 ? "" : "s"} ready for matching`
   const resumeDisplayRows = useMemo<ResumeDisplayRow[]>(() => {
     const fileSizeByName = new Map(files.map((file) => [file.name, Math.max(1, Math.round(file.size / 1024))]))
 
@@ -887,7 +920,7 @@ export default function AiScreeningPage() {
       }))
     }
 
-    if (!uploading) {
+    if (resumeState === "IDLE" || resumeState === "READY") {
       return []
     }
 
@@ -898,9 +931,9 @@ export default function AiScreeningPage() {
       name: null,
       email: null,
       error: null,
-      status: "UPLOADING",
+      status: resumeState === "PROCESSING" ? "PROCESSING" : "UPLOADING",
     }))
-  }, [files, uploadRows, uploading])
+  }, [files, resumeState, uploadRows])
 
   const selectedExistingJob = useMemo(
     () => existingJobs.find((job) => job.jobId === selectedExistingJobId) ?? null,
@@ -965,22 +998,35 @@ export default function AiScreeningPage() {
     ]
   }, [activeJob, currentBatchId, flowStep, isMatching, isProcessingJD, pipelineErrorStep, uploading])
   const timelineErrorLabel = pipelineErrorStep ? error || "Pipeline paused. Fix the issue and retry." : ""
+  const shouldShowTimeline = Boolean(currentBatchId) && resumeState !== "IDLE"
 
-  function setSelectedFiles(fileList: FileList | File[]) {
-    const nextFiles = Array.from(fileList).filter((file) => /\.(pdf|docx)$/i.test(file.name))
-    setFiles(nextFiles)
+  function resetScreeningState() {
+    setFiles([])
     setUploadRows([])
-    setCurrentBatchId("")
-    setUploadedCandidateIds([])
+    setFlowStep("UPLOAD")
+    setResumeState("IDLE")
+    setSelectedExistingJobId("")
     setActiveJob(null)
     setRestoredActiveJobId("")
+    setCurrentBatchId("")
+    setUploadedCandidateIds([])
     setMatches([])
     setSelectedCandidateIds([])
     setCompareCandidateIds([])
+    setPendingSendCandidateIds([])
     setSendResults([])
-    setFlowStep("UPLOAD")
+    setConfirmSendOpen(false)
+    setCompareModalOpen(false)
+    setSelectedInsight(null)
     setPipelineErrorStep(null)
     setError("")
+  }
+
+  function setSelectedFiles(fileList: FileList | File[]) {
+    const nextFiles = Array.from(fileList).filter((file) => /\.(pdf|docx)$/i.test(file.name))
+    resetScreeningState()
+    setFiles(nextFiles)
+    setResumeState(nextFiles.length > 0 ? "UPLOADING" : "IDLE")
     setNotice(nextFiles.length ? `${nextFiles.length} resume${nextFiles.length === 1 ? "" : "s"} ready for upload.` : "")
   }
 
@@ -1011,6 +1057,7 @@ export default function AiScreeningPage() {
 
     try {
       setUploading(true)
+      setResumeState("UPLOADING")
       setError("")
       setPipelineErrorStep(null)
       setNotice("Uploading and parsing resumes...")
@@ -1030,6 +1077,7 @@ export default function AiScreeningPage() {
         credentials: "include",
         body: formData,
       })
+      setResumeState("PROCESSING")
       const payload = await response.json().catch(() => null)
       const rows = ((payload?.data?.results ?? []) as UploadRow[]).map((row) => ({
         ...row,
@@ -1053,6 +1101,7 @@ export default function AiScreeningPage() {
       }
 
       setCurrentBatchId(batchId)
+      setResumeState("READY")
       setUploadedCandidateIds(candidateIds)
       setIncludeAllCandidates(false)
       setMatches([])
@@ -1076,6 +1125,7 @@ export default function AiScreeningPage() {
       }
     } catch (uploadError) {
       setPipelineErrorStep("upload")
+      setResumeState(files.length > 0 ? "UPLOADING" : "IDLE")
       setError(uploadError instanceof Error ? uploadError.message : "Resume upload failed")
     } finally {
       setUploading(false)
@@ -1604,19 +1654,7 @@ export default function AiScreeningPage() {
         }),
       })
       const payload = await readJsonResponse(response)
-      setFiles([])
-      setUploadRows([])
-      setCurrentBatchId("")
-      setUploadedCandidateIds([])
-      setMatches([])
-      setSelectedCandidateIds([])
-      setCompareCandidateIds([])
-      setPendingSendCandidateIds([])
-      setSendResults([])
-      setConfirmSendOpen(false)
-      setCompareModalOpen(false)
-      setFlowStep("UPLOAD")
-      setPipelineErrorStep(null)
+      resetScreeningState()
       setCleanupModal(null)
       setDeleteConfirmationText("")
       setNotice(`Upload deleted. ${payload.data?.deletedCandidates ?? 0} candidate${payload.data?.deletedCandidates === 1 ? "" : "s"} removed.`)
@@ -1750,18 +1788,12 @@ export default function AiScreeningPage() {
               <p className="mt-2 max-w-md text-sm leading-6 text-slate-400">Files are stored in Supabase Storage, parsed, email-validated, and saved to the recruiter workspace.</p>
             </label>
 
-            {currentBatchId ? (
-              <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/25 px-4 py-3">
-                <p className="text-xs font-medium uppercase tracking-[0.22em] text-slate-500">Current Upload</p>
-                <p className="mt-2 text-sm font-semibold text-cyan-100">
-                  {uploading
-                    ? "Uploading resumes..."
-                    : uploadedResumeCount > 0
-                      ? `${uploadedResumeCount} resume${uploadedResumeCount === 1 ? "" : "s"} ready for matching`
-                      : "Processing resumes..."}
-                </p>
-              </div>
-            ) : null}
+            <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/25 px-4 py-3">
+              <p className="text-xs font-medium uppercase tracking-[0.22em] text-slate-500">Current Upload</p>
+              <p className={`mt-2 text-sm font-semibold ${resumeState === "IDLE" ? "text-slate-400" : "text-cyan-100"}`}>
+                {resumeStatusText}
+              </p>
+            </div>
 
             {resumeDisplayRows.length > 0 ? (
               <div className="mt-5 max-h-72 overflow-y-auto rounded-2xl border border-slate-800 bg-slate-950/25">
@@ -1817,9 +1849,7 @@ export default function AiScreeningPage() {
                     setCompareCandidateIds([])
                     setSendResults([])
                     setPipelineErrorStep(null)
-                    if (hasUploadedResumes && processedJob) {
-                      setFlowStep("JD_PROCESSED")
-                    } else if (hasUploadedResumes) {
+                    if (hasUploadedResumes) {
                       setFlowStep("JD_READY")
                     } else {
                       setFlowStep("UPLOAD")
@@ -1877,13 +1907,15 @@ export default function AiScreeningPage() {
               </div>
             ) : null}
 
-            <div className="mt-5">
-              <ProcessingTimeline
-                steps={timelineSteps}
-                errorLabel={timelineErrorLabel}
-                onRetry={timelineErrorLabel ? handleRetryPipeline : undefined}
-              />
-            </div>
+            {shouldShowTimeline ? (
+              <div className="mt-5">
+                <ProcessingTimeline
+                  steps={timelineSteps}
+                  errorLabel={timelineErrorLabel}
+                  onRetry={timelineErrorLabel ? handleRetryPipeline : undefined}
+                />
+              </div>
+            ) : null}
           </section>
         </div>
 
@@ -2101,7 +2133,7 @@ export default function AiScreeningPage() {
                   <th className="px-3 py-2.5 text-left text-[12px] font-medium leading-[1.4]">Match Score</th>
                   <th className="px-3 py-2.5 text-left text-[12px] font-medium leading-[1.4]">Risk Level</th>
                   <th className="px-3 py-2.5 text-left text-[12px] font-medium leading-[1.4]">Recommendation</th>
-                  <th className="px-3 py-2.5 text-left text-[12px] font-medium leading-[1.4]">Decision Insights</th>
+                  <th className="px-3 py-2.5 text-left text-[12px] font-medium leading-[1.4]">VERIS Insights</th>
                   <th className="px-3 py-2.5 text-right text-[12px] font-medium leading-[1.4]">Actions</th>
                 </tr>
               </thead>
@@ -2139,11 +2171,19 @@ export default function AiScreeningPage() {
                     const strengths = getCandidateStrengths(match)
                     const gaps = getCandidateWeaknesses(match)
                     const verdict = getCandidateVerdict(match)
+                    const reasoning = match.insights?.short_reasoning ?? ""
+                    const candidateInsight = {
+                      candidateName: match.candidateName,
+                      strengths,
+                      gaps,
+                      verdict,
+                      reasoning,
+                    }
                     const insightTooltipText = [
                       `Strengths: ${strengths.join("; ")}`,
                       `Gaps: ${gaps.join("; ")}`,
                       `Verdict: ${verdict}`,
-                      match.insights?.short_reasoning ? `Reasoning: ${match.insights.short_reasoning}` : "",
+                      reasoning ? `Reasoning: ${reasoning}` : "",
                     ].filter(Boolean).join("\n")
 
                     return (
@@ -2234,20 +2274,30 @@ export default function AiScreeningPage() {
                         </span>
                       </td>
                       <td className="px-3 py-2.5 align-middle text-slate-400">
-                        <InsightTooltip
-                          text={insightTooltipText}
-                          showHint={false}
-                          preview={(
-                            <div className="space-y-1 text-[12px] leading-[1.4]">
-                              <p className="overflow-hidden text-ellipsis whitespace-nowrap text-slate-300">
-                                <span className="font-semibold text-emerald-300/80">Strengths:</span> {strengths[0]}
-                              </p>
-                              <p className="overflow-hidden text-ellipsis whitespace-nowrap text-slate-300">
-                                <span className="font-semibold text-amber-300/80">Gaps:</span> {gaps[0]}
-                              </p>
-                            </div>
-                          )}
-                        />
+                        <div className="max-w-full">
+                          <InsightTooltip
+                            text={insightTooltipText}
+                            showHint={false}
+                            preview={(
+                              <div className="max-w-full space-y-1 text-[12px] leading-[1.4]">
+                                <p className="max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-slate-300">
+                                  <span className="font-semibold text-emerald-300/80">Strengths:</span> {strengths[0]}
+                                </p>
+                                <p className="max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-slate-300">
+                                  <span className="font-semibold text-amber-300/80">Gaps:</span> {gaps[0]}
+                                </p>
+                              </div>
+                            )}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setSelectedInsight(candidateInsight)}
+                            className="mt-1 inline-flex items-center gap-1.5 text-[12px] font-semibold text-cyan-200 transition hover:text-cyan-100"
+                          >
+                            <EyeIcon />
+                            View Details
+                          </button>
+                        </div>
                       </td>
                       <td className="px-3 py-2.5 align-middle text-right">
                         <div className="flex justify-end gap-1.5">
@@ -2649,6 +2699,73 @@ export default function AiScreeningPage() {
               >
                 <SendIcon />
                 Send Interview
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {selectedInsight ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="candidate-insight-title">
+          <div className="flex max-h-[88vh] w-full max-w-[600px] flex-col rounded-2xl border border-slate-800 bg-[#0B1220] shadow-[0_24px_90px_rgba(2,6,23,0.7)]">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-800 px-6 py-5">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-200/70">VERIS Insight</p>
+                <h2 id="candidate-insight-title" className="mt-2 text-lg font-semibold text-white">{selectedInsight.candidateName}</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedInsight(null)}
+                className="rounded-xl border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+              <div className="space-y-5">
+                <section>
+                  <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300/80">Strengths</h3>
+                  <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-200">
+                    {selectedInsight.strengths.map((item) => (
+                      <li key={item} className="rounded-xl border border-emerald-400/10 bg-emerald-500/[0.06] px-3 py-2">{item}</li>
+                    ))}
+                  </ul>
+                </section>
+
+                <section>
+                  <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-300/80">Gaps</h3>
+                  <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-200">
+                    {selectedInsight.gaps.map((item) => (
+                      <li key={item} className="rounded-xl border border-amber-400/10 bg-amber-500/[0.06] px-3 py-2">{item}</li>
+                    ))}
+                  </ul>
+                </section>
+
+                <section>
+                  <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-300/80">Verdict</h3>
+                  <p className="mt-3 rounded-xl border border-blue-400/10 bg-blue-500/[0.06] px-3 py-2 text-sm leading-6 text-slate-200">{selectedInsight.verdict}</p>
+                </section>
+
+                <section>
+                  <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Reasoning</h3>
+                  <p className="mt-3 rounded-xl border border-slate-700 bg-slate-950/45 px-3 py-2 text-sm leading-6 text-slate-200">
+                    {selectedInsight.reasoning || "No additional reasoning provided."}
+                  </p>
+                </section>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 border-t border-slate-800 px-6 py-4">
+              <button type="button" className="text-sm font-semibold text-cyan-200 opacity-60" disabled>
+                Open Full Report -&gt;
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedInsight(null)}
+                className="rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300/50"
+              >
+                Done
               </button>
             </div>
           </div>
