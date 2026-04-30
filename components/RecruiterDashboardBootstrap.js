@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
-import { getRecruiterLoginUrl } from "@/lib/client/auth-session"
+import { clearHireveriSessionCookie, getRecruiterLoginUrl } from "@/lib/client/auth-session"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 function WorkspaceShell({ tone = "loading", title, message, ctaLabel, onCtaClick }) {
@@ -137,6 +137,7 @@ export default function RecruiterDashboardBootstrap({ children }) {
         }
 
         if (profileResponse.status === 401) {
+          clearHireveriSessionCookie()
           setState({
             status: "error",
             profile: null,
@@ -150,6 +151,9 @@ export default function RecruiterDashboardBootstrap({ children }) {
         }
 
         if (!profileResponse.ok || !profileData?.success) {
+          if (profileResponse.status === 401) {
+            clearHireveriSessionCookie()
+          }
           setState({
             status: "error",
             profile: null,
