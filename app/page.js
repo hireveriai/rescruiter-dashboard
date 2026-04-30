@@ -35,10 +35,13 @@ function DashboardContent({ profile, showRestoreOverlay, overview }) {
 
           <Pipeline initialPipeline={overview?.pipeline} />
           <PendingInterviews initialPendingInterviews={overview?.pendingInterviews} />
-          <RecordedInterviews initialRecordedInterviews={overview?.recordedInterviews} />
+          <RecordedInterviews
+            initialRecordedInterviews={overview?.recordedInterviews}
+            organizationId={profile?.organizationId}
+          />
           <CandidateList initialCandidates={overview?.candidates} />
           <VerisSummary initialSummaries={overview?.veris} />
-          <WarRoomButton />
+          <WarRoomButton organizationId={profile?.organizationId} />
         </div>
 
         <div className="col-span-1">

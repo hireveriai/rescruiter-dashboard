@@ -91,7 +91,7 @@ function RecordedInterviewsModal({ isOpen, onClose, interviews }) {
   )
 }
 
-export default function RecordedInterviews({ initialRecordedInterviews }) {
+export default function RecordedInterviews({ initialRecordedInterviews, organizationId = "" }) {
   const searchParams = useAuthSearchParams()
   const [interviews, setInterviews] = useState([])
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -193,7 +193,7 @@ export default function RecordedInterviews({ initialRecordedInterviews }) {
                   <button
                     type="button"
                     className="border border-blue-400 px-3 py-1 rounded text-sm text-blue-400 transition hover:bg-blue-500/10"
-                    onClick={openWarRoom}
+                    onClick={() => openWarRoom(organizationId)}
                   >
                     War Room
                   </button>
