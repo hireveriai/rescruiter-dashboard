@@ -58,13 +58,13 @@ function parseCookieHeader(cookieHeader: string | null): Record<string, string> 
     }, {})
 }
 
-function toUuidOrNull(value: string | null | undefined): string | null {
+function normalizeCookieValue(value: string | null | undefined): string | null {
   if (!value) {
     return null
   }
 
   const trimmed = value.trim()
-  return UUID_REGEX.test(trimmed) ? trimmed : null
+  return trimmed ? trimmed : null
 }
 
 function getErrorMessage(error: unknown) {
@@ -348,12 +348,12 @@ async function lookupDevBypassRecruiter(): Promise<RecruiterLookupRow | null> {
 
 export async function getRecruiterRequestContext(request: Request): Promise<RecruiterRequestContext> {
   const cookieMap = parseCookieHeader(request.headers.get("cookie"))
-  const sessionCookie = cookieMap.hireveri_session
-  const sessionId = toUuidOrNull(sessionCookie)
+  const sessionCookie = normalizeCookieValue(cookieMap.hireveri_session)
+  const sessionId = sessionCookie
   const jwt = extractJwtFromRequest(request, cookieMap)
   const jwtSub = decodeJwtSub(jwt)
 
-  if ((!sessionCookie || !sessionId) && !jwtSub) {
+  if (!sessionCookie && !jwtSub) {
     if (DEV_AUTH_BYPASS) {
       const recruiter = await lookupDevBypassRecruiter()
       if (recruiter?.user_id && recruiter.organization_id) {
@@ -413,7 +413,7 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
         return {
           userId: recruiter.user_id,
           organizationId: recruiter.organization_id,
-          sessionCookiePresent: true,
+          sessionCookiePresent: Boolean(sessionCookie),
           sessionCookieMatched: false,
           sessionValidatedVia: "identity_cookie",
         }
@@ -436,8 +436,8 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
   return {
     userId: recruiter.user_id,
     organizationId: recruiter.organization_id,
-    sessionCookiePresent: Boolean(sessionCookie && sessionId),
-    sessionCookieMatched: Boolean((sessionCookie && sessionId) || validatedVia === "jwt"),
+    sessionCookiePresent: Boolean(sessionCookie),
+    sessionCookieMatched: Boolean(sessionCookie || validatedVia === "jwt"),
     sessionValidatedVia: validatedVia,
   }
 }
