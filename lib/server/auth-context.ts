@@ -198,6 +198,11 @@ function extractJwtFromRequest(request: Request, cookieMap: Record<string, strin
   return extractSupabaseJwtFromCookies(cookieMap)
 }
 
+export function getAuthTokenFromRequest(request: Request): string | null {
+  const cookieMap = parseCookieHeader(request.headers.get("cookie"))
+  return extractJwtFromRequest(request, cookieMap)
+}
+
 async function lookupIdentityFromSupabaseSession(sessionId: string): Promise<string | null> {
   try {
     const sessionRows = await prisma.$queryRaw<AuthIdentityRow[]>(Prisma.sql`

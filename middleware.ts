@@ -32,6 +32,7 @@ const PROTECTED_API_PREFIXES = [
   "/api/interview/manage",
   "/api/manage-team",
   "/api/experience-levels",
+  "/api/war-room",
 ]
 
 function hasSupabaseAuthCookie(request: NextRequest) {
