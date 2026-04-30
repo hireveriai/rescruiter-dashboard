@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 
-import { getAuthTokenFromRequest, getHireveriSessionFromRequest, getRecruiterRequestContext } from "@/lib/server/auth-context"
+import { getAuthTokenFromRequest, getHireveriSessionFromRequest } from "@/lib/server/auth-context"
 import { errorResponse } from "@/lib/server/response"
 
 const WAR_APP_URL = (process.env.NEXT_PUBLIC_WAR_APP_URL || "https://war-room.hireveri.com").replace(/\/+$/, "")
@@ -22,19 +22,18 @@ function setSharedCookie(response: NextResponse, name: string, value: string) {
 
 export async function GET(request: Request) {
   try {
-    const auth = await getRecruiterRequestContext(request)
     const token = getAuthTokenFromRequest(request)
     const hireveriSession = getHireveriSessionFromRequest(request)
     const requestUrl = new URL(request.url)
-    const orgId = requestUrl.searchParams.get("orgId")?.trim() || auth.organizationId
+    const orgId = requestUrl.searchParams.get("orgId")?.trim() || ""
 
-    if (!token && !hireveriSession) {
+    if ((!token && !hireveriSession) || !orgId) {
       return NextResponse.json(
         {
           success: false,
           error: {
             code: "AUTH_HANDOFF_MISSING",
-            message: "Authenticated session is not available for War Room handoff",
+            message: "Authenticated session handoff could not be prepared",
           },
         },
         { status: 401 }
