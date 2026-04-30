@@ -203,6 +203,11 @@ export function getAuthTokenFromRequest(request: Request): string | null {
   return extractJwtFromRequest(request, cookieMap)
 }
 
+export function getHireveriSessionFromRequest(request: Request): string | null {
+  const cookieMap = parseCookieHeader(request.headers.get("cookie"))
+  return normalizeCookieValue(cookieMap.hireveri_session)
+}
+
 async function lookupIdentityFromSupabaseSession(sessionId: string): Promise<string | null> {
   try {
     const sessionRows = await prisma.$queryRaw<AuthIdentityRow[]>(Prisma.sql`
