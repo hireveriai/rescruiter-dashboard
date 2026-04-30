@@ -32,8 +32,9 @@ type RecruiterLookupRow = {
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const DEV_AUTH_BYPASS =
-  process.env.DEV_AUTH_BYPASS === "true" ||
-  process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS === "true"
+  process.env.NODE_ENV !== "production" &&
+  (process.env.DEV_AUTH_BYPASS === "true" ||
+    process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS === "true")
 
 function parseCookieHeader(cookieHeader: string | null): Record<string, string> {
   if (!cookieHeader) {
