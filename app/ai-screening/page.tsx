@@ -57,6 +57,16 @@ type SelectedInsight = {
   reasoning: string
 }
 
+type ScreeningRun = {
+  id: string
+  jobId: string
+  batchId: string | null
+  createdAt: string
+  totalCandidates: number
+  strongFitCount: number
+  avgScore: number
+}
+
 type UploadRow = {
   fileName: string
   status: "uploading" | "uploaded" | "processing" | "ready" | "failed"
@@ -630,6 +640,9 @@ export default function AiScreeningPage() {
   const [emailDraft, setEmailDraft] = useState("")
   const [sendResults, setSendResults] = useState<SendResult[]>([])
   const [selectedInsight, setSelectedInsight] = useState<SelectedInsight | null>(null)
+  const [screeningRuns, setScreeningRuns] = useState<ScreeningRun[]>([])
+  const [selectedRunId, setSelectedRunId] = useState("")
+  const [loadingRunId, setLoadingRunId] = useState("")
 
   useEffect(() => {
     const storedFlowState = readStoredFlowState()
@@ -793,6 +806,39 @@ export default function AiScreeningPage() {
       active = false
     }
   }, [activeJob?.id, currentBatchId, flowStep, includeAllCandidates, searchParams, uploadRows, uploadedCandidateIds])
+
+  useEffect(() => {
+    if (!activeJob?.id) {
+      setScreeningRuns([])
+      setSelectedRunId("")
+      return
+    }
+    const jobId = activeJob.id
+
+    let active = true
+
+    async function loadRuns() {
+      try {
+        const response = await fetch(authUrl(`/api/screening/runs?jobId=${encodeURIComponent(jobId)}`), {
+          credentials: "include",
+          cache: "no-store",
+        })
+        const payload = await response.json()
+
+        if (active && payload.success) {
+          setScreeningRuns(payload.data?.runs ?? [])
+        }
+      } catch (runsError) {
+        console.error("Failed to load screening runs", runsError)
+      }
+    }
+
+    void loadRuns()
+
+    return () => {
+      active = false
+    }
+  }, [activeJob?.id])
 
   const filteredMatches = useMemo(() => {
     const filtered = matches.filter((match) => {
@@ -1018,6 +1064,7 @@ export default function AiScreeningPage() {
     setConfirmSendOpen(false)
     setCompareModalOpen(false)
     setSelectedInsight(null)
+    setSelectedRunId("")
     setPipelineErrorStep(null)
     setError("")
   }
@@ -1312,6 +1359,18 @@ export default function AiScreeningPage() {
         includeAll || batchId ? [] : candidateIds
       )
       setMatches(rankedMatches)
+      setSelectedRunId(payload.data?.runId ?? "")
+      if (activeJob?.id) {
+        const runsResponse = await fetch(authUrl(`/api/screening/runs?jobId=${encodeURIComponent(activeJob.id)}`), {
+          credentials: "include",
+          cache: "no-store",
+        })
+        const runsPayload = await runsResponse.json().catch(() => null)
+
+        if (runsPayload?.success) {
+          setScreeningRuns(runsPayload.data?.runs ?? [])
+        }
+      }
       setSelectedCandidateIds(getDefaultSelectedCandidateIds(rankedMatches))
       setFlowStep("MATCHED")
       setNotice("Matching complete. Review top candidates below.")
@@ -1339,6 +1398,34 @@ export default function AiScreeningPage() {
     }
 
     await runMatching(activeJob)
+  }
+
+  async function loadScreeningRun(run: ScreeningRun) {
+    if (!activeJob) {
+      return
+    }
+
+    try {
+      setLoadingRunId(run.id)
+      setError("")
+      const response = await fetch(authUrl(`/api/screening/runs?jobId=${encodeURIComponent(activeJob.id)}&runId=${encodeURIComponent(run.id)}`), {
+        credentials: "include",
+        cache: "no-store",
+      })
+      const payload = await readJsonResponse(response)
+      const loadedMatches = (payload.data?.matches ?? []) as MatchRow[]
+
+      setMatches(loadedMatches)
+      setSelectedCandidateIds(getDefaultSelectedCandidateIds(loadedMatches))
+      setCompareCandidateIds([])
+      setSelectedRunId(run.id)
+      setFlowStep("MATCHED")
+      setNotice("Loaded historical screening run.")
+    } catch (runError) {
+      setError(runError instanceof Error ? runError.message : "Could not load screening run")
+    } finally {
+      setLoadingRunId("")
+    }
   }
 
   async function handleSendInterviews(
@@ -2039,6 +2126,43 @@ export default function AiScreeningPage() {
                 </div>
               </div>
             </div>
+
+            {screeningRuns.length > 0 ? (
+              <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/25 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-white">Recent Screening Runs</h3>
+                    <p className="mt-1 text-xs text-slate-500">Last 5 runs for this job</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => activeJob ? void runMatching(activeJob) : undefined}
+                    disabled={isBusy || !activeJob || !hasUploadedResumes}
+                    className="rounded-xl border border-cyan-400/30 px-3 py-2 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-400/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Re-run matching
+                  </button>
+                </div>
+                <div className="mt-4 grid gap-2 lg:grid-cols-5">
+                  {screeningRuns.slice(0, 5).map((run) => (
+                    <button
+                      key={run.id}
+                      type="button"
+                      onClick={() => loadScreeningRun(run)}
+                      disabled={Boolean(loadingRunId)}
+                      className={`rounded-xl border px-3 py-2 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${selectedRunId === run.id ? "border-cyan-400/40 bg-cyan-400/10" : "border-slate-700 bg-slate-950/35 hover:border-slate-500"}`}
+                    >
+                      <p className="truncate text-xs font-semibold text-slate-200">
+                        {new Date(run.createdAt).toLocaleString()}
+                      </p>
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        {run.totalCandidates} candidates · {run.strongFitCount} strong · avg {run.avgScore}%
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             <div className="mt-5 mb-4 grid w-full grid-cols-[minmax(145px,1.05fr)_minmax(125px,0.85fr)_minmax(105px,0.7fr)_minmax(205px,1.35fr)_minmax(145px,0.95fr)_minmax(205px,1.1fr)] items-center gap-2">
               <div className="contents">

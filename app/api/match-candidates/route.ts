@@ -6,6 +6,7 @@ import { errorResponse } from "@/lib/server/response"
 import { matchCandidateToJobWithAI } from "@/lib/server/ai-screening/openai"
 import {
   attachCandidatesToUploadBatch,
+  createScreeningRun,
   getCandidatesForMatching,
   getCandidatesForMatchingByUploadFiles,
   getMatchResults,
@@ -322,11 +323,19 @@ export async function POST(request: Request) {
     if (matches.length === 0) {
       matches = generatedMatches
     }
+    const runId = await createScreeningRun({
+      organizationId: auth.organizationId,
+      userId: auth.userId,
+      jobId,
+      batchId: batchId || null,
+      matches,
+    })
 
     return NextResponse.json({
       success: true,
       data: {
         job,
+        runId,
         matchedCount: candidates.length,
         matchScope,
         source,

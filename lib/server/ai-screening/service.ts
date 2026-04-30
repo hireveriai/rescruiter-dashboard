@@ -100,6 +100,30 @@ type CandidateStorageRow = {
   key: string | null
 }
 
+type ScreeningRunRow = {
+  id: string
+  job_id: string
+  batch_id: string | null
+  created_at: Date | string
+  total_candidates: number
+  strong_fit_count: number
+  avg_score: number | string | null
+}
+
+type ScreeningRunMatchRow = {
+  match_snapshot: MatchResultRow
+}
+
+export type ScreeningRun = {
+  id: string
+  jobId: string
+  batchId: string | null
+  createdAt: string
+  totalCandidates: number
+  strongFitCount: number
+  avgScore: number
+}
+
 function toIso(value: Date | string) {
   return value instanceof Date ? value.toISOString() : value
 }
@@ -146,6 +170,18 @@ function normalizeMatch(row: MatchDbRow): MatchResultRow {
     recommendation: row.recommendation,
     insights: row.insights ?? {},
     createdAt: toIso(row.created_at),
+  }
+}
+
+function normalizeScreeningRun(row: ScreeningRunRow): ScreeningRun {
+  return {
+    id: row.id,
+    jobId: row.job_id,
+    batchId: row.batch_id,
+    createdAt: toIso(row.created_at),
+    totalCandidates: Number(row.total_candidates ?? 0),
+    strongFitCount: Number(row.strong_fit_count ?? 0),
+    avgScore: Number(row.avg_score ?? 0),
   }
 }
 
@@ -813,6 +849,124 @@ export async function getMatchResults(
   `)
 
   return rows.map(normalizeMatch)
+}
+
+export async function createScreeningRun(input: {
+  organizationId: string
+  userId: string
+  jobId: string
+  batchId?: string | null
+  matches: MatchResultRow[]
+}) {
+  const jobId = normalizeUuid(input.jobId)
+  const batchId = normalizeUuid(input.batchId)
+
+  if (!jobId) {
+    throw new ApiError(400, "JOB_NOT_SELECTED", "Job not selected")
+  }
+
+  const totalCandidates = input.matches.length
+  const strongFitCount = input.matches.filter((match) => match.recommendation === "STRONG_FIT").length
+  const avgScore = totalCandidates > 0
+    ? Math.round(input.matches.reduce((total, match) => total + match.matchScore, 0) / totalCandidates)
+    : 0
+
+  const rows = await prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
+    insert into public.screening_runs (
+      organization_id,
+      job_id,
+      batch_id,
+      created_by,
+      total_candidates,
+      strong_fit_count,
+      avg_score
+    )
+    values (
+      ${input.organizationId}::uuid,
+      ${jobId}::uuid,
+      ${batchId ? Prisma.sql`${batchId}::uuid` : Prisma.sql`null`},
+      ${input.userId}::uuid,
+      ${totalCandidates},
+      ${strongFitCount},
+      ${avgScore}
+    )
+    returning id::text
+  `)
+  const runId = rows[0]?.id
+
+  if (!runId) {
+    throw new ApiError(500, "SCREENING_RUN_CREATE_FAILED", "Failed to create screening run")
+  }
+
+  if (input.matches.length > 0) {
+    await prisma.$queryRaw(Prisma.sql`
+      insert into public.screening_run_matches (
+        run_id,
+        organization_id,
+        candidate_id,
+        match_snapshot
+      )
+      select
+        ${runId}::uuid,
+        ${input.organizationId}::uuid,
+        (item->>'candidateId')::uuid,
+        item
+      from jsonb_array_elements(${JSON.stringify(input.matches)}::jsonb) as item
+    `)
+  }
+
+  return runId
+}
+
+export async function getScreeningRuns(input: {
+  organizationId: string
+  jobId: string
+  limit?: number
+}) {
+  const jobId = normalizeUuid(input.jobId)
+
+  if (!jobId) {
+    throw new ApiError(400, "JOB_NOT_SELECTED", "Job not selected")
+  }
+
+  const rows = await prisma.$queryRaw<ScreeningRunRow[]>(Prisma.sql`
+    select
+      id::text,
+      job_id::text,
+      batch_id::text,
+      created_at,
+      total_candidates,
+      strong_fit_count,
+      avg_score
+    from public.screening_runs
+    where organization_id = ${input.organizationId}::uuid
+      and job_id = ${jobId}::uuid
+    order by created_at desc
+    limit ${Math.min(Math.max(input.limit ?? 5, 1), 20)}
+  `)
+
+  return rows.map(normalizeScreeningRun)
+}
+
+export async function getScreeningRunMatches(input: {
+  organizationId: string
+  runId: string
+}) {
+  const runId = normalizeUuid(input.runId)
+
+  if (!runId) {
+    throw new ApiError(400, "SCREENING_RUN_REQUIRED", "Screening run is required")
+  }
+
+  const rows = await prisma.$queryRaw<ScreeningRunMatchRow[]>(Prisma.sql`
+    select match_snapshot
+    from public.screening_run_matches
+    where organization_id = ${input.organizationId}::uuid
+      and run_id = ${runId}::uuid
+    order by (match_snapshot->>'matchScore')::int desc, match_snapshot->>'createdAt' desc
+  `)
+
+  return rows.map((row) => row.match_snapshot)
 }
 
 export async function clearScreeningResultsForUpload(input: {
