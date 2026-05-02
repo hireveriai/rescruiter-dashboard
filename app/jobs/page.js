@@ -272,7 +272,7 @@ export default function JobsPage() {
           </div>
         </section>
 
-        <section className="mt-8 overflow-hidden rounded-[28px] border border-slate-800 bg-[#0f172a] shadow-[0_16px_60px_rgba(2,6,23,0.3)]">
+        <section className="mt-8 rounded-[28px] border border-slate-800 bg-[#0f172a] shadow-[0_16px_60px_rgba(2,6,23,0.3)]">
           <div className="flex items-center justify-between border-b border-slate-800 px-6 py-5">
             <div>
               <h2 className="text-lg font-semibold text-white">Created Job Roles</h2>
@@ -296,7 +296,7 @@ export default function JobsPage() {
                 <col className="w-[88px]" />
                 <col className="w-[150px]" />
                 <col className="w-[100px]" />
-                <col className="w-[212px]" />
+                <col className="w-[188px]" />
               </colgroup>
               <thead className="bg-slate-950/20 text-slate-400">
                 <tr>
@@ -350,10 +350,10 @@ export default function JobsPage() {
                         <JobSkillsCell skills={job.coreSkills} />
                       </td>
                       <td className="px-4 py-4 text-slate-300">{job._count?.interviews ?? 0}</td>
-                      <td className="whitespace-nowrap px-4 py-4 text-right">
+                      <td className="whitespace-nowrap px-3 py-4 text-right">
                         <div className="flex justify-end">
                           <div
-                            className="flex items-center justify-end gap-2 md:gap-3"
+                            className="flex w-full items-center justify-end gap-2"
                             ref={openActionMenuJobId === job.jobId ? actionMenuRef : null}
                           >
                             {supportsJobActiveState ? (
@@ -361,7 +361,7 @@ export default function JobsPage() {
                                 type="button"
                                 onClick={() => handleToggleActive(job)}
                                 disabled={pendingJobId === job.jobId}
-                                className="hidden items-center justify-center rounded-xl border border-cyan-400/30 bg-[linear-gradient(135deg,rgba(34,211,238,0.2),rgba(59,130,246,0.18))] px-4 py-2 text-xs font-semibold text-cyan-100 shadow-[0_10px_24px_rgba(8,145,178,0.16)] transition hover:border-cyan-300/50 hover:text-white hover:shadow-[0_14px_28px_rgba(8,145,178,0.24)] disabled:cursor-not-allowed disabled:opacity-60 md:inline-flex"
+                                className="hidden min-w-[108px] items-center justify-center rounded-xl border border-cyan-400/30 bg-[linear-gradient(135deg,rgba(34,211,238,0.2),rgba(59,130,246,0.18))] px-3 py-2 text-xs font-semibold text-cyan-100 shadow-[0_10px_24px_rgba(8,145,178,0.16)] transition hover:border-cyan-300/50 hover:text-white hover:shadow-[0_14px_28px_rgba(8,145,178,0.24)] disabled:cursor-not-allowed disabled:opacity-60 lg:inline-flex"
                               >
                                 {pendingJobId === job.jobId
                                   ? "Saving..."
@@ -393,7 +393,7 @@ export default function JobsPage() {
                                       type="button"
                                       onClick={() => handleToggleActive(job)}
                                       disabled={pendingJobId === job.jobId}
-                                      className="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm text-slate-200 transition hover:bg-slate-800/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-60 md:hidden"
+                                      className="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm text-slate-200 transition hover:bg-slate-800/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-60 lg:hidden"
                                     >
                                       {pendingJobId === job.jobId
                                         ? "Saving..."

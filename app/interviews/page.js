@@ -27,6 +27,61 @@ function formatScore(score) {
   return score === null || score === undefined ? "-" : `${Math.round(score)}%`
 }
 
+function formatAnswerScore(score) {
+  if (score === null || score === undefined) {
+    return "-"
+  }
+
+  const numeric = Number(score)
+  if (!Number.isFinite(numeric)) {
+    return "-"
+  }
+
+  if (numeric >= 0 && numeric <= 1) {
+    return `${Math.round(numeric * 100)}%`
+  }
+
+  if (numeric > 1 && numeric <= 5) {
+    return `${numeric.toFixed(1).replace(/\.0$/, "")}/5`
+  }
+
+  return `${Math.round(numeric)}%`
+}
+
+function formatEvaluationText(evaluation) {
+  if (!evaluation) {
+    return null
+  }
+
+  if (typeof evaluation === "string") {
+    return evaluation
+  }
+
+  if (typeof evaluation !== "object") {
+    return null
+  }
+
+  const preferredKeys = ["feedback", "summary", "result", "analysis", "rationale", "reason", "strengths", "weaknesses"]
+  const lines = preferredKeys.flatMap((key) => {
+    const value = evaluation[key]
+    if (value === null || value === undefined) {
+      return []
+    }
+
+    if (Array.isArray(value)) {
+      return [`${key}: ${value.join(", ")}`]
+    }
+
+    if (typeof value === "object") {
+      return [`${key}: ${JSON.stringify(value)}`]
+    }
+
+    return [`${key}: ${value}`]
+  })
+
+  return lines.length > 0 ? lines.join("\n") : JSON.stringify(evaluation, null, 2)
+}
+
 function isCompletedInterview(interview) {
   return String(interview?.status ?? "").toUpperCase() === "COMPLETED"
 }
@@ -44,9 +99,11 @@ function CompletedInterviewModal({ interview, onClose }) {
     return null
   }
 
+  const answerSummaries = Array.isArray(interview.answerSummaries) ? interview.answerSummaries : []
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#020817]/80 px-4 backdrop-blur-md">
-      <div className="relative w-full max-w-4xl overflow-hidden rounded-[28px] border border-emerald-400/20 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.13),_transparent_34%),linear-gradient(180deg,rgba(15,23,42,0.98),rgba(9,14,28,0.98))] shadow-[0_0_80px_rgba(16,185,129,0.12)]">
+      <div className="relative w-full max-w-6xl overflow-hidden rounded-[28px] border border-emerald-400/20 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.13),_transparent_34%),linear-gradient(180deg,rgba(15,23,42,0.98),rgba(9,14,28,0.98))] shadow-[0_0_80px_rgba(16,185,129,0.12)]">
         <div className="absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-emerald-300/70 to-transparent" />
 
         <div className="flex flex-col gap-4 border-b border-white/10 px-6 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-8">
@@ -85,8 +142,92 @@ function CompletedInterviewModal({ interview, onClose }) {
           <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/35 p-5">
             <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Summary</p>
             <div className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-300">
-              {interview.aiSummary || "No AI summary has been recorded for this completed interview yet."}
+              {interview.aiSummary || "No AI summary has been recorded for this completed interview yet. Review the transcript below for recorded answers and evaluation details."}
             </div>
+          </div>
+
+          <div className="mt-5">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Transcript + Result</p>
+                <h4 className="mt-2 text-lg font-semibold text-white">Question, Answer and AI Evaluation</h4>
+              </div>
+              <p className="text-sm text-slate-500">{answerSummaries.length} recorded answer{answerSummaries.length === 1 ? "" : "s"}</p>
+            </div>
+
+            {answerSummaries.length === 0 ? (
+              <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/35 p-5 text-sm leading-7 text-slate-400">
+                No answer transcript has been recorded for this completed interview yet.
+              </div>
+            ) : (
+              <div className="mt-4 space-y-4">
+                {answerSummaries.map((answer, index) => {
+                  const evaluationText = formatEvaluationText(answer.evaluation)
+                  const metrics = [
+                    ["Score", answer.score],
+                    ["Skill", answer.skillScore],
+                    ["Clarity", answer.clarityScore],
+                    ["Depth", answer.depthScore],
+                    ["Confidence", answer.confidenceScore],
+                    ["Fraud", answer.fraudScore],
+                  ].filter(([, value]) => value !== null && value !== undefined)
+                  const duration = answer.answerPayload?.duration
+
+                  return (
+                    <article key={answer.answerId || `${answer.question}-${index}`} className="rounded-2xl border border-slate-800 bg-slate-950/35 p-5">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-300/80">
+                            Question {answer.questionOrder ?? index + 1}
+                          </p>
+                          <p className="mt-2 text-base font-medium leading-7 text-white">{answer.question}</p>
+                          <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
+                            {answer.skill ? <span>{answer.skill}</span> : null}
+                            {answer.questionType ? <span>{answer.questionType}</span> : null}
+                            {answer.questionSource ? <span>{answer.questionSource}</span> : null}
+                          </div>
+                        </div>
+                        <div className="shrink-0 rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-2 text-sm font-semibold text-white">
+                          {formatAnswerScore(answer.score)}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 rounded-xl border border-slate-800/80 bg-[#08111f]/70 p-4">
+                        <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Candidate Transcript</p>
+                        <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-300">{answer.answerText || "No response provided."}</p>
+                        {duration !== null && duration !== undefined ? (
+                          <p className="mt-3 text-xs text-slate-500">Duration: {duration}s</p>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1.4fr]">
+                        <div className="rounded-xl border border-slate-800/80 bg-[#08111f]/70 p-4">
+                          <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Result</p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {metrics.length === 0 ? (
+                              <span className="text-sm text-slate-500">No answer-level score recorded.</span>
+                            ) : (
+                              metrics.map(([label, value]) => (
+                                <span key={label} className="rounded-full border border-slate-700 bg-slate-900/70 px-3 py-1 text-xs text-slate-300">
+                                  {label}: {formatAnswerScore(value)}
+                                </span>
+                              ))
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl border border-slate-800/80 bg-[#08111f]/70 p-4">
+                          <p className="text-xs uppercase tracking-[0.2em] text-slate-500">AI Feedback</p>
+                          <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-300">
+                            {answer.feedback || evaluationText || "No AI feedback has been recorded for this answer."}
+                          </p>
+                        </div>
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>
