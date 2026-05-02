@@ -2,6 +2,10 @@ import { Prisma } from "@prisma/client"
 
 import { prisma } from "@/lib/server/prisma"
 import { deriveInterviewStatus } from "@/lib/server/services/interview-status"
+import {
+  deriveResultFromAnswerSummaries,
+  fetchAnswerSummaries,
+} from "@/lib/server/services/interview-summary"
 
 type CacheEntry = {
   value: ReportsPayload
@@ -324,6 +328,10 @@ function normalizeRecommendation(value: string | null | undefined) {
 
   if (["HOLD", "REVIEW", "MAYBE"].includes(normalized)) {
     return "HOLD"
+  }
+
+  if (["FLAGGED", "RISK"].includes(normalized)) {
+    return "FLAGGED"
   }
 
   if (["REJECT", "DECLINE", "NO_HIRE"].includes(normalized)) {
@@ -965,8 +973,13 @@ function deriveIsFlagged(row: Pick<
   | "attention_loss_count"
   | "long_gaze_away_count"
   | "no_face_count"
+  | "hire_recommendation"
+  | "risk_level"
 >) {
   return (
+    normalizeStatus(row.hire_recommendation) === "FLAGGED" ||
+    normalizeStatus(row.risk_level) === "HIGH" ||
+    normalizeStatus(row.risk_level) === "CRITICAL" ||
     (row.avg_fraud_score ?? 0) >= 0.6 ||
     row.multi_face_count > 0 ||
     row.tab_switch_count >= 2 ||
@@ -1032,12 +1045,13 @@ export async function getNormalizedReportRows(organizationId: string): Promise<N
 
   const attemptIds = interviews.flatMap((interview) => interview.attempts.map((attempt) => attempt.attemptId))
 
-  const [skillProfiles, skillStates, summaries, signalRows, recordingRows] = await Promise.all([
+  const [skillProfiles, skillStates, summaries, signalRows, recordingRows, answerSummaryMap] = await Promise.all([
     fetchSkillProfiles(attemptIds),
     fetchSkillStates(attemptIds),
     fetchInterviewSummaries(organizationId),
     fetchSignalRows(organizationId),
     fetchRecordingRows(organizationId),
+    fetchAnswerSummaries(attemptIds),
   ])
 
   const signalMap = buildSignalMap(signalRows)
@@ -1054,6 +1068,8 @@ export async function getNormalizedReportRows(organizationId: string): Promise<N
       const skillProfile = attemptId ? skillProfiles.get(attemptId) : undefined
       const skillState = attemptId ? skillStates.get(attemptId) : undefined
       const summary = attemptId ? summaries.get(attemptId) : undefined
+      const answerSummaries = attemptId ? answerSummaryMap.get(attemptId) ?? [] : []
+      const calculatedResult = deriveResultFromAnswerSummaries(answerSummaries)
       const signal = (attemptId ? signalMap.byAttempt.get(attemptId) : undefined) ?? signalMap.byInterview.get(interview.interviewId)
       const recording = (attemptId ? recordingMap.byAttempt.get(attemptId) : undefined) ?? recordingMap.byInterview.get(interview.interviewId)
       const responseAverages = buildResponseMetricAverages(skillState)
@@ -1075,9 +1091,9 @@ export async function getNormalizedReportRows(organizationId: string): Promise<N
       const avgSkillScore = toNumber(skillProfile?.overall_weighted_score)
       const evaluationScore = toNumber(attempt?.evaluation?.finalScore)
       const summaryOverallScore = toNumber(summary?.overall_score)
-      const overallScore = summaryOverallScore ?? evaluationScore ?? (avgSkillScore !== null ? Number((avgSkillScore * 20).toFixed(1)) : null)
+      const overallScore = summaryOverallScore ?? evaluationScore ?? calculatedResult.score ?? (avgSkillScore !== null ? Number((avgSkillScore * 20).toFixed(1)) : null)
       const normalizedScore = overallScore ?? (avgSkillScore !== null ? Number((avgSkillScore * 20).toFixed(1)) : null)
-      const hireRecommendation = normalizeRecommendation(summary?.hire_recommendation ?? attempt?.evaluation?.decision)
+      const hireRecommendation = normalizeRecommendation(summary?.hire_recommendation ?? attempt?.evaluation?.decision ?? calculatedResult.decision)
       const avgFocusRatio = toNumber(signal?.avg_focus_ratio)
       const suspiciousIndex = deriveSuspiciousIndex({
         avgFraudScore: responseAverages.avg_fraud_score,

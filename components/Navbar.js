@@ -151,24 +151,24 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null }) 
   return (
     <>
       <header className="sticky top-0 z-40 border-b border-slate-800/80 bg-[#0c1424]/95 text-white backdrop-blur-xl">
-        <div className="mx-auto flex w-full max-w-[1840px] flex-nowrap items-center justify-between gap-2 px-3 py-4 sm:px-5 xl:px-8">
-          <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-3 xl:gap-5">
+        <div className="mx-auto flex w-full max-w-[1840px] flex-nowrap items-center justify-between gap-3 px-3 py-4 sm:px-4 xl:px-6">
+          <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-3 xl:gap-4">
             <Link
               href={buildAuthUrl("/", searchParams)}
-              className="flex w-[260px] shrink-0 flex-col justify-center leading-none xl:w-[282px]"
+              className="flex w-[210px] shrink-0 flex-col justify-center leading-none xl:w-[240px]"
               aria-label="HireVeri home"
             >
-              <span className="text-lg font-semibold tracking-tight text-white lg:text-xl">HireVeri</span>
-              <span className="mt-1 whitespace-nowrap text-[10px] font-medium uppercase tracking-[0.18em] text-blue-300/80">
+              <span className="text-lg font-semibold tracking-tight text-white xl:text-xl">HireVeri</span>
+              <span className="mt-1 whitespace-nowrap text-[10px] font-medium uppercase tracking-[0.14em] text-blue-300/80 xl:tracking-[0.18em]">
                 Cognitive Hiring System
               </span>
             </Link>
 
-            <nav className="hidden min-w-0 flex-1 flex-nowrap items-center justify-between gap-0.5 md:flex xl:gap-1">
+            <nav className="hidden min-w-0 flex-1 flex-nowrap items-center justify-start gap-1 md:flex xl:gap-2">
               {navItems.map((item) => {
                 if (item.disabled) {
                   return (
-                    <span key={item.label} className="whitespace-nowrap rounded-xl border border-transparent px-2.5 py-2 text-sm text-slate-500 xl:px-3 xl:text-[15px]" aria-disabled="true" title="Coming soon">
+                    <span key={item.label} className="whitespace-nowrap rounded-xl border border-transparent px-2 py-2 text-[13px] text-slate-500 xl:px-2.5 xl:text-sm" aria-disabled="true" title="Coming soon">
                       {item.label}
                     </span>
                   );
@@ -181,7 +181,7 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null }) 
                     key={item.label}
                     href={buildAuthUrl(item.href, searchParams)}
                     className={[
-                      "whitespace-nowrap rounded-xl px-2.5 py-2 text-sm font-medium transition xl:px-3 xl:text-[15px]",
+                      "whitespace-nowrap rounded-xl px-2 py-2 text-[13px] font-medium transition xl:px-2.5 xl:text-sm",
                       active
                         ? "border border-slate-700 bg-slate-800/90 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
                         : "border border-transparent text-slate-300 hover:border-slate-800 hover:bg-slate-900/60 hover:text-white",
@@ -194,7 +194,7 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null }) 
             </nav>
           </div>
 
-          <div className="flex shrink-0 flex-nowrap items-center gap-2 xl:gap-3">
+          <div className="flex shrink-0 flex-nowrap items-center gap-2">
             <button onClick={() => setOpenCreateJob(true)} className="whitespace-nowrap rounded-xl border border-slate-700 bg-white px-3 py-2 text-xs font-semibold text-slate-900 transition hover:bg-slate-100 xl:px-4 xl:py-2.5 xl:text-sm">
               Create Job
             </button>
