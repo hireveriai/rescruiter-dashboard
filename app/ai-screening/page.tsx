@@ -9,6 +9,7 @@ import { InsightTooltip } from "@/components/ui/InsightTooltip"
 import { ProcessingTimeline, type TimelineStep } from "@/components/ui/ProcessingTimeline"
 import { StepProgress } from "@/components/ui/StepProgress"
 import { buildAuthUrl } from "@/lib/client/auth-query"
+import { formatDateTime } from "@/lib/client/date-format"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 type ExistingJob = {
@@ -2153,7 +2154,7 @@ export default function AiScreeningPage() {
                       className={`rounded-xl border px-3 py-2 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${selectedRunId === run.id ? "border-cyan-400/40 bg-cyan-400/10" : "border-slate-700 bg-slate-950/35 hover:border-slate-500"}`}
                     >
                       <p className="truncate text-xs font-semibold text-slate-200">
-                        {new Date(run.createdAt).toLocaleString()}
+                        {formatDateTime(run.createdAt)}
                       </p>
                       <p className="mt-1 text-[11px] text-slate-500">
                         {run.totalCandidates} candidates · {run.strongFitCount} strong · avg {run.avgScore}%

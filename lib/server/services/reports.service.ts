@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client"
 
 import { prisma } from "@/lib/server/prisma"
+import { deriveInterviewStatus } from "@/lib/server/services/interview-status"
 
 type CacheEntry = {
   value: ReportsPayload
@@ -215,7 +216,7 @@ type SignalAggRow = {
   avg_look_away_events: number | null
 }
 
-const REPORTS_CACHE_TTL_MS = 30_000
+const REPORTS_CACHE_TTL_MS = 5_000
 const reportsCache = new Map<string, CacheEntry>()
 
 function normalizeStatus(value: string | null | undefined) {
@@ -899,23 +900,36 @@ function deriveResultStatus(params: {
   startedAt: string | null
   endedAt: string | null
 }) {
-  const attemptStatus = normalizeStatus(params.attemptStatus)
-  const interviewStatus = normalizeStatus(params.interviewStatus)
-  const inviteStatus = normalizeStatus(params.inviteStatus)
+  const derivedStatus = deriveInterviewStatus({
+    interviewStatus: params.interviewStatus,
+    latestAttempt:
+      params.attemptStatus || params.startedAt || params.endedAt
+        ? {
+            attemptId: "report-attempt",
+            status: params.attemptStatus,
+            endedAt: params.endedAt,
+          }
+        : null,
+    latestInvite: params.inviteStatus
+      ? {
+          status: params.inviteStatus,
+        }
+      : null,
+  })
 
-  if (attemptStatus === "COMPLETED" || interviewStatus === "COMPLETED" || params.endedAt) {
+  if (derivedStatus === "COMPLETED") {
     return "COMPLETED"
   }
 
-  if (attemptStatus || params.startedAt) {
+  if (derivedStatus === "IN_PROGRESS") {
     return "STARTED"
   }
 
-  if (inviteStatus) {
+  if (params.inviteStatus) {
     return "INVITED"
   }
 
-  return interviewStatus || null
+  return normalizeStatus(params.interviewStatus) || null
 }
 
 function deriveSuspiciousIndex(params: {

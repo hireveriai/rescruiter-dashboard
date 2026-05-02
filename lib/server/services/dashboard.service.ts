@@ -1,5 +1,7 @@
 ﻿import { prisma } from "@/lib/server/prisma"
 
+import { deriveInterviewStatus } from "@/lib/server/services/interview-status"
+
 type CandidatesDashboardOptions = {
   organizationId: string
   limit?: number | "all"
@@ -57,6 +59,8 @@ export async function getCandidatesDashboard(
               inviteId: true,
               status: true,
               createdAt: true,
+              expiresAt: true,
+              usedAt: true,
             },
           },
           attempts: {
@@ -74,15 +78,22 @@ export async function getCandidatesDashboard(
 
   return candidates.map((candidate): CandidatesDashboardItem => {
     const latestInterview = candidate.interviews[0] ?? null
+    const latestInvite = latestInterview?.interviewInvites[0] ?? null
     const latestAttempt = latestInterview?.attempts[0] ?? null
     const evaluation = latestAttempt?.evaluation ?? null
-    const finalScore = evaluation?.finalScore ? Number(evaluation.finalScore) : null
+    const finalScore = evaluation?.finalScore === null || evaluation?.finalScore === undefined ? null : Number(evaluation.finalScore)
     const aiSummaryFull = evaluation?.aiSummary ?? null
 
     return {
       candidateName: candidate.fullName,
       jobTitle: latestInterview?.job?.jobTitle ?? "-",
-      status: latestInterview?.status ?? "PENDING",
+      status: latestInterview
+        ? deriveInterviewStatus({
+            interviewStatus: latestInterview.status,
+            latestAttempt,
+            latestInvite,
+          })
+        : candidate.status ?? "PENDING",
       score: finalScore,
       aiSummaryShort: getShortSummary(aiSummaryFull),
       aiSummaryFull,

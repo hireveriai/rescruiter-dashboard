@@ -1,5 +1,6 @@
 import { getInterviewAppUrl } from "@/lib/server/interview-url"
 import { prisma } from "@/lib/server/prisma"
+import { isAttemptCompleted, isInviteUsable } from "@/lib/server/services/interview-status"
 
 type DashboardPipelineOptions = {
   organizationId: string
@@ -25,26 +26,6 @@ type DashboardPipelineData = {
     flagged: number
   }
   pendingInterviews: DashboardPipelineItem[]
-}
-
-function isInviteUsable(invite: {
-  status: string | null
-  usedAt: Date | string | null
-  expiresAt: Date | string | null
-}) {
-  const normalizedStatus = String(invite.status ?? "ACTIVE").toUpperCase()
-  const expiresAt = invite.expiresAt ? new Date(invite.expiresAt) : null
-  const isExpired = expiresAt ? expiresAt.getTime() <= Date.now() : false
-
-  return normalizedStatus === "ACTIVE" && !invite.usedAt && !isExpired
-}
-
-function isAttemptCompleted(attempt: {
-  status: string
-  endedAt: Date | string | null
-}) {
-  const normalizedStatus = String(attempt.status ?? "").toUpperCase()
-  return normalizedStatus === "COMPLETED" || Boolean(attempt.endedAt)
 }
 
 export async function getDashboardPipelineData(

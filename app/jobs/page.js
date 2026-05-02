@@ -285,18 +285,18 @@ export default function JobsPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] table-fixed text-sm">
+            <table className="w-full min-w-[1240px] table-fixed text-sm">
               <colgroup>
                 <col className="w-[56px]" />
+                <col className="w-[160px]" />
                 <col className="w-[170px]" />
-                <col className="w-[190px]" />
                 <col className="w-[108px]" />
                 <col className="w-[108px]" />
-                <col className="w-[92px]" />
-                <col className="w-[92px]" />
-                <col className="w-[170px]" />
+                <col className="w-[88px]" />
                 <col className="w-[88px]" />
                 <col className="w-[150px]" />
+                <col className="w-[100px]" />
+                <col className="w-[212px]" />
               </colgroup>
               <thead className="bg-slate-950/20 text-slate-400">
                 <tr>
@@ -309,7 +309,7 @@ export default function JobsPage() {
                   <th className="px-4 py-4 text-left font-medium">Timeline</th>
                   <th className="px-4 py-4 text-left font-medium">Core Skills</th>
                   <th className="px-4 py-4 text-left font-medium">Open Interviews</th>
-                  <th className="w-[1%] whitespace-nowrap px-4 py-4 text-right font-medium">Actions</th>
+                  <th className="whitespace-nowrap px-4 py-4 text-right font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -350,7 +350,7 @@ export default function JobsPage() {
                         <JobSkillsCell skills={job.coreSkills} />
                       </td>
                       <td className="px-4 py-4 text-slate-300">{job._count?.interviews ?? 0}</td>
-                      <td className="w-[1%] whitespace-nowrap px-4 py-4 text-right">
+                      <td className="whitespace-nowrap px-4 py-4 text-right">
                         <div className="flex justify-end">
                           <div
                             className="flex items-center justify-end gap-2 md:gap-3"

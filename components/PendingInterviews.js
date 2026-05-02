@@ -5,6 +5,7 @@ import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl, hasAuthQuery } from "@/lib/client/auth-query"
 import { copyText } from "@/lib/client/copy-to-clipboard"
+import { formatDateTime } from "@/lib/client/date-format"
 
 function getExpiryLabel(expiresAt, nowTick) {
   if (!expiresAt) {
@@ -22,30 +23,11 @@ function getExpiryLabel(expiresAt, nowTick) {
   return `Expires in ${totalHours}h`
 }
 
-function formatDate(dateValue) {
-  if (!dateValue) {
-    return "-"
-  }
-
-  const date = new Date(dateValue)
-  if (Number.isNaN(date.getTime())) {
-    return "-"
-  }
-
-  return date.toLocaleString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  })
-}
-
 function getInterviewTypeLabel(item) {
   const accessType = String(item.accessType ?? "FLEXIBLE").toUpperCase()
 
   if (accessType === "SCHEDULED") {
-    return item.startTime ? `Scheduled: ${formatDate(item.startTime)}` : "Scheduled"
+    return item.startTime ? `Scheduled: ${formatDateTime(item.startTime)}` : "Scheduled"
   }
 
   return "Flexible"
@@ -291,7 +273,7 @@ function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, onEdit, o
                   <div className="font-medium text-white">{item.candidateName}</div>
                   <div className="text-slate-300">{item.jobTitle}</div>
                   <div className="text-cyan-200">{getInterviewTypeLabel(item)}</div>
-                  <div className="text-slate-400">{formatDate(item.createdAt)}</div>
+                  <div className="whitespace-nowrap text-slate-400">{formatDateTime(item.createdAt)}</div>
                   <div className="text-amber-300">{getExpiryLabel(item.expiresAt, nowTick)}</div>
                   <div className="flex flex-nowrap items-center gap-2 whitespace-nowrap">
                     <button type="button" onClick={() => onCopy(item.link)} className="shrink-0 rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1.5 text-cyan-100 transition hover:bg-cyan-400/20">

@@ -4,26 +4,8 @@ import { useEffect, useMemo, useState } from "react"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl, hasAuthQuery } from "@/lib/client/auth-query"
+import { formatDateTime } from "@/lib/client/date-format"
 import { openWarRoom } from "@/lib/client/war-room"
-
-function formatDate(dateValue) {
-  if (!dateValue) {
-    return "-"
-  }
-
-  const date = new Date(dateValue)
-  if (Number.isNaN(date.getTime())) {
-    return "-"
-  }
-
-  return date.toLocaleString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  })
-}
 
 function getRetentionLabel(days) {
   return `${days ?? 30} days retention`
@@ -79,7 +61,7 @@ function RecordedInterviewsModal({ isOpen, onClose, interviews }) {
                   <div className="font-medium text-white">{item.candidateName}</div>
                   <div className="text-slate-300">{item.jobTitle}</div>
                   <div className="text-slate-400">{item.transcriptPreview}</div>
-                  <div className="text-slate-400">{formatDate(item.createdAt)}</div>
+                  <div className="whitespace-nowrap text-slate-400">{formatDateTime(item.createdAt)}</div>
                   <div className="text-fuchsia-200">{getRetentionLabel(item.retentionDays)}</div>
                 </div>
               ))
@@ -174,7 +156,7 @@ export default function RecordedInterviews({ initialRecordedInterviews, organiza
                 </div>
 
                 <div className="text-sm text-gray-300 mb-2">
-                  Recorded: <span className="text-blue-400">{formatDate(item.createdAt)}</span>
+                  Recorded: <span className="whitespace-nowrap text-blue-400">{formatDateTime(item.createdAt)}</span>
                 </div>
 
                 <div className="text-sm text-gray-300 mb-4">

@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -156,17 +155,13 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null }) 
           <div className="flex min-w-0 flex-1 items-center gap-4 lg:gap-7">
             <Link
               href={buildAuthUrl("/", searchParams)}
-              className="flex shrink-0 items-center"
+              className="flex shrink-0 flex-col justify-center leading-none"
               aria-label="HireVeri home"
             >
-              <Image
-                src="/hireveri_logo.png"
-                alt="HireVeri"
-                width={180}
-                height={52}
-                priority
-                className="h-10 w-auto object-contain lg:h-11"
-              />
+              <span className="text-lg font-semibold tracking-tight text-white lg:text-xl">HireVeri</span>
+              <span className="mt-1 text-[10px] font-medium uppercase tracking-[0.22em] text-blue-300/80">
+                Cognitive Hiring System
+              </span>
             </Link>
 
             <nav className="hidden min-w-0 items-center gap-0.5 md:flex lg:gap-1">

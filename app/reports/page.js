@@ -6,22 +6,8 @@ import { useEffect, useMemo, useState } from "react"
 import Navbar from "@/components/Navbar"
 import SendInterviewModal from "@/components/SendInterviewModal"
 import { buildAuthUrl } from "@/lib/client/auth-query"
+import { formatDateTime } from "@/lib/client/date-format"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
-
-function formatDateTime(dateValue) {
-  const date = new Date(dateValue)
-  if (Number.isNaN(date.getTime())) {
-    return "-"
-  }
-
-  return date.toLocaleString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  })
-}
 
 function formatPercent(value) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) {
@@ -116,9 +102,6 @@ export default function ReportsPage() {
   useEffect(() => {
     let active = true
 
-    setLoading(true)
-    setError("")
-
     fetch(buildAuthUrl("/api/reports/overview", searchParams), {
       credentials: "include",
       cache: "no-store",
@@ -133,6 +116,7 @@ export default function ReportsPage() {
           throw new Error(data?.error?.message || data?.message || "Unable to load reports")
         }
 
+        setError("")
         setReport(data.data ?? null)
       })
       .catch((fetchError) => {
@@ -178,7 +162,7 @@ export default function ReportsPage() {
             <div className="grid gap-3 sm:grid-cols-2 xl:min-w-[420px]">
               <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
                 <p className="text-sm text-slate-500">Generated</p>
-                <p className="mt-3 text-lg font-semibold text-white">{generatedAt}</p>
+                <p className="mt-3 whitespace-nowrap text-lg font-semibold text-white">{generatedAt}</p>
               </div>
               <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
                 <p className="text-sm text-slate-500">Module State</p>
@@ -316,8 +300,8 @@ export default function ReportsPage() {
               >
                 <div className="space-y-4">
                   {report.interviewTimeline.map((item) => (
-                    <div key={item.id} className="grid gap-4 rounded-2xl border border-slate-800 bg-slate-950/30 p-4 lg:grid-cols-[180px_1fr_auto] lg:items-center">
-                      <div className="text-sm text-slate-400">{formatDateTime(item.at)}</div>
+                    <div key={item.id} className="grid gap-4 rounded-2xl border border-slate-800 bg-slate-950/30 p-4 lg:grid-cols-[200px_1fr_auto] lg:items-center">
+                      <div className="whitespace-nowrap text-sm text-slate-400">{formatDateTime(item.at)}</div>
                       <div>
                         <div className="flex flex-wrap items-center gap-3">
                           <p className="text-sm font-medium text-white">{item.title}</p>
@@ -455,8 +439,8 @@ export default function ReportsPage() {
               >
                 <div className="space-y-3">
                   {report.auditLogs.map((item) => (
-                    <div key={item.id} className="grid gap-3 rounded-2xl border border-slate-800 bg-slate-950/30 p-4 lg:grid-cols-[170px_170px_170px_1fr]">
-                      <div className="text-sm text-slate-400">{formatDateTime(item.at)}</div>
+                    <div key={item.id} className="grid gap-3 rounded-2xl border border-slate-800 bg-slate-950/30 p-4 lg:grid-cols-[200px_170px_170px_1fr]">
+                      <div className="whitespace-nowrap text-sm text-slate-400">{formatDateTime(item.at)}</div>
                       <div className="text-sm font-medium text-white">{item.actor}</div>
                       <div className="text-sm text-cyan-200">{item.action}</div>
                       <div>
