@@ -145,13 +145,13 @@ export default function ReportsPage() {
     <div className="min-h-screen bg-[#08111f] text-white">
       <Navbar onSendInterviewClick={() => setOpenSendInterview(true)} />
 
-      <main className="mx-auto max-w-[1680px] px-4 py-8 sm:px-6 lg:px-8">
+      <main className="mx-auto max-w-[1680px] px-4 py-7 sm:px-6 lg:px-8">
         <section className="relative overflow-hidden rounded-[34px] border border-cyan-400/15 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.15),transparent_25%),radial-gradient(circle_at_top_right,rgba(59,130,246,0.12),transparent_22%),linear-gradient(180deg,rgba(12,20,36,0.96),rgba(8,17,31,0.98))] px-8 py-8 shadow-[0_24px_100px_rgba(2,6,23,0.45)]">
           <div className="absolute inset-x-16 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/70 to-transparent" />
-          <div className="flex flex-col gap-8 xl:flex-row xl:items-end xl:justify-between">
-            <div className="max-w-4xl">
+          <div className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
+            <div className="min-w-0 max-w-[980px] flex-1">
               <p className="text-xs font-semibold uppercase tracking-[0.34em] text-cyan-300/75">HireVeri Reports</p>
-              <h1 className="mt-4 text-4xl font-semibold tracking-tight text-white lg:text-5xl">
+              <h1 className="mt-4 text-4xl font-semibold tracking-tight text-white lg:text-[44px] xl:whitespace-nowrap 2xl:text-5xl">
                 Hiring Decisions & Risk Intelligence
               </h1>
               <p className="mt-4 max-w-3xl text-base leading-7 text-slate-300">
@@ -159,7 +159,7 @@ export default function ReportsPage() {
               </p>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 xl:min-w-[420px]">
+            <div className="grid shrink-0 gap-3 sm:grid-cols-2 xl:w-[520px]">
               <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
                 <p className="text-sm text-slate-500">Generated</p>
                 <p className="mt-3 whitespace-nowrap text-lg font-semibold text-white">{generatedAt}</p>
@@ -172,7 +172,7 @@ export default function ReportsPage() {
           </div>
         </section>
 
-        <div className="mt-8 flex items-center justify-between gap-4">
+        <div className="mt-6 flex items-center justify-between gap-4">
           <p className="text-sm text-slate-400">
             Enterprise reporting focused on forensic hiring signals and recruiter traceability.
           </p>
@@ -184,7 +184,7 @@ export default function ReportsPage() {
           </Link>
         </div>
 
-        <div className="mt-8">
+        <div className="mt-6">
           {loading ? <LoadingState /> : null}
 
           {!loading && error ? (
