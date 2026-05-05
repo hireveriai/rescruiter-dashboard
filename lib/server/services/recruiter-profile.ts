@@ -42,7 +42,7 @@ export async function getRecruiterProfile(auth: RecruiterRequestContext): Promis
         on o.organization_id = u.organization_id
       where u.user_id::text = ${auth.userId}
         and u.organization_id::text = ${auth.organizationId}
-        and u.role = 'RECRUITER'
+        and u.role in ('RECRUITER', 'ADMIN', 'ORG_OWNER')
       limit 1
     `)
 

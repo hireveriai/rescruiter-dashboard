@@ -8,7 +8,7 @@ export default function WarRoomButton({ organizationId = "" }) {
       <button
         type="button"
         onClick={() => openWarRoom(organizationId)}
-        className="inline-flex rounded-lg bg-blue-500 px-8 py-3 text-lg transition hover:bg-blue-400"
+        className="inline-flex cursor-pointer rounded-lg bg-blue-500 px-8 py-3 text-lg transition hover:bg-blue-400"
       >
         Open War Room
       </button>

@@ -255,7 +255,7 @@ async function lookupRecruiterByIdentity(
              u.organization_id::text as organization_id
       from public.users u
       where u.identity_id::text = ${identityId}
-        and u.role = 'RECRUITER'
+        and u.role in ('RECRUITER', 'ADMIN', 'ORG_OWNER')
         and u.is_active = true
       limit 1
     `)
@@ -302,7 +302,7 @@ async function reconcileRecruiterIdentity(
              u.organization_id::text as organization_id
       from public.users u
       where lower(u.email) = ${email}
-        and u.role = 'RECRUITER'
+        and u.role in ('RECRUITER', 'ADMIN', 'ORG_OWNER')
         and u.is_active = true
       limit 1
     `)
@@ -344,7 +344,7 @@ async function lookupDevBypassRecruiter(): Promise<RecruiterLookupRow | null> {
       select u.user_id::text as user_id,
              u.organization_id::text as organization_id
       from public.users u
-      where u.role = 'RECRUITER'
+      where u.role in ('RECRUITER', 'ADMIN', 'ORG_OWNER')
         and u.is_active = true
       order by u.created_at asc
       limit 1

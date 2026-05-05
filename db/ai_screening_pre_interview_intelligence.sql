@@ -180,7 +180,7 @@ as $$
   select u.organization_id
   from public.users u
   where u.identity_id = auth.uid()
-    and u.role = 'RECRUITER'
+    and u.role in ('RECRUITER', 'ADMIN', 'ORG_OWNER')
     and u.is_active = true
   limit 1
 $$;

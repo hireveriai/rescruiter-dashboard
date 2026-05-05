@@ -148,10 +148,10 @@ export default function ReportsPage() {
       <main className="mx-auto max-w-[1680px] px-4 py-7 sm:px-6 lg:px-8">
         <section className="relative overflow-hidden rounded-[34px] border border-cyan-400/15 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.15),transparent_25%),radial-gradient(circle_at_top_right,rgba(59,130,246,0.12),transparent_22%),linear-gradient(180deg,rgba(12,20,36,0.96),rgba(8,17,31,0.98))] px-8 py-8 shadow-[0_24px_100px_rgba(2,6,23,0.45)]">
           <div className="absolute inset-x-16 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/70 to-transparent" />
-          <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(620px,0.68fr)] xl:items-center">
+          <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(520px,0.68fr)] xl:items-center 2xl:grid-cols-[minmax(0,1fr)_minmax(620px,0.68fr)]">
             <div className="min-w-0">
               <p className="text-xs font-semibold uppercase tracking-[0.34em] text-cyan-300/75">HireVeri Reports</p>
-              <h1 className="mt-4 max-w-full text-4xl font-semibold tracking-tight text-white lg:text-[40px] xl:whitespace-nowrap 2xl:text-[42px]">
+              <h1 className="mt-4 max-w-4xl text-4xl font-semibold tracking-tight text-white lg:text-[40px] 2xl:text-[42px]">
                 Hiring Decisions & Risk Intelligence
               </h1>
               <p className="mt-4 max-w-3xl text-base leading-7 text-slate-300">

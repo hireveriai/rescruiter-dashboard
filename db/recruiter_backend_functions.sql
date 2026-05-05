@@ -888,7 +888,6 @@ as $$
 declare
   v_existing_profile boolean := false;
   v_existing_role_id smallint;
-  v_profiles_in_org integer;
   v_company_name text;
   v_default_role_id smallint;
 begin
@@ -900,18 +899,6 @@ begin
 
   if coalesce(v_existing_role_id, 0) > 0 then
     return v_existing_role_id;
-  end if;
-
-  select count(*)::int
-  into v_profiles_in_org
-  from public.recruiter_profiles rp
-  inner join public.users u
-    on u.user_id = rp.recruiter_id
-  where u.organization_id = p_organization_id
-    and rp.recruiter_role_id is not null;
-
-  if coalesce(v_profiles_in_org, 0) > 0 then
-    return null;
   end if;
 
   v_default_role_id := public.fn_get_default_super_admin_role_id();

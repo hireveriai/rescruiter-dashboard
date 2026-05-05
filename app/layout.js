@@ -7,6 +7,10 @@ export const metadata = {
   description:
     "Recruiter control layer for secure interview orchestration, candidate review, and forensic hiring workflows.",
   applicationName: "HireVeri Recruiter",
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+  },
 };
 
 export default function RootLayout({ children }) {

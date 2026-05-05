@@ -174,7 +174,7 @@ export default function RecordedInterviews({ initialRecordedInterviews, organiza
 
                   <button
                     type="button"
-                    className="border border-blue-400 px-3 py-1 rounded text-sm text-blue-400 transition hover:bg-blue-500/10"
+                    className="cursor-pointer border border-blue-400 px-3 py-1 rounded text-sm text-blue-400 transition hover:bg-blue-500/10"
                     onClick={() => openWarRoom(organizationId)}
                   >
                     War Room

@@ -132,6 +132,7 @@ const recommendationFilters = ["ALL", "STRONG_FIT", "POTENTIAL", "WEAK", "REJECT
 const riskFilters = ["ALL", "LOW", "MEDIUM", "HIGH"] as const
 const FLOW_STORAGE_KEY = "hireveri.aiScreening.flowState"
 const AUTO_RUN = true
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 type StoredFlowState = {
   flowStep: FlowStep
@@ -199,6 +200,14 @@ function readStoredFlowState(): StoredFlowState {
 
 function getMatchScope(includeAllCandidates: boolean): MatchScope {
   return includeAllCandidates ? "GLOBAL" : "BATCH"
+}
+
+function isUuid(value: string | null | undefined) {
+  return Boolean(value && UUID_REGEX.test(value))
+}
+
+function findScreeningJobForSelection(jobs: ScreeningJob[], selectedJobId: string) {
+  return jobs.find((job) => job.id === selectedJobId || job.sourceJobPositionId === selectedJobId) ?? null
 }
 
 function isResumeReady(row: UploadRow) {
@@ -986,13 +995,18 @@ export default function AiScreeningPage() {
     () => existingJobs.find((job) => job.jobId === selectedExistingJobId) ?? null,
     [existingJobs, selectedExistingJobId]
   )
+  const selectedScreeningJob = useMemo(
+    () => findScreeningJobForSelection(screeningJobs, selectedExistingJobId),
+    [screeningJobs, selectedExistingJobId]
+  )
+  const resolvedActiveJob = activeJob ?? selectedScreeningJob
   const hasUploadedResumes = Boolean(currentBatchId)
   const hasSelectedJob = Boolean(selectedExistingJobId)
   const isBusy = uploading || isProcessingJD || isMatching || savingNewJob || sending || cleanupBusy
   const canShowCleanupActions = matches.length > 0 || Boolean(currentBatchId) || uploadedCandidateIds.length > 0
   const canAnalyzeJob = hasUploadedResumes && hasSelectedJob && flowStep !== "JD_PROCESSED" && flowStep !== "MATCHED" && !isBusy
   const canRunMatching = Boolean(
-    activeJob &&
+    resolvedActiveJob &&
       hasUploadedResumes &&
       (flowStep === "JD_PROCESSED" || flowStep === "MATCHED") &&
       !isBusy
@@ -1337,6 +1351,19 @@ export default function AiScreeningPage() {
     }
 
     try {
+      const jobForMatching = isUuid(job.id) ? job : selectedScreeningJob
+
+      if (!jobForMatching || !isUuid(jobForMatching.id)) {
+        setError("Analyze the selected job before matching candidates.")
+        setPipelineErrorStep("job")
+        return false
+      }
+
+      if (jobForMatching.id !== activeJob?.id) {
+        setActiveJob(jobForMatching)
+        setRestoredActiveJobId(jobForMatching.id)
+      }
+
       setIsMatching(true)
       setError("")
       setPipelineErrorStep(null)
@@ -1346,7 +1373,7 @@ export default function AiScreeningPage() {
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          job_id: job.id,
+          job_id: jobForMatching.id,
           batchId: batchId || undefined,
           candidateIds,
           uploadFileNames,
@@ -1361,8 +1388,8 @@ export default function AiScreeningPage() {
       )
       setMatches(rankedMatches)
       setSelectedRunId(payload.data?.runId ?? "")
-      if (activeJob?.id) {
-        const runsResponse = await fetch(authUrl(`/api/screening/runs?jobId=${encodeURIComponent(activeJob.id)}`), {
+      if (jobForMatching.id) {
+        const runsResponse = await fetch(authUrl(`/api/screening/runs?jobId=${encodeURIComponent(jobForMatching.id)}`), {
           credentials: "include",
           cache: "no-store",
         })
@@ -1393,12 +1420,12 @@ export default function AiScreeningPage() {
   }
 
   async function handleMatchCandidates() {
-    if (!activeJob) {
+    if (!resolvedActiveJob) {
       setError("Process a job description before matching candidates.")
       return
     }
 
-    await runMatching(activeJob)
+    await runMatching(resolvedActiveJob)
   }
 
   async function loadScreeningRun(run: ScreeningRun) {
@@ -1872,9 +1899,11 @@ export default function AiScreeningPage() {
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-700 bg-slate-900/80 text-cyan-200">
                 <UploadIcon />
               </div>
-              <p className="mt-4 text-base font-semibold text-white">Drop PDF/DOCX resumes</p>
+              <p className="mt-4 text-base font-semibold text-white">Drop PDF/DOCX resumes to begin screening</p>
               <p className="mt-2 max-w-md text-sm leading-6 text-slate-400">Files are stored in Supabase Storage, parsed, email-validated, and saved to the recruiter workspace.</p>
             </label>
+
+            <p className="mt-3 text-sm text-slate-400">Step 1 of 3 — Upload resumes to start the screening process</p>
 
             <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/25 px-4 py-3">
               <p className="text-xs font-medium uppercase tracking-[0.22em] text-slate-500">Current Upload</p>
@@ -1904,7 +1933,7 @@ export default function AiScreeningPage() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold text-white">Job Intelligence</h2>
-                <p className="mt-1 text-sm text-slate-400">{activeJob ? activeJob.title : "No active screening job"}</p>
+                <p className="mt-1 text-sm text-slate-400">{resolvedActiveJob ? resolvedActiveJob.title : "No active screening job"}</p>
               </div>
               <div className="text-right">
                 <button
@@ -1928,7 +1957,7 @@ export default function AiScreeningPage() {
                   value={selectedExistingJobId}
                   onChange={(event) => {
                     const selectedJobId = event.target.value
-                    const processedJob = screeningJobs.find((item) => item.id === selectedJobId) ?? null
+                    const processedJob = findScreeningJobForSelection(screeningJobs, selectedJobId)
                     setSelectedExistingJobId(selectedJobId)
                     setActiveJob(processedJob)
                     setRestoredActiveJobId(processedJob?.id ?? "")
@@ -1965,17 +1994,17 @@ export default function AiScreeningPage() {
               </div>
             </div>
 
-            {activeJob ? (
+            {resolvedActiveJob ? (
               <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/25 p-4">
                 <div className="flex flex-wrap gap-2">
-                  {activeJob.requiredSkills.slice(0, 12).map((skill) => (
+                  {resolvedActiveJob.requiredSkills.slice(0, 12).map((skill) => (
                     <span key={skill} className="rounded-full border border-slate-700 bg-slate-900/80 px-3 py-1 text-xs text-slate-200">
                       {skill}
                     </span>
                   ))}
                 </div>
                 <div className="mt-4 flex items-center justify-between gap-3">
-                  <p className="text-sm text-slate-400">Experience needed: {activeJob.experienceNeeded ?? "Not specified"} years</p>
+                  <p className="text-sm text-slate-400">Experience needed: {resolvedActiveJob.experienceNeeded ?? "Not specified"} years</p>
                   <div className="flex flex-col items-end gap-2 text-right">
                     <div>
                       <button
