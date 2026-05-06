@@ -85,7 +85,7 @@ begin
       email = lower(p_email),
       resume_url = p_resume_url,
       resume_text = p_resume_text
-    where candidate_id = v_candidate_id;
+    where candidates.candidate_id = v_candidate_id;
   else
     insert into public.candidates (
       organization_id,
