@@ -99,6 +99,14 @@ type SendResult = {
   inviteLink: string | null
 }
 
+type DuplicateInviteWarning = {
+  candidateId: string
+  candidateName: string
+  email: string
+  lastSentAt: string
+  jobId: string | null
+}
+
 type InterviewAccessType = "FLEXIBLE" | "SCHEDULED"
 type CandidateScheduleDraft = {
   startTime: string
@@ -649,6 +657,7 @@ export default function AiScreeningPage() {
   const [editingCandidateId, setEditingCandidateId] = useState("")
   const [emailDraft, setEmailDraft] = useState("")
   const [sendResults, setSendResults] = useState<SendResult[]>([])
+  const [duplicateInviteWarnings, setDuplicateInviteWarnings] = useState<DuplicateInviteWarning[]>([])
   const [selectedInsight, setSelectedInsight] = useState<SelectedInsight | null>(null)
   const [screeningRuns, setScreeningRuns] = useState<ScreeningRun[]>([])
   const [selectedRunId, setSelectedRunId] = useState("")
@@ -1459,7 +1468,8 @@ export default function AiScreeningPage() {
   async function handleSendInterviews(
     mode: "STRONG_FIT" | "TOP_N" | "SELECTED",
     candidateIds?: string[],
-    candidates?: CandidateInterviewSchedule[]
+    candidates?: CandidateInterviewSchedule[],
+    options?: { confirmedDuplicateInvites?: boolean }
   ) {
     if (!activeJob) {
       setError("Choose a processed job before sending interviews.")
@@ -1488,13 +1498,27 @@ export default function AiScreeningPage() {
           batchId: currentBatchId || undefined,
           matchScope: getMatchScope(includeAllCandidates),
           includeAllCandidates,
+          confirmDuplicateInvites: options?.confirmedDuplicateInvites === true,
         }),
       })
-      const payload = await readJsonResponse(response)
+      const payload = await response.json().catch(() => null)
+
+      if (payload?.warning) {
+        setDuplicateInviteWarnings(payload.duplicates ?? [])
+        setNotice("")
+        return "warning"
+      }
+
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.error?.message || payload?.message || "Bulk interview send failed")
+      }
+
       setSendResults(payload.data?.results ?? [])
       setNotice(`${payload.data?.sentCount ?? 0} interview invitations sent.`)
+      return "sent"
     } catch (sendError) {
       setError(sendError instanceof Error ? sendError.message : "Bulk interview send failed")
+      return "failed"
     } finally {
       setSending(false)
     }
@@ -1561,6 +1585,7 @@ export default function AiScreeningPage() {
     }
 
     setPendingSendCandidateIds(uniqueCandidateIds)
+    setDuplicateInviteWarnings([])
     resetSendScheduleState()
     setConfirmSendOpen(true)
   }
@@ -1568,6 +1593,7 @@ export default function AiScreeningPage() {
   function closeSendConfirmation() {
     setConfirmSendOpen(false)
     setPendingSendCandidateIds([])
+    setDuplicateInviteWarnings([])
     resetSendScheduleState()
   }
 
@@ -1661,9 +1687,28 @@ export default function AiScreeningPage() {
       return
     }
 
+    const result = await handleSendInterviews("SELECTED", candidateIds, candidates)
+
+    if (result !== "warning") {
+      setConfirmSendOpen(false)
+      setPendingSendCandidateIds([])
+      setDuplicateInviteWarnings([])
+      resetSendScheduleState()
+    }
+  }
+
+  async function confirmDuplicateBulkSend() {
+    const candidateIds = pendingSendMatches.map((match) => match.candidateId)
+    const candidates = buildCandidateInterviewSchedules()
+
+    if (!candidates || candidateIds.length === 0) {
+      return
+    }
+
+    setDuplicateInviteWarnings([])
     setConfirmSendOpen(false)
     setPendingSendCandidateIds([])
-    await handleSendInterviews("SELECTED", candidateIds, candidates)
+    await handleSendInterviews("SELECTED", candidateIds, candidates, { confirmedDuplicateInvites: true })
     resetSendScheduleState()
   }
 
@@ -2703,6 +2748,18 @@ export default function AiScreeningPage() {
                 {pendingSendMissingEmailCount} selected candidate{pendingSendMissingEmailCount === 1 ? "" : "s"} without email will be skipped.
               </p>
             ) : null}
+            {duplicateInviteWarnings.length > 0 ? (
+              <div className="mt-3 rounded-xl border border-amber-400/25 bg-amber-500/10 px-3 py-3 text-sm text-amber-100">
+                <p>
+                  You already sent an interview to this candidate on {formatDateTime(duplicateInviteWarnings[0].lastSentAt)}. Send again?
+                </p>
+                {duplicateInviteWarnings.length > 1 ? (
+                  <p className="mt-2 text-xs text-amber-100/80">
+                    {duplicateInviteWarnings.length - 1} more selected candidate{duplicateInviteWarnings.length - 1 === 1 ? "" : "s"} also have previous invites.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
 
             <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/35 p-4">
               <p className="text-sm font-semibold text-white">Interview Access</p>
@@ -2847,12 +2904,12 @@ export default function AiScreeningPage() {
               </button>
               <button
                 type="button"
-                onClick={confirmPendingSend}
+                onClick={duplicateInviteWarnings.length > 0 ? confirmDuplicateBulkSend : confirmPendingSend}
                 disabled={isBusy || pendingSendMatches.length === 0}
                 className="inline-flex items-center gap-2 rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300/50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <SendIcon />
-                Send Interview
+                {duplicateInviteWarnings.length > 0 ? "Send Again" : "Send Interview"}
               </button>
             </div>
           </div>

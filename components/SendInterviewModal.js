@@ -106,6 +106,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
   const [emailStatus, setEmailStatus] = useState(null)
   const [emailError, setEmailError] = useState("")
   const [copyStatus, setCopyStatus] = useState("idle")
+  const [duplicateWarning, setDuplicateWarning] = useState(null)
 
   const resetModalState = () => {
     setJobId("")
@@ -121,6 +122,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
     setEmailStatus(null)
     setEmailError("")
     setCopyStatus("idle")
+    setDuplicateWarning(null)
     resetFileInputs()
   }
 
@@ -188,7 +190,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
     }
   }
 
-  const handleSubmit = async () => {
+  const handleSubmit = async ({ confirmedDuplicate = false } = {}) => {
     setError("")
     setLink("")
     setEmailStatus(null)
@@ -222,6 +224,25 @@ export default function SendInterviewModal({ isOpen, onClose }) {
 
     try {
       setLoading(true)
+
+      if (!confirmedDuplicate) {
+        const duplicateResponse = await fetch(buildAuthUrl("/api/interview/invite-duplicate", searchParams), {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ email }),
+        })
+        const duplicateData = await duplicateResponse.json().catch(() => null)
+
+        if (duplicateResponse.ok && duplicateData?.warning) {
+          setDuplicateWarning({
+            lastSentAt: duplicateData.lastSentAt,
+          })
+          return
+        }
+      }
 
       const candidateFormData = new FormData()
       candidateFormData.append("fullName", name)
@@ -275,11 +296,18 @@ export default function SendInterviewModal({ isOpen, onClose }) {
           accessType,
           startTime: accessType === "SCHEDULED" ? startTime : undefined,
           endTime: accessType === "SCHEDULED" ? endTime : undefined,
+          confirmDuplicateInvite: confirmedDuplicate,
         }),
       })
 
       const interviewText = await interviewResponse.text()
       const interviewData = interviewText ? JSON.parse(interviewText) : {}
+      if (interviewData?.warning) {
+        setDuplicateWarning({
+          lastSentAt: interviewData.lastSentAt,
+        })
+        return
+      }
       if (!interviewResponse.ok) {
         throw new Error(interviewData.message || interviewData.error?.message || "Failed to generate link")
       }
@@ -294,6 +322,20 @@ export default function SendInterviewModal({ isOpen, onClose }) {
       setLoading(false)
     }
   }
+
+  const duplicateWarningDate = duplicateWarning?.lastSentAt
+    ? new Date(duplicateWarning.lastSentAt)
+    : null
+  const duplicateWarningDateLabel =
+    duplicateWarningDate && !Number.isNaN(duplicateWarningDate.getTime())
+      ? duplicateWarningDate.toLocaleDateString("en-IN", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : "an earlier date"
 
   const copy = async () => {
     const copied = await copyText(link)
@@ -322,6 +364,35 @@ export default function SendInterviewModal({ isOpen, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 py-6 backdrop-blur-md">
+      {duplicateWarning ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/80 px-4 backdrop-blur-sm" role="dialog" aria-modal="true">
+          <div className="w-full max-w-md rounded-2xl border border-amber-400/25 bg-[#0b1220] p-6 shadow-[0_24px_80px_rgba(2,6,23,0.55)]">
+            <h3 className="text-lg font-semibold text-white">Duplicate invite detected</h3>
+            <p className="mt-3 text-sm leading-6 text-slate-300">
+              You already sent an interview to this candidate on {duplicateWarningDateLabel}. Send again?
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setDuplicateWarning(null)}
+                className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDuplicateWarning(null)
+                  void handleSubmit({ confirmedDuplicate: true })
+                }}
+                className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-100"
+              >
+                Send Again
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <div className="relative w-full max-w-2xl overflow-hidden rounded-[28px] border border-cyan-500/20 bg-[#06101f]/95 text-white shadow-[0_0_60px_rgba(37,99,235,0.18)]">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.14),transparent_30%)]" />
         <div className="relative max-h-[88vh] overflow-y-auto p-5 sm:p-6 md:p-8">
@@ -501,7 +572,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
 
               {error && <p className="mb-2 text-sm text-red-400">{error}</p>}
               <button
-                onClick={handleSubmit}
+                onClick={() => handleSubmit()}
                 disabled={loading || jobsLoading}
                 className="w-full rounded-2xl bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 px-4 py-3 text-base font-medium text-white shadow-[0_18px_30px_rgba(37,99,235,0.3)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
               >

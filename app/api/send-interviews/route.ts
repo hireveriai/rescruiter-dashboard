@@ -3,7 +3,11 @@ import { NextResponse } from "next/server"
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
 import { ApiError } from "@/lib/server/errors"
 import { errorResponse } from "@/lib/server/response"
-import { createInterviewLink } from "@/lib/server/services/interview.service"
+import {
+  createInterviewLink,
+  getLatestInterviewInviteForEmail,
+  recordInterviewInviteTracking,
+} from "@/lib/server/services/interview.service"
 import { sendAiScreeningInterviewEmail } from "@/lib/server/ai-screening/email"
 import {
   getMatchesForInviteSelection,
@@ -145,6 +149,8 @@ export async function POST(request: Request) {
       match_scope?: string
       includeAllCandidates?: boolean
       include_all_candidates?: boolean
+      confirmDuplicateInvites?: boolean
+      confirm_duplicate_invites?: boolean
     }
     const screeningJobId = String(body.job_id ?? body.jobId ?? "").trim()
     const mode = body.mode ?? body.selection ?? "STRONG_FIT"
@@ -153,6 +159,7 @@ export async function POST(request: Request) {
     const legacyIncludeAllCandidates = body.includeAllCandidates === true || body.include_all_candidates === true
     const matchScope = resolveMatchScope(body.matchScope ?? body.match_scope, legacyIncludeAllCandidates)
     const includeAllCandidates = matchScope === "GLOBAL"
+    const confirmDuplicateInvites = body.confirmDuplicateInvites === true || body.confirm_duplicate_invites === true
     const candidateSchedules = parseCandidateSchedules(body.candidates)
     const candidateIds = Array.isArray(body.candidateIds)
       ? body.candidateIds
@@ -196,6 +203,48 @@ export async function POST(request: Request) {
       throw new ApiError(400, "NO_MATCHES_SELECTED", "No matched candidates were selected")
     }
 
+    if (!confirmDuplicateInvites) {
+      const duplicateWarnings = (
+        await Promise.all(
+          selected.map(async (match) => {
+            const email = normalizeEmail(match.email)
+
+            if (!email) {
+              return null
+            }
+
+            const latest = await getLatestInterviewInviteForEmail({
+              companyId: auth.organizationId,
+              candidateEmail: email,
+            })
+
+            return latest
+              ? {
+                  candidateId: match.candidate_id,
+                  candidateName: match.candidate_name,
+                  email,
+                  lastSentAt: latest.lastSentAt,
+                  jobId: latest.jobId,
+                }
+              : null
+          })
+        )
+      ).filter((warning): warning is NonNullable<typeof warning> => Boolean(warning))
+
+      if (duplicateWarnings.length > 0) {
+        return NextResponse.json(
+          {
+            success: false,
+            warning: true,
+            duplicates: duplicateWarnings,
+            lastSentAt: duplicateWarnings[0]?.lastSentAt ?? null,
+            message: "Duplicate interview invite detected for this company",
+          },
+          { status: 409 }
+        )
+      }
+    }
+
     const results = await processInBatches(selected, BATCH_SIZE, async (match) => {
       const email = normalizeEmail(match.email)
 
@@ -236,6 +285,12 @@ export async function POST(request: Request) {
             matchId: match.match_id,
             emailStatus: "SENT",
           })
+          await recordInterviewInviteTracking({
+            interviewId: link.interviewId,
+            companyId: auth.organizationId,
+            jobId: interviewJobId,
+            candidateEmail: email,
+          })
 
           return {
             candidateId: match.candidate_id,
@@ -254,6 +309,12 @@ export async function POST(request: Request) {
             inviteLink: link.link,
             matchId: match.match_id,
             emailStatus: "FAILED",
+          })
+          await recordInterviewInviteTracking({
+            interviewId: link.interviewId,
+            companyId: auth.organizationId,
+            jobId: interviewJobId,
+            candidateEmail: email,
           })
 
           return {

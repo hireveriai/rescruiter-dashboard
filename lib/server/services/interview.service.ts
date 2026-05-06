@@ -49,6 +49,11 @@ type CreateInterviewLinkRow = {
   link: string
 }
 
+type LatestInviteByEmailRow = {
+  sent_at: string
+  job_id: string | null
+}
+
 type ValidateInterviewTokenRow = {
   valid: boolean
   reason: ValidateInterviewTokenResult["reason"] | null
@@ -85,6 +90,128 @@ type InviteColumnSupportRow = {
   has_updated_at: boolean
   has_revoked_at: boolean
   has_revoked_reason: boolean
+}
+
+type InviteTrackingColumnSupportRow = {
+  has_company_id: boolean
+  has_job_id: boolean
+  has_candidate_email: boolean
+  has_sent_at: boolean
+}
+
+async function getInviteTrackingColumnSupport() {
+  const rows = await prisma.$queryRaw<InviteTrackingColumnSupportRow[]>(Prisma.sql`
+    select
+      exists (
+        select 1 from information_schema.columns
+        where table_schema = 'public' and table_name = 'interview_invites' and column_name = 'company_id'
+      ) as has_company_id,
+      exists (
+        select 1 from information_schema.columns
+        where table_schema = 'public' and table_name = 'interview_invites' and column_name = 'job_id'
+      ) as has_job_id,
+      exists (
+        select 1 from information_schema.columns
+        where table_schema = 'public' and table_name = 'interview_invites' and column_name = 'candidate_email'
+      ) as has_candidate_email,
+      exists (
+        select 1 from information_schema.columns
+        where table_schema = 'public' and table_name = 'interview_invites' and column_name = 'sent_at'
+      ) as has_sent_at
+  `)
+
+  return rows[0] ?? {
+    has_company_id: false,
+    has_job_id: false,
+    has_candidate_email: false,
+    has_sent_at: false,
+  }
+}
+
+export async function getLatestInterviewInviteForEmail(input: {
+  companyId: string
+  candidateEmail: string
+}) {
+  const email = input.candidateEmail.trim().toLowerCase()
+
+  if (!input.companyId || !email) {
+    return null
+  }
+
+  const columnSupport = await getInviteTrackingColumnSupport()
+
+  const rows = columnSupport.has_company_id && columnSupport.has_candidate_email && columnSupport.has_sent_at
+    ? await prisma.$queryRaw<LatestInviteByEmailRow[]>(Prisma.sql`
+        select sent_at::text, job_id::text
+        from public.interview_invites
+        where company_id = ${input.companyId}::uuid
+          and lower(candidate_email) = ${email}
+        order by sent_at desc
+        limit 1
+      `)
+    : await prisma.$queryRaw<LatestInviteByEmailRow[]>(Prisma.sql`
+        select
+          coalesce(ii.created_at, ii.expires_at)::text as sent_at,
+          i.job_id::text as job_id
+        from public.interview_invites ii
+        inner join public.interviews i
+          on i.interview_id = ii.interview_id
+        inner join public.candidates c
+          on c.candidate_id = i.candidate_id
+        where i.organization_id = ${input.companyId}::uuid
+          and lower(c.email) = ${email}
+        order by coalesce(ii.created_at, ii.expires_at) desc
+        limit 1
+      `)
+
+  const latest = rows[0]
+
+  return latest?.sent_at
+    ? {
+        lastSentAt: latest.sent_at,
+        jobId: latest.job_id,
+      }
+    : null
+}
+
+export async function recordInterviewInviteTracking(input: {
+  interviewId: string
+  companyId: string
+  jobId: string
+  candidateEmail: string
+}) {
+  const columnSupport = await getInviteTrackingColumnSupport()
+
+  if (!columnSupport.has_company_id || !columnSupport.has_candidate_email || !columnSupport.has_sent_at) {
+    return null
+  }
+
+  const rows = columnSupport.has_job_id
+    ? await prisma.$queryRaw<{ invite_id: string }[]>(Prisma.sql`
+    update public.interview_invites
+    set
+      company_id = ${input.companyId}::uuid,
+      job_id = case
+        when exists (select 1 from public.jobs where id = ${input.jobId}::uuid)
+          then ${input.jobId}::uuid
+        else job_id
+      end,
+      candidate_email = lower(${input.candidateEmail}),
+      sent_at = coalesce(sent_at, now())
+    where interview_id = ${input.interviewId}::uuid
+    returning invite_id::text
+  `)
+    : await prisma.$queryRaw<{ invite_id: string }[]>(Prisma.sql`
+    update public.interview_invites
+    set
+      company_id = ${input.companyId}::uuid,
+      candidate_email = lower(${input.candidateEmail}),
+      sent_at = coalesce(sent_at, now())
+    where interview_id = ${input.interviewId}::uuid
+    returning invite_id::text
+  `)
+
+  return rows[0]?.invite_id ?? null
 }
 
 async function getInviteForOrganization(inviteId: string, organizationId: string) {

@@ -8,7 +8,11 @@ import { prisma } from "@/lib/server/prisma"
 import { errorResponse, successResponse } from "@/lib/server/response"
 import { parseResumeText } from "@/lib/server/resumeParser"
 import { jobPositionsSupportIsActive } from "@/lib/server/services/jobs"
-import { createInterviewLink } from "@/lib/server/services/interview.service"
+import {
+  createInterviewLink,
+  getLatestInterviewInviteForEmail,
+  recordInterviewInviteTracking,
+} from "@/lib/server/services/interview.service"
 import { sanitizeSkillList } from "@/lib/server/ai/skills"
 import {
   clearInterviewQuestions,
@@ -121,6 +125,7 @@ export async function POST(request: Request) {
     const payload = await request.json()
     const jobId = String(payload.jobId ?? payload.job_id ?? "").trim()
     const candidateId = String(payload.candidateId ?? payload.candidate_id ?? "").trim()
+    const confirmDuplicateInvite = payload.confirmDuplicateInvite === true || payload.confirm_duplicate_invite === true
 
     if (!jobId) {
       throw new ApiError(400, "INVALID_JOB_ID", "jobId is required")
@@ -162,6 +167,24 @@ export async function POST(request: Request) {
 
     if (!candidate?.email) {
       throw new ApiError(404, "CANDIDATE_NOT_FOUND", "Candidate not found for this organization")
+    }
+
+    const duplicateInvite = await getLatestInterviewInviteForEmail({
+      companyId: auth.organizationId,
+      candidateEmail: candidate.email,
+    })
+
+    if (duplicateInvite && !confirmDuplicateInvite) {
+      return NextResponse.json(
+        {
+          success: false,
+          warning: true,
+          lastSentAt: duplicateInvite.lastSentAt,
+          jobId: duplicateInvite.jobId,
+          message: "Duplicate interview invite detected for this company",
+        },
+        { status: 409 }
+      )
     }
 
     await revokeActiveInvitesForCandidate({
@@ -349,6 +372,13 @@ export async function POST(request: Request) {
       console.error("Failed to send interview email", emailFailure)
       emailError = emailFailure instanceof Error ? emailFailure.message : "Unknown email delivery error"
     }
+
+    await recordInterviewInviteTracking({
+      interviewId: result.interviewId,
+      companyId: auth.organizationId,
+      jobId,
+      candidateEmail: candidate.email,
+    })
 
     return successResponse(
       {
