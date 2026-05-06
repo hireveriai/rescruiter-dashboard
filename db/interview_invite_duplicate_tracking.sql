@@ -6,7 +6,7 @@ alter table if exists public.interview_invites
 update public.interview_invites ii
 set
   company_id = coalesce(ii.company_id, i.organization_id),
-  candidate_email = coalesce(ii.candidate_email, ii.email, c.email),
+  candidate_email = lower(coalesce(ii.candidate_email, ii.email, c.email)),
   sent_at = coalesce(ii.sent_at, ii.ai_screening_sent_at, ii.created_at)
 from public.interviews i
 left join public.candidates c
@@ -15,13 +15,13 @@ where i.interview_id = ii.interview_id;
 
 update public.interview_invites
 set
-  candidate_email = coalesce(candidate_email, email),
+  candidate_email = lower(coalesce(candidate_email, email)),
   sent_at = coalesce(sent_at, ai_screening_sent_at, created_at)
 where candidate_email is null
    or sent_at is null;
 
-create index if not exists idx_interview_invites_company_email_sent_at
-  on public.interview_invites (company_id, lower(candidate_email), sent_at desc);
+create index if not exists idx_interview_invites_company_candidate_email_sent_at
+  on public.interview_invites (company_id, candidate_email, sent_at desc);
 
 create index if not exists idx_interview_invites_company_job_sent_at
   on public.interview_invites (company_id, job_id, sent_at desc);

@@ -180,7 +180,6 @@ export async function POST(request: Request) {
           success: false,
           warning: true,
           lastSentAt: duplicateInvite.lastSentAt,
-          jobId: duplicateInvite.jobId,
           message: "Duplicate interview invite detected for this company",
         },
         { status: 409 }

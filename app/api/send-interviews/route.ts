@@ -224,7 +224,6 @@ export async function POST(request: Request) {
                   candidateName: match.candidate_name,
                   email,
                   lastSentAt: latest.lastSentAt,
-                  jobId: latest.jobId,
                 }
               : null
           })

@@ -14,7 +14,6 @@ const functionErrorMap: Record<string, { statusCode: number; message: string }> 
   INTERVIEW_INVITE_NOT_FOUND: { statusCode: 404, message: "Interview invite not found" },
   INTERVIEW_INVITE_LOCKED: { statusCode: 409, message: "Interview invite can no longer be changed" },
   INTERVIEW_INVITE_INACTIVE: { statusCode: 409, message: "Interview invite is no longer active" },
-  USER_ORG_MISMATCH: { statusCode: 400, message: "User already exists under a different organization" },
   ORGANIZATION_MISMATCH: { statusCode: 400, message: "candidate and job must belong to the same organization" },
   TEMPLATE_NOT_FOUND: { statusCode: 404, message: "No active evaluation template found" },
   INVALID_TIME: { statusCode: 400, message: "Invalid interview time window" },

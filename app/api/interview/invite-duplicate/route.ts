@@ -23,7 +23,6 @@ export async function POST(request: Request) {
       success: true,
       warning: Boolean(latest),
       lastSentAt: latest?.lastSentAt ?? null,
-      jobId: latest?.jobId ?? null,
     })
   } catch (error) {
     return errorResponse(error)

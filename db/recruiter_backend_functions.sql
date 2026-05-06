@@ -192,11 +192,7 @@ returns table (
 language plpgsql
 as $$
 declare
-  v_existing_user_id uuid;
-  v_existing_user_org uuid;
   v_candidate_id uuid;
-  v_first_name text;
-  v_last_name text;
 begin
   if not exists (
     select 1
@@ -205,48 +201,6 @@ begin
       and jp.organization_id = p_organization_id
   ) then
     raise exception 'JOB_NOT_FOUND: job not found for this organization';
-  end if;
-
-  v_first_name := split_part(trim(p_full_name), ' ', 1);
-  v_last_name := nullif(trim(substring(trim(p_full_name) from char_length(v_first_name) + 1)), '');
-
-  select u.user_id, u.organization_id
-  into v_existing_user_id, v_existing_user_org
-  from public.users u
-  where lower(u.email) = lower(p_email)
-  limit 1;
-
-  if v_existing_user_id is not null and v_existing_user_org <> p_organization_id then
-    raise exception 'USER_ORG_MISMATCH: user already exists under a different organization';
-  end if;
-
-  if v_existing_user_id is null then
-    insert into public.users (
-      organization_id,
-      full_name,
-      email,
-      role,
-      is_active,
-      first_name,
-      last_name
-    )
-    values (
-      p_organization_id,
-      p_full_name,
-      lower(p_email),
-      'CANDIDATE',
-      true,
-      nullif(v_first_name, ''),
-      v_last_name
-    )
-    returning users.user_id into v_existing_user_id;
-  else
-    update public.users
-    set
-      full_name = p_full_name,
-      first_name = nullif(v_first_name, ''),
-      last_name = v_last_name
-    where user_id = v_existing_user_id;
   end if;
 
   select c.candidate_id
