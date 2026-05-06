@@ -1075,9 +1075,6 @@ export default function AiScreeningPage() {
     setUploadRows([])
     setFlowStep("UPLOAD")
     setResumeState("IDLE")
-    setSelectedExistingJobId("")
-    setActiveJob(null)
-    setRestoredActiveJobId("")
     setCurrentBatchId("")
     setUploadedCandidateIds([])
     setMatches([])
@@ -1125,6 +1122,8 @@ export default function AiScreeningPage() {
       setError("Choose PDF or DOCX resumes before uploading.")
       return
     }
+
+    const selectedJobIdForUpload = selectedExistingJobId
 
     try {
       setUploading(true)
@@ -1182,8 +1181,12 @@ export default function AiScreeningPage() {
       setFlowStep("JD_READY")
       setNotice(`${uploadedCount} resumes parsed and saved. Select a job and analyze it next.`)
 
-      if (AUTO_RUN && batchId && uploadedCount > 0 && hasSelectedJob && !isProcessingJD && !isMatching) {
-        const job = await processJobIntelligence({ batchId, runMatchAfter: false })
+      if (AUTO_RUN && batchId && uploadedCount > 0 && selectedJobIdForUpload && !isProcessingJD && !isMatching) {
+        const job = await processJobIntelligence({
+          batchId,
+          existingJobId: selectedJobIdForUpload,
+          runMatchAfter: false,
+        })
 
         if (job) {
           await runMatching(job, {
@@ -1262,9 +1265,12 @@ export default function AiScreeningPage() {
 
   async function processJobIntelligence(options?: {
     batchId?: string
+    existingJobId?: string
     runMatchAfter?: boolean
   }): Promise<ScreeningJob | null> {
     const batchId = options?.batchId ?? currentBatchId
+    const existingJobId = options?.existingJobId ?? selectedExistingJobId
+    const existingJob = existingJobs.find((job) => job.jobId === existingJobId) ?? selectedExistingJob
 
     if (!batchId) {
       setError("Upload resumes and select a job first")
@@ -1272,7 +1278,7 @@ export default function AiScreeningPage() {
       return null
     }
 
-    if (!hasSelectedJob) {
+    if (!existingJobId) {
       setError("Select or create a job first")
       setPipelineErrorStep("job")
       return null
@@ -1288,9 +1294,9 @@ export default function AiScreeningPage() {
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          existingJobId: selectedExistingJobId,
-          title: selectedExistingJob?.jobTitle || undefined,
-          description: selectedExistingJob?.jobDescription || undefined,
+          existingJobId,
+          title: existingJob?.jobTitle || undefined,
+          description: existingJob?.jobDescription || undefined,
         }),
       })
       const payload = await readJsonResponse(response)

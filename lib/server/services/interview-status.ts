@@ -12,6 +12,8 @@ type AttemptStatusInput = {
 
 type DeriveInterviewStatusInput = {
   interviewStatus: string | null
+  questionStatus?: string | null
+  emailStatus?: string | null
   latestAttempt?: AttemptStatusInput | null
   latestInvite?: InviteStatusInput | null
 }
@@ -35,12 +37,24 @@ export function isAttemptCompleted(attempt: AttemptStatusInput) {
 
 export function deriveInterviewStatus({
   interviewStatus,
+  questionStatus,
+  emailStatus,
   latestAttempt,
   latestInvite,
 }: DeriveInterviewStatusInput) {
   const normalizedInterviewStatus = normalizeStatus(interviewStatus)
+  const normalizedQuestionStatus = normalizeStatus(questionStatus)
+  const normalizedEmailStatus = normalizeStatus(emailStatus)
   const normalizedInviteStatus = normalizeStatus(latestInvite?.status)
   const hasStartedAttempt = Boolean(latestAttempt?.attemptId)
+
+  if (normalizedInterviewStatus === "FAILED" || normalizedQuestionStatus === "FAILED") {
+    return "PREPARATION_FAILED"
+  }
+
+  if (normalizedInterviewStatus === "PREPARING" || normalizedQuestionStatus === "GENERATING") {
+    return "PREPARING_INTERVIEW"
+  }
 
   if (normalizedInterviewStatus === "COMPLETED" || (latestAttempt ? isAttemptCompleted(latestAttempt) : false)) {
     return "COMPLETED"
@@ -52,6 +66,18 @@ export function deriveInterviewStatus({
 
   if (hasStartedAttempt) {
     return "IN_PROGRESS"
+  }
+
+  if (normalizedInterviewStatus === "READY" && normalizedEmailStatus === "FAILED") {
+    return "EMAIL_FAILED"
+  }
+
+  if (normalizedEmailStatus === "SENDING") {
+    return "SENDING_EMAIL"
+  }
+
+  if (normalizedInterviewStatus === "READY") {
+    return "READY"
   }
 
   if (latestInvite && !isInviteUsable(latestInvite) && normalizedInviteStatus) {

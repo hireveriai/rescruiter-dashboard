@@ -2,25 +2,21 @@ import { NextResponse } from "next/server"
 import { Prisma } from "@prisma/client"
 
 import { ApiError } from "@/lib/server/errors"
-import { generateInterviewQuestions } from "@/lib/interview-flow"
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
 import { prisma } from "@/lib/server/prisma"
 import { errorResponse, successResponse } from "@/lib/server/response"
-import { parseResumeText } from "@/lib/server/resumeParser"
 import { jobPositionsSupportIsActive } from "@/lib/server/services/jobs"
 import {
-  createInterviewLink,
   getLatestInterviewInviteForEmail,
   recordInterviewInviteTracking,
 } from "@/lib/server/services/interview.service"
 import { sanitizeSkillList } from "@/lib/server/ai/skills"
 import {
-  clearInterviewQuestions,
-  fetchExistingInterviewQuestions,
-  replaceInterviewQuestions,
-  verifyInterviewQuestionsPersisted,
-} from "@/lib/server/services/interview-questions"
-import { sendInterviewEmail } from "@/lib/services/email.service"
+  createPreparingInterview,
+  markEmailFailed,
+  prepareInterviewQuestionsWithRetry,
+  sendInterviewEmailForInterview,
+} from "@/lib/server/services/interview-workflow"
 
 type CandidateEmailRow = {
   full_name: string | null
@@ -41,9 +37,6 @@ type ActiveInviteRow = {
   interview_id: string
 }
 
-const CREATE_LINK_AI_TIMEOUT_MS = 12000
-const MIN_QUESTION_COUNT = 5
-
 function areSkillListsEquivalent(left: string[], right: string[]) {
   if (left.length !== right.length) {
     return false
@@ -53,25 +46,6 @@ function areSkillListsEquivalent(left: string[], right: string[]) {
   const rightSorted = [...right].map((item) => item.trim().toLowerCase()).sort()
 
   return leftSorted.every((value, index) => value === rightSorted[index])
-}
-
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
-  let timeoutHandle: ReturnType<typeof setTimeout> | undefined
-
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<T>((_, reject) => {
-        timeoutHandle = setTimeout(() => {
-          reject(new Error(timeoutMessage))
-        }, timeoutMs)
-      }),
-    ])
-  } finally {
-    if (timeoutHandle) {
-      clearTimeout(timeoutHandle)
-    }
-  }
 }
 
 async function revokeActiveInvitesForCandidate(params: {
@@ -228,163 +202,108 @@ export async function POST(request: Request) {
     `)
     const interviewDurationMinutes = durationRows[0]?.interview_duration_minutes ?? undefined
 
-    const result = await createInterviewLink({
-      ...payload,
+    const idempotencyKey = String(
+      payload.idempotencyKey ??
+        payload.idempotency_key ??
+        request.headers.get("Idempotency-Key") ??
+        ""
+    ).trim() || null
+
+    const result = await createPreparingInterview({
       organizationId: auth.organizationId,
+      jobId,
+      candidateId,
+      accessType: payload.accessType ?? payload.access_type ?? "FLEXIBLE",
+      startTime: payload.startTime ?? payload.start_time ?? null,
+      endTime: payload.endTime ?? payload.end_time ?? null,
+      idempotencyKey,
     })
 
     const useAiQuestions =
       payload.use_ai_generation ?? payload.useAiGeneration ?? payload.use_ai ?? payload.useAi ?? true
-    const normalizedApiKey = (process.env.OPENAI_API_KEY ?? "").trim().replace(/^"|"$/g, "")
-    const requireAiQuestions =
-      payload.require_ai_generation ??
-      payload.requireAiGeneration ??
-      payload.require_ai ??
-      payload.requireAi ??
-      (Boolean(normalizedApiKey) && useAiQuestions)
-    let aiStatus = useAiQuestions ? "completed" : "disabled"
 
-    if (useAiQuestions && result.interviewId) {
-      const runAiGeneration = async () => {
-        const existingQuestions: string[] = []
-        const candidateResumeText =
-          String(
-            payload.candidate_resume_text ??
-              payload.candidateResumeText ??
-              payload.resume_text ??
-              payload.resumeText ??
-              candidate.resume_text ??
-              ""
-          ) || undefined
-        const parsedResumeSkills = candidateResumeText
-          ? parseResumeText(candidateResumeText).skills ?? []
-          : []
-        const resumeSkills = Array.isArray(payload.resume_skills ?? payload.resumeSkills)
-          ? (payload.resume_skills ?? payload.resumeSkills)
-          : parsedResumeSkills
-
-        try {
-          console.log("INTERVIEW ID:", result.interviewId)
-          const cleared = await clearInterviewQuestions(result.interviewId)
-          if (!cleared) {
-            throw new Error("Failed to clear existing interview questions")
-          }
-
-          const generatedQuestions = await withTimeout(
-            generateInterviewQuestions(
-              {
-                jobDescription: job.jobDescription ?? undefined,
-                coreSkills: sanitizedJobSkills,
-                candidateResumeText,
-                candidateResumeSkills: resumeSkills,
-                candidateId,
-                jobId,
-                experienceLevel: String(job.experienceLevelId ?? ""),
-                totalQuestions: payload.total_questions ?? payload.totalQuestions,
-                interviewDurationMinutes:
-                  payload.interview_duration_minutes ??
-                  payload.interviewDurationMinutes ??
-                  interviewDurationMinutes ??
-                  undefined,
-                jobTitle: job.jobTitle ?? undefined,
-                previousQuestions: existingQuestions,
-                similarityThreshold: payload.similarity_threshold ?? payload.similarityThreshold ?? 0.8,
-              }
-            ),
-            CREATE_LINK_AI_TIMEOUT_MS,
-            "AI question generation timed out"
-          )
-          console.log("GENERATED QUESTIONS:", generatedQuestions)
-          if (generatedQuestions.length < MIN_QUESTION_COUNT) {
-            throw new Error("Generated too few questions")
-          }
-
-          const replaced = await replaceInterviewQuestions(result.interviewId, generatedQuestions)
-          if (!replaced) {
-            const existingQuestions = await fetchExistingInterviewQuestions(result.interviewId)
-            console.error("Generated questions but replacement save failed.", {
-              interviewId: result.interviewId,
-              existingQuestionCount: existingQuestions.length,
-            })
-            aiStatus = "save_failed"
-
-            if (existingQuestions.length === 0) {
-              throw new ApiError(500, "INTERVIEW_QUESTIONS_SAVE_FAILED", "Generated interview questions could not be saved")
-            }
-
-            return
-          }
-
-          const verified = await verifyInterviewQuestionsPersisted(result.interviewId, generatedQuestions)
-          if (!verified) {
-            const existingQuestions = await fetchExistingInterviewQuestions(result.interviewId)
-            console.error("Interview questions were replaced but verification failed.", {
-              interviewId: result.interviewId,
-              existingQuestionCount: existingQuestions.length,
-            })
-            aiStatus = "verification_failed"
-
-            if (existingQuestions.length === 0) {
-              throw new ApiError(
-                500,
-                "INTERVIEW_QUESTIONS_VERIFY_FAILED",
-                "Interview questions were generated but could not be verified after saving"
-              )
-            }
-          }
-        } catch (generationError) {
-          console.error("Interview question generation failed during create-link", generationError)
-          aiStatus = "failed"
-
-          if (generationError instanceof ApiError) {
-            throw generationError
-          }
-
-          if (requireAiQuestions) {
-            throw new ApiError(
-              502,
-              "AI_GENERATION_REQUIRED",
-              generationError instanceof Error ? generationError.message : "AI question generation failed"
-            )
-          }
-        }
-      }
-
-      await runAiGeneration()
+    if (result.reused && result.status !== "READY") {
+      return successResponse(
+        {
+          ...result,
+          emailSent: result.emailStatus === "SENT",
+          emailError: result.emailStatus === "FAILED" ? result.lastError : null,
+        },
+        202
+      )
     }
 
-    let emailSent = false
-    let emailError: string | null = null
-
-    try {
-      if (!candidate?.email) {
-        emailError = "Candidate email not found"
-      } else {
-        await sendInterviewEmail({
-          to: candidate.email,
-          name: candidate.full_name || "Candidate",
-          link: result.link,
+    if (!result.reused) {
+      if (useAiQuestions) {
+        await prepareInterviewQuestionsWithRetry({
+          organizationId: auth.organizationId,
+          interviewId: result.interviewId,
+          candidateResumeText:
+            String(
+              payload.candidate_resume_text ??
+                payload.candidateResumeText ??
+                payload.resume_text ??
+                payload.resumeText ??
+                candidate.resume_text ??
+                ""
+            ) || undefined,
+          resumeSkills: Array.isArray(payload.resume_skills ?? payload.resumeSkills)
+            ? (payload.resume_skills ?? payload.resumeSkills)
+            : undefined,
+          totalQuestions: payload.total_questions ?? payload.totalQuestions,
+          interviewDurationMinutes:
+            payload.interview_duration_minutes ??
+            payload.interviewDurationMinutes ??
+            interviewDurationMinutes ??
+            undefined,
+          similarityThreshold: payload.similarity_threshold ?? payload.similarityThreshold ?? 0.8,
         })
-        emailSent = true
+      } else {
+        await prisma.$executeRaw(Prisma.sql`
+          update public.interviews
+          set
+            status = 'READY',
+            question_status = 'COMPLETED',
+            failure_reason = null,
+            last_error = null,
+            questions_generated_at = now(),
+            is_active = true
+          where interview_id = ${result.interviewId}::uuid
+            and organization_id = ${auth.organizationId}::uuid
+        `)
+        await prisma.$executeRaw(Prisma.sql`
+          update public.interview_invites
+          set status = 'ACTIVE'
+          where interview_id = ${result.interviewId}::uuid
+        `)
       }
-    } catch (emailFailure) {
-      console.error("Failed to send interview email", emailFailure)
-      emailError = emailFailure instanceof Error ? emailFailure.message : "Unknown email delivery error"
     }
 
-    await recordInterviewInviteTracking({
-      interviewId: result.interviewId,
-      companyId: auth.organizationId,
-      jobId,
-      candidateEmail: candidate.email,
-    })
+    const emailResult =
+      result.reused && result.emailStatus === "SENT"
+        ? { emailSent: true, emailError: null, link: result.link }
+        : await sendInterviewEmailForInterview(auth.organizationId, result.interviewId)
+
+    if (emailResult.emailSent) {
+      await recordInterviewInviteTracking({
+        interviewId: result.interviewId,
+        companyId: auth.organizationId,
+        jobId,
+        candidateEmail: candidate.email,
+      })
+    } else {
+      await markEmailFailed(auth.organizationId, result.interviewId, emailResult.emailError ?? "Email delivery failed")
+    }
 
     return successResponse(
       {
         ...result,
-        aiStatus,
-        emailSent,
-        emailError,
+        status: "READY",
+        questionStatus: "COMPLETED",
+        emailStatus: emailResult.emailSent ? "SENT" : "FAILED",
+        emailSent: emailResult.emailSent,
+        emailError: emailResult.emailError,
+        link: emailResult.link || result.link,
       },
       201
     )

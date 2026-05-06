@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
+import { copyText } from "@/lib/client/copy-to-clipboard"
 import { formatDateTime } from "@/lib/client/date-format"
 
 import Navbar from "../../components/Navbar"
@@ -13,6 +14,10 @@ import SendInterviewModal from "../../components/SendInterviewModal"
 function getStatusBadge(status) {
   const normalized = String(status ?? "PENDING").toUpperCase()
   if (normalized === "COMPLETED") return "border-emerald-500/20 bg-emerald-500/10 text-emerald-300"
+  if (normalized === "READY") return "border-emerald-500/20 bg-emerald-500/10 text-emerald-300"
+  if (normalized === "EMAIL_FAILED") return "border-amber-500/20 bg-amber-500/10 text-amber-300"
+  if (normalized === "PREPARATION_FAILED") return "border-rose-500/20 bg-rose-500/10 text-rose-300"
+  if (normalized === "PREPARING_INTERVIEW" || normalized === "SENDING_EMAIL") return "border-blue-500/20 bg-blue-500/10 text-blue-300"
   if (normalized === "IN_PROGRESS") return "border-blue-500/20 bg-blue-500/10 text-blue-300"
   if (normalized === "FLAGGED") return "border-rose-500/20 bg-rose-500/10 text-rose-300"
   if (["EXPIRED", "REVOKED", "USED"].includes(normalized)) return "border-slate-600 bg-slate-800/60 text-slate-300"
@@ -20,6 +25,12 @@ function getStatusBadge(status) {
 }
 
 function formatStatusText(status) {
+  const normalized = String(status ?? "PENDING").toUpperCase()
+  if (normalized === "PREPARING_INTERVIEW") return "Preparing Interview"
+  if (normalized === "EMAIL_FAILED") return "Email Failed"
+  if (normalized === "PREPARATION_FAILED") return "Preparation Failed"
+  if (normalized === "SENDING_EMAIL") return "Sending Email"
+  if (normalized === "READY") return "Ready"
   return String(status ?? "PENDING").replace(/_/g, " ")
 }
 
@@ -240,11 +251,27 @@ export default function InterviewsPage() {
   const [interviews, setInterviews] = useState([])
   const [selectedInterview, setSelectedInterview] = useState(null)
   const [openSendInterview, setOpenSendInterview] = useState(false)
+  const [actionBusyId, setActionBusyId] = useState("")
+  const [copiedInterviewId, setCopiedInterviewId] = useState("")
+
+  async function loadInterviews() {
+    const response = await fetch(buildAuthUrl("/api/dashboard/interviews", searchParams), {
+      credentials: "include",
+      cache: "no-store",
+    })
+    const data = await response.json()
+    if (data.success) {
+      setInterviews(data.data ?? [])
+    }
+  }
 
   useEffect(() => {
     let isMounted = true
 
-    fetch(buildAuthUrl("/api/dashboard/interviews", searchParams))
+    fetch(buildAuthUrl("/api/dashboard/interviews", searchParams), {
+      credentials: "include",
+      cache: "no-store",
+    })
       .then((res) => res.json())
       .then((data) => {
         if (isMounted && data.success) {
@@ -280,11 +307,61 @@ export default function InterviewsPage() {
 
   const stats = useMemo(() => {
     const total = interviews.length
-    const active = interviews.filter((item) => ["PENDING", "IN_PROGRESS"].includes(String(item.status).toUpperCase())).length
+    const active = interviews.filter((item) => ["PENDING", "READY", "EMAIL_FAILED", "IN_PROGRESS", "SENDING_EMAIL", "PREPARING_INTERVIEW"].includes(String(item.status).toUpperCase())).length
     const completed = interviews.filter(isCompletedInterview).length
 
     return { total, active, completed }
   }, [interviews])
+
+  async function retryPreparation(interview) {
+    try {
+      setActionBusyId(interview.interviewId)
+      const response = await fetch(buildAuthUrl(`/api/interview/${interview.interviewId}/retry-preparation`, searchParams), {
+        method: "POST",
+        credentials: "include",
+      })
+      const data = await response.json()
+      if (!response.ok || !data.success) {
+        throw new Error(data?.error?.message || data?.message || "Failed to retry preparation")
+      }
+      await loadInterviews()
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Failed to retry preparation")
+    } finally {
+      setActionBusyId("")
+    }
+  }
+
+  async function retryEmail(interview) {
+    try {
+      setActionBusyId(interview.interviewId)
+      const response = await fetch(buildAuthUrl(`/api/interview/${interview.interviewId}/retry-email`, searchParams), {
+        method: "POST",
+        credentials: "include",
+      })
+      const data = await response.json()
+      if (!response.ok || !data.success) {
+        throw new Error(data?.error?.message || data?.message || "Failed to retry email")
+      }
+      await loadInterviews()
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Failed to retry email")
+    } finally {
+      setActionBusyId("")
+    }
+  }
+
+  async function copyLink(interview) {
+    if (!interview.link) {
+      return
+    }
+
+    const copied = await copyText(interview.link)
+    if (copied) {
+      setCopiedInterviewId(interview.interviewId)
+      setTimeout(() => setCopiedInterviewId(""), 1600)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-[#08111f] text-white">
@@ -372,6 +449,43 @@ export default function InterviewsPage() {
                             aria-label={`View completed summary for ${interview.candidateName}`}
                           >
                             View
+                          </button>
+                        ) : String(interview.status).toUpperCase() === "PREPARATION_FAILED" ? (
+                          <button
+                            type="button"
+                            onClick={() => retryPreparation(interview)}
+                            disabled={actionBusyId === interview.interviewId}
+                            className="inline-flex items-center justify-center rounded-xl border border-rose-400/25 bg-rose-400/10 px-4 py-2 text-sm font-semibold text-rose-100 transition hover:border-rose-300/50 hover:bg-rose-400/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {actionBusyId === interview.interviewId ? "Retrying..." : "Retry Prep"}
+                          </button>
+                        ) : String(interview.status).toUpperCase() === "EMAIL_FAILED" ? (
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => copyLink(interview)}
+                              disabled={!interview.link}
+                              className="inline-flex items-center justify-center rounded-xl border border-slate-600 bg-slate-900/70 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:border-slate-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {copiedInterviewId === interview.interviewId ? "Copied" : "Copy Link"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => retryEmail(interview)}
+                              disabled={actionBusyId === interview.interviewId}
+                              className="inline-flex items-center justify-center rounded-xl border border-amber-400/25 bg-amber-400/10 px-3 py-2 text-sm font-semibold text-amber-100 transition hover:border-amber-300/50 hover:bg-amber-400/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {actionBusyId === interview.interviewId ? "Sending..." : "Retry Email"}
+                            </button>
+                          </div>
+                        ) : String(interview.status).toUpperCase() === "READY" ? (
+                          <button
+                            type="button"
+                            onClick={() => copyLink(interview)}
+                            disabled={!interview.link}
+                            className="inline-flex items-center justify-center rounded-xl border border-slate-600 bg-slate-900/70 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-slate-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {copiedInterviewId === interview.interviewId ? "Copied" : "Copy Link"}
                           </button>
                         ) : (
                           <span className="text-slate-600">-</span>

@@ -1,4 +1,4 @@
-﻿generator client {
+generator client {
   provider = "prisma-client-js"
 }
 
@@ -145,11 +145,19 @@ model Interview {
   maxAttempts       Int?              @default(1) @map("max_attempts")
   proctoringEnabled Boolean?          @default(true) @map("proctoring_enabled")
   status            String?           @map("status")
+  questionStatus    String?           @default("PENDING") @map("question_status")
+  emailStatus       String?           @default("PENDING") @map("email_status")
+  failureReason     String?           @map("failure_reason")
+  lastError         String?           @map("last_error")
+  questionsGeneratedAt DateTime?      @db.Timestamptz(6) @map("questions_generated_at")
+  emailSentAt       DateTime?         @db.Timestamptz(6) @map("email_sent_at")
+  idempotencyKey    String?           @map("idempotency_key")
   job               JobPosition       @relation(fields: [jobId], references: [jobId])
   candidate         Candidate         @relation(fields: [candidateId], references: [candidateId])
   attempts          InterviewAttempt[]
   interviewInvites  InterviewInvite[]
 
+  @@unique([organizationId, idempotencyKey])
   @@map("interviews")
 }
 

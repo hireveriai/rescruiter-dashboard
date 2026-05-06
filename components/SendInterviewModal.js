@@ -91,6 +91,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
   const searchParams = useAuthSearchParams()
   const primaryFileInputRef = useRef(null)
   const changeFileInputRef = useRef(null)
+  const submissionKeyRef = useRef("")
   const [jobs, setJobs] = useState([])
   const [jobsLoading, setJobsLoading] = useState(false)
   const [jobId, setJobId] = useState("")
@@ -123,6 +124,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
     setEmailError("")
     setCopyStatus("idle")
     setDuplicateWarning(null)
+    submissionKeyRef.current = ""
     resetFileInputs()
   }
 
@@ -224,6 +226,12 @@ export default function SendInterviewModal({ isOpen, onClose }) {
 
     try {
       setLoading(true)
+      if (!submissionKeyRef.current) {
+        submissionKeyRef.current =
+          typeof crypto !== "undefined" && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+      }
 
       if (!confirmedDuplicate) {
         const duplicateResponse = await fetch(buildAuthUrl("/api/interview/invite-duplicate", searchParams), {
@@ -297,6 +305,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
           startTime: accessType === "SCHEDULED" ? startTime : undefined,
           endTime: accessType === "SCHEDULED" ? endTime : undefined,
           confirmDuplicateInvite: confirmedDuplicate,
+          idempotencyKey: submissionKeyRef.current,
         }),
       })
 

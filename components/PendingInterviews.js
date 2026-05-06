@@ -33,6 +33,23 @@ function getInterviewTypeLabel(item) {
   return "Flexible"
 }
 
+function getWorkflowStatus(item) {
+  const status = String(item.status ?? "").toUpperCase()
+  if (status === "PREPARATION_FAILED") return "Preparation Failed"
+  if (status === "EMAIL_FAILED") return "Email Failed"
+  if (status === "SENDING_EMAIL") return "Sending Email"
+  if (status === "PREPARING_INTERVIEW" || String(item.questionStatus ?? "").toUpperCase() === "GENERATING") return "Preparing Interview"
+  return "Ready"
+}
+
+function getWorkflowStatusClass(item) {
+  const status = String(item.status ?? "").toUpperCase()
+  if (status === "PREPARATION_FAILED") return "border-rose-400/25 bg-rose-500/10 text-rose-200"
+  if (status === "EMAIL_FAILED") return "border-amber-400/25 bg-amber-500/10 text-amber-200"
+  if (status === "SENDING_EMAIL" || status === "PREPARING_INTERVIEW") return "border-blue-400/25 bg-blue-500/10 text-blue-200"
+  return "border-emerald-400/25 bg-emerald-500/10 text-emerald-200"
+}
+
 function BaseModalShell({ title, subtitle, children, onClose, width = "max-w-2xl" }) {
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/80 px-4 backdrop-blur-md">
@@ -222,7 +239,7 @@ function DeleteInterviewModal({ isOpen, item, reason, onReasonChange, onClose, o
   )
 }
 
-function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, onEdit, onDelete, nowTick, copiedLink, busyInviteId }) {
+function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, onEdit, onDelete, onRetryPreparation, onRetryEmail, nowTick, copiedLink, busyInviteId }) {
   if (!isOpen) {
     return null
   }
@@ -250,9 +267,10 @@ function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, onEdit, o
         </div>
 
         <div className="max-h-[75vh] overflow-auto px-8 py-6">
-          <div className="grid grid-cols-[1.1fr_1fr_1.25fr_1fr_0.9fr_minmax(220px,1.35fr)] gap-4 border-b border-white/10 pb-3 text-xs uppercase tracking-[0.24em] text-slate-500">
+          <div className="grid grid-cols-[1.1fr_1fr_1.1fr_1.25fr_0.9fr_0.9fr_minmax(260px,1.45fr)] gap-4 border-b border-white/10 pb-3 text-xs uppercase tracking-[0.24em] text-slate-500">
             <div>Candidate</div>
             <div>Job</div>
+            <div>Status</div>
             <div>Interview Type</div>
             <div>Created</div>
             <div>Expiry</div>
@@ -268,18 +286,33 @@ function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, onEdit, o
               interviews.map((item) => (
                 <div
                   key={item.inviteId}
-                  className="grid grid-cols-[1.1fr_1fr_1.25fr_1fr_0.9fr_minmax(220px,1.35fr)] gap-4 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-4 text-sm text-slate-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+                  className="grid grid-cols-[1.1fr_1fr_1.1fr_1.25fr_0.9fr_0.9fr_minmax(260px,1.45fr)] gap-4 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-4 text-sm text-slate-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
                 >
                   <div className="font-medium text-white">{item.candidateName}</div>
                   <div className="text-slate-300">{item.jobTitle}</div>
+                  <div>
+                    <span className={`rounded-full border px-3 py-1 text-xs font-medium ${getWorkflowStatusClass(item)}`}>
+                      {getWorkflowStatus(item)}
+                    </span>
+                  </div>
                   <div className="text-cyan-200">{getInterviewTypeLabel(item)}</div>
                   <div className="whitespace-nowrap text-slate-400">{formatDateTime(item.createdAt)}</div>
                   <div className="text-amber-300">{getExpiryLabel(item.expiresAt, nowTick)}</div>
                   <div className="flex flex-nowrap items-center gap-2 whitespace-nowrap">
-                    <button type="button" onClick={() => onCopy(item.link)} className="shrink-0 rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1.5 text-cyan-100 transition hover:bg-cyan-400/20">
+                    {String(item.status).toUpperCase() === "PREPARATION_FAILED" ? (
+                      <button type="button" disabled={busyInviteId === item.inviteId} onClick={() => onRetryPreparation(item)} className="shrink-0 rounded-full border border-rose-400/30 bg-rose-500/10 px-3 py-1.5 text-rose-100 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60">
+                        {busyInviteId === item.inviteId ? "Retrying..." : "Retry Prep"}
+                      </button>
+                    ) : null}
+                    <button type="button" disabled={!item.link} onClick={() => onCopy(item.link)} className="shrink-0 rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1.5 text-cyan-100 transition hover:bg-cyan-400/20 disabled:cursor-not-allowed disabled:opacity-50">
                       {copiedLink === item.link ? "Copied" : "Copy"}
                     </button>
-                    <button type="button" onClick={() => onEdit(item)} className="shrink-0 rounded-full border border-indigo-400/30 bg-indigo-400/10 px-3 py-1.5 text-indigo-100 transition hover:bg-indigo-400/20">
+                    {String(item.status).toUpperCase() === "EMAIL_FAILED" ? (
+                      <button type="button" disabled={busyInviteId === item.inviteId} onClick={() => onRetryEmail(item)} className="shrink-0 rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1.5 text-amber-100 transition hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-60">
+                        {busyInviteId === item.inviteId ? "Sending..." : "Retry Email"}
+                      </button>
+                    ) : null}
+                    <button type="button" disabled={String(item.status).toUpperCase() === "PREPARATION_FAILED"} onClick={() => onEdit(item)} className="shrink-0 rounded-full border border-indigo-400/30 bg-indigo-400/10 px-3 py-1.5 text-indigo-100 transition hover:bg-indigo-400/20 disabled:cursor-not-allowed disabled:opacity-50">
                       Edit
                     </button>
                     <button type="button" disabled={busyInviteId === item.inviteId} onClick={() => onDelete(item)} className="shrink-0 rounded-full border border-rose-400/30 bg-rose-500/10 px-3 py-1.5 text-rose-100 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60">
@@ -386,6 +419,54 @@ export default function PendingInterviews({ initialPendingInterviews }) {
     }
 
     console.error("Failed to copy interview link")
+  }
+
+  async function handleRetryPreparation(item) {
+    try {
+      setBusyInviteId(item.inviteId)
+      const response = await fetch(buildAuthUrl(`/api/interview/${item.interviewId}/retry-preparation`, searchParams), {
+        method: "POST",
+        credentials: "include",
+      })
+      const data = await response.json()
+      if (!response.ok || !data.success) {
+        throw new Error(data?.error?.message || data?.message || "Failed to retry preparation")
+      }
+      await loadPendingInterviews()
+    } catch (error) {
+      setNotice({
+        open: true,
+        title: "Unable to retry preparation",
+        message: error instanceof Error ? error.message : "Failed to retry preparation",
+        tone: "error",
+      })
+    } finally {
+      setBusyInviteId("")
+    }
+  }
+
+  async function handleRetryEmail(item) {
+    try {
+      setBusyInviteId(item.inviteId)
+      const response = await fetch(buildAuthUrl(`/api/interview/${item.interviewId}/retry-email`, searchParams), {
+        method: "POST",
+        credentials: "include",
+      })
+      const data = await response.json()
+      if (!response.ok || !data.success) {
+        throw new Error(data?.error?.message || data?.message || "Failed to retry email")
+      }
+      await loadPendingInterviews()
+    } catch (error) {
+      setNotice({
+        open: true,
+        title: "Unable to retry email",
+        message: error instanceof Error ? error.message : "Failed to retry email",
+        tone: "error",
+      })
+    } finally {
+      setBusyInviteId("")
+    }
   }
 
   function handleEditOpen(item) {
@@ -520,6 +601,7 @@ export default function PendingInterviews({ initialPendingInterviews }) {
               <tr>
                 <th className="p-4 text-left">Candidate</th>
                 <th className="p-4 text-left">Job</th>
+                <th className="p-4 text-left">Status</th>
                 <th className="p-4 text-left">Interview Type</th>
                 <th className="p-4 text-left">Link Expiry</th>
                 <th className="p-4 text-left">Action</th>
@@ -529,7 +611,7 @@ export default function PendingInterviews({ initialPendingInterviews }) {
             <tbody>
               {previewInterviews.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-4 text-center text-gray-400">
+                  <td colSpan={6} className="p-4 text-center text-gray-400">
                     No invited interviews
                   </td>
                 </tr>
@@ -538,14 +620,29 @@ export default function PendingInterviews({ initialPendingInterviews }) {
                   <tr key={item.inviteId} className="border-b border-gray-800">
                     <td className="p-4">{item.candidateName}</td>
                     <td className="p-4 text-gray-300">{item.jobTitle}</td>
+                    <td className="p-4">
+                      <span className={`rounded-full border px-3 py-1 text-xs font-medium ${getWorkflowStatusClass(item)}`}>
+                        {getWorkflowStatus(item)}
+                      </span>
+                    </td>
                     <td className="p-4 text-cyan-200">{getInterviewTypeLabel(item)}</td>
                     <td className="p-4 text-yellow-400">{getExpiryLabel(item.expiresAt, nowTick)}</td>
                     <td className="p-4">
                       <div className="flex flex-nowrap items-center gap-3 whitespace-nowrap text-xs sm:text-sm">
-                        <button className="shrink-0 text-blue-400" onClick={() => handleCopy(item.link)}>
+                        {String(item.status).toUpperCase() === "PREPARATION_FAILED" ? (
+                          <button className="shrink-0 text-rose-300" disabled={busyInviteId === item.inviteId} onClick={() => handleRetryPreparation(item)}>
+                            {busyInviteId === item.inviteId ? "Retrying..." : "Retry Prep"}
+                          </button>
+                        ) : null}
+                        <button className="shrink-0 text-blue-400 disabled:text-slate-600" disabled={!item.link} onClick={() => handleCopy(item.link)}>
                           {copiedLink === item.link ? "Copied" : "Copy"}
                         </button>
-                        <button className="shrink-0 text-indigo-300" onClick={() => handleEditOpen(item)}>
+                        {String(item.status).toUpperCase() === "EMAIL_FAILED" ? (
+                          <button className="shrink-0 text-amber-300" disabled={busyInviteId === item.inviteId} onClick={() => handleRetryEmail(item)}>
+                            {busyInviteId === item.inviteId ? "Sending..." : "Retry Email"}
+                          </button>
+                        ) : null}
+                        <button className="shrink-0 text-indigo-300 disabled:text-slate-600" disabled={String(item.status).toUpperCase() === "PREPARATION_FAILED"} onClick={() => handleEditOpen(item)}>
                           Edit
                         </button>
                         <button className="shrink-0 text-rose-300" onClick={() => handleDeleteOpen(item)}>
@@ -568,6 +665,8 @@ export default function PendingInterviews({ initialPendingInterviews }) {
         onCopy={handleCopy}
         onEdit={handleEditOpen}
         onDelete={handleDeleteOpen}
+        onRetryPreparation={handleRetryPreparation}
+        onRetryEmail={handleRetryEmail}
         nowTick={nowTick}
         copiedLink={copiedLink}
         busyInviteId={busyInviteId}

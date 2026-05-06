@@ -4,6 +4,7 @@ import { getRecruiterRequestContext } from "@/lib/server/auth-context"
 import { evaluateCandidateResponse } from "@/lib/server/ai/interview-flow"
 import { errorResponse } from "@/lib/server/response"
 import { prisma } from "@/lib/server/prisma"
+import { getInterviewAppUrl } from "@/lib/server/interview-url"
 import { deriveInterviewStatus } from "@/lib/server/services/interview-status"
 
 type InterviewAnswerSummaryRow = {
@@ -326,6 +327,7 @@ export async function GET(request: Request) {
             expiresAt: true,
             status: true,
             usedAt: true,
+            token: true,
           },
         },
         attempts: {
@@ -350,8 +352,14 @@ export async function GET(request: Request) {
       const evaluation = latestAttempt?.evaluation ?? null
       const answerSummaries = latestAttempt?.attemptId ? answerSummaryMap.get(latestAttempt.attemptId) ?? [] : []
       const calculatedResult = deriveResultFromAnswerSummaries(answerSummaries)
+      const questionStatus = interview.questionStatus ?? null
+      const emailStatus = interview.emailStatus ?? null
+      const failureReason = interview.failureReason ?? null
+      const lastError = interview.lastError ?? null
       const status = deriveInterviewStatus({
         interviewStatus: interview.status,
+        questionStatus,
+        emailStatus,
         latestAttempt,
         latestInvite,
       })
@@ -363,6 +371,15 @@ export async function GET(request: Request) {
         jobTitle: interview.job.jobTitle,
         status,
         interviewStatus: interview.status ?? null,
+        questionStatus,
+        emailStatus,
+        failureReason,
+        lastError,
+        questionsGeneratedAt: interview.questionsGeneratedAt ?? null,
+        emailSentAt: interview.emailSentAt ?? null,
+        inviteStatus: latestInvite?.status ?? null,
+        inviteToken: latestInvite?.token ?? null,
+        link: latestInvite?.token ? `${getInterviewAppUrl().replace(/\/$/, "")}/interview/${latestInvite.token}` : null,
         attemptStatus: latestAttempt?.status ?? null,
         accessType: latestInvite?.accessType ?? "FLEXIBLE",
         startTime: latestInvite?.startTime ?? null,

@@ -16,6 +16,12 @@ type DashboardPipelineItem = {
   endTime: Date | string | null
   expiresAt: Date | string | null
   createdAt: Date | string | null
+  interviewId: string
+  status: string | null
+  questionStatus: string | null
+  emailStatus: string | null
+  failureReason: string | null
+  lastError: string | null
 }
 
 type DashboardPipelineData = {
@@ -91,6 +97,8 @@ export async function getDashboardPipelineData(
     const latestInvite = interview.interviewInvites[0] ?? null
     const latestAttempt = interview.attempts[0] ?? null
     const normalizedInterviewStatus = String(interview.status ?? "").toUpperCase()
+    const normalizedQuestionStatus = String(interview.questionStatus ?? "").toUpperCase()
+    const normalizedEmailStatus = String(interview.emailStatus ?? "").toUpperCase()
     const hasStartedAttempt = Boolean(latestAttempt?.attemptId)
     const completedInterview =
       normalizedInterviewStatus === "COMPLETED" ||
@@ -99,6 +107,27 @@ export async function getDashboardPipelineData(
 
     if (flaggedInterview) {
       flagged += 1
+    }
+
+    if (normalizedInterviewStatus === "FAILED" || normalizedQuestionStatus === "FAILED") {
+      pendingInterviews.push({
+        inviteId: latestInvite?.inviteId ?? interview.interviewId,
+        link: latestInvite?.token ? `${appUrl}/interview/${latestInvite.token}` : "",
+        interviewId: interview.interviewId,
+        candidateName: interview.candidate?.fullName ?? "-",
+        jobTitle: interview.job?.jobTitle ?? "-",
+        accessType: latestInvite?.accessType ?? "FLEXIBLE",
+        startTime: latestInvite?.startTime ?? null,
+        endTime: latestInvite?.endTime ?? null,
+        expiresAt: latestInvite?.expiresAt ?? null,
+        createdAt: latestInvite?.createdAt ?? interview.createdAt,
+        status: "PREPARATION_FAILED",
+        questionStatus: interview.questionStatus ?? null,
+        emailStatus: interview.emailStatus ?? null,
+        failureReason: interview.failureReason ?? null,
+        lastError: interview.lastError ?? null,
+      })
+      return
     }
 
     if (completedInterview) {
@@ -111,11 +140,12 @@ export async function getDashboardPipelineData(
       return
     }
 
-    if (latestInvite && isInviteUsable(latestInvite)) {
+    if (normalizedInterviewStatus === "READY" && latestInvite && isInviteUsable(latestInvite)) {
       pending += 1
       pendingInterviews.push({
         inviteId: latestInvite.inviteId,
         link: `${appUrl}/interview/${latestInvite.token}`,
+        interviewId: interview.interviewId,
         candidateName: interview.candidate?.fullName ?? "-",
         jobTitle: interview.job?.jobTitle ?? "-",
         accessType: latestInvite.accessType ?? "FLEXIBLE",
@@ -123,6 +153,11 @@ export async function getDashboardPipelineData(
         endTime: latestInvite.endTime,
         expiresAt: latestInvite.expiresAt,
         createdAt: latestInvite.createdAt ?? interview.createdAt,
+        status: normalizedEmailStatus === "FAILED" ? "EMAIL_FAILED" : normalizedEmailStatus === "SENDING" ? "SENDING_EMAIL" : "READY",
+        questionStatus: interview.questionStatus ?? null,
+        emailStatus: interview.emailStatus ?? null,
+        failureReason: interview.failureReason ?? null,
+        lastError: interview.lastError ?? null,
       })
     }
   })
