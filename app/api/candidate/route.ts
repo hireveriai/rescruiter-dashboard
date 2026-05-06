@@ -257,7 +257,7 @@ export async function POST(req: Request) {
     }
 
     const hasIsActive = await jobPositionsSupportIsActive()
-    const jobs = await prisma.$queryRaw<JobLookupRow[]>(Prisma.sql`
+    const jobs = (await prisma.$queryRaw(Prisma.sql`
       select
         organization_id,
         ${hasIsActive ? Prisma.sql`is_active` : Prisma.sql`true`} as is_active
@@ -265,7 +265,7 @@ export async function POST(req: Request) {
       where job_id = ${jobId}::uuid
         and organization_id = ${auth.organizationId}::uuid
       limit 1
-    `)
+    `)) as JobLookupRow[]
     const job = jobs[0]
 
     if (!job) {
