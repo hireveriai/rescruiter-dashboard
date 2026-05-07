@@ -344,9 +344,18 @@ async function lookupDevBypassRecruiter(): Promise<RecruiterLookupRow | null> {
       select u.user_id::text as user_id,
              u.organization_id::text as organization_id
       from public.users u
+      left join public.job_positions jp
+        on jp.organization_id = u.organization_id
+      left join public.jobs sj
+        on sj.organization_id = u.organization_id
       where u.role in ('RECRUITER', 'ADMIN', 'ORG_OWNER')
         and u.is_active = true
-      order by u.created_at asc
+      group by u.user_id, u.organization_id, u.created_at
+      order by
+        max(sj.created_at) desc nulls last,
+        count(distinct sj.id) desc,
+        count(distinct jp.job_id) desc,
+        u.created_at asc
       limit 1
     `)
 

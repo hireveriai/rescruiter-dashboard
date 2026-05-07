@@ -34,13 +34,14 @@ async function resolveScreeningJobId(organizationId: string, input: {
 
   const sourceJobPositionId = String(input.sourceJobPositionId ?? "").trim()
 
+  const jobs = await getScreeningJobs(organizationId)
+
   if (!sourceJobPositionId) {
-    return ""
+    return jobs[0]?.id ?? ""
   }
 
-  const jobs = await getScreeningJobs(organizationId)
   const job = jobs.find((item) => item.id === sourceJobPositionId || item.sourceJobPositionId === sourceJobPositionId)
-  return job?.id ?? ""
+  return job?.id ?? jobs[0]?.id ?? ""
 }
 
 function resolveMatchScope(value: unknown, includeAllCandidates: boolean): MatchScope {
@@ -101,7 +102,7 @@ export async function GET(request: Request) {
     const includeAllCandidates = matchScope === "GLOBAL"
 
     if (!jobId) {
-      throw new ApiError(400, "JOB_NOT_SELECTED", "Job not selected")
+      throw new ApiError(400, "JD_NOT_PROCESSED", "Analyze a job before matching candidates")
     }
 
     const job = await getScreeningJob(auth.organizationId, jobId)
@@ -210,7 +211,7 @@ export async function POST(request: Request) {
         : []
 
     if (!jobId) {
-      throw new ApiError(400, "JOB_NOT_SELECTED", "Job not selected")
+      throw new ApiError(400, "JD_NOT_PROCESSED", "Analyze a job before matching candidates")
     }
 
     const job = await getScreeningJob(auth.organizationId, jobId)
