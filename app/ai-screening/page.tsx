@@ -275,12 +275,10 @@ function getDateTimeValue(value: string) {
   return Number.isNaN(date.getTime()) ? null : date
 }
 
-function UploadIcon() {
+function PlayIcon() {
   return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 16V4" />
-      <path d="m7 9 5-5 5 5" />
-      <path d="M20 16.5V19a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-2.5" />
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
+      <path d="M8 5.8v12.4c0 .9 1 1.4 1.7.9l9.2-6.2c.6-.4.6-1.3 0-1.7L9.7 4.9C9 4.4 8 4.9 8 5.8Z" />
     </svg>
   )
 }
@@ -1958,8 +1956,8 @@ export default function AiScreeningPage() {
                 disabled={isBusy}
                 className="inline-flex items-center gap-2 rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-4 py-2.5 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300/50 hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <UploadIcon />
-                {uploading ? "Uploading..." : "Upload Resumes"}
+                <PlayIcon />
+                {uploading ? "Uploading..." : "Start VERIS Screening"}
               </button>
             </div>
 
@@ -1986,7 +1984,7 @@ export default function AiScreeningPage() {
             >
               <input type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple className="sr-only" onChange={handleFileChange} disabled={isBusy} />
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-700 bg-slate-900/80 text-cyan-200">
-                <UploadIcon />
+                <PlayIcon />
               </div>
               <p className="mt-4 text-base font-semibold text-white">Drop PDF/DOCX resumes to begin screening</p>
               <p className="mt-2 max-w-md text-sm leading-6 text-slate-400">Files are stored in Supabase Storage, parsed, email-validated, and saved to the recruiter workspace.</p>

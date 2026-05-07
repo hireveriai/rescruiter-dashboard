@@ -7,7 +7,7 @@ type StepProgressProps = {
 }
 
 const steps = [
-  { key: "UPLOAD", label: "Upload Resumes" },
+  { key: "UPLOAD", label: "Start VERIS Screening" },
   { key: "JD_PROCESSED", label: "Analyze Job" },
   { key: "MATCHED", label: "Run Matching" },
 ] as const

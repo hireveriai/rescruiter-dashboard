@@ -458,6 +458,55 @@ async function resolveRequiredScreeningJobId(organizationId: string, jobId: stri
   throw new ApiError(400, "JD_NOT_PROCESSED", "Analyze a job before matching candidates")
 }
 
+async function ensureScreeningRunTables() {
+  await prisma.$executeRawUnsafe(`
+    create table if not exists public.screening_runs (
+      id uuid primary key default gen_random_uuid(),
+      organization_id uuid not null references public.organizations(organization_id) on delete cascade,
+      job_id uuid not null references public.jobs(id) on delete cascade,
+      batch_id uuid null,
+      created_by uuid null references public.users(user_id) on delete set null,
+      created_at timestamptz not null default now(),
+      total_candidates int not null default 0,
+      strong_fit_count int not null default 0,
+      avg_score numeric(5,2) not null default 0
+    )
+  `)
+
+  await prisma.$executeRawUnsafe(`
+    create table if not exists public.screening_run_matches (
+      id uuid primary key default gen_random_uuid(),
+      run_id uuid not null references public.screening_runs(id) on delete cascade,
+      organization_id uuid not null references public.organizations(organization_id) on delete cascade,
+      candidate_id uuid null references public.candidates(candidate_id) on delete set null,
+      match_snapshot jsonb not null,
+      created_at timestamptz not null default now()
+    )
+  `)
+
+  await prisma.$executeRawUnsafe(`
+    create index if not exists idx_screening_runs_org_job_created
+      on public.screening_runs (organization_id, job_id, created_at desc)
+  `)
+
+  await prisma.$executeRawUnsafe(`
+    create index if not exists idx_screening_runs_batch
+      on public.screening_runs (organization_id, batch_id)
+      where batch_id is not null
+  `)
+
+  await prisma.$executeRawUnsafe(`
+    create index if not exists idx_screening_run_matches_run
+      on public.screening_run_matches (run_id)
+  `)
+
+  await prisma.$executeRawUnsafe(`
+    create index if not exists idx_screening_run_matches_org_candidate
+      on public.screening_run_matches (organization_id, candidate_id)
+      where candidate_id is not null
+  `)
+}
+
 export async function getJobPositionForScreening(organizationId: string, jobId: string) {
   const rows = await prisma.$queryRaw<JobPositionRow[]>(Prisma.sql`
     select
@@ -886,6 +935,8 @@ export async function createScreeningRun(input: {
   batchId?: string | null
   matches: MatchResultRow[]
 }) {
+  await ensureScreeningRunTables()
+
   const jobId = await resolveRequiredScreeningJobId(input.organizationId, input.jobId)
   const batchId = normalizeUuid(input.batchId)
 
@@ -947,6 +998,8 @@ export async function getScreeningRuns(input: {
   jobId: string
   limit?: number
 }) {
+  await ensureScreeningRunTables()
+
   const jobId = await resolveRequiredScreeningJobId(input.organizationId, input.jobId)
 
   const rows = await prisma.$queryRaw<ScreeningRunRow[]>(Prisma.sql`
@@ -972,6 +1025,8 @@ export async function getScreeningRunMatches(input: {
   organizationId: string
   runId: string
 }) {
+  await ensureScreeningRunTables()
+
   const runId = normalizeUuid(input.runId)
 
   if (!runId) {
