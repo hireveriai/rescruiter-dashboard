@@ -11,3 +11,23 @@ create unique index if not exists idx_interviews_org_idempotency_key
   on public.interviews (organization_id, idempotency_key)
   where idempotency_key is not null;
 
+alter table public.interview_invites
+  drop constraint if exists interview_invites_status_check,
+  drop constraint if exists status_check;
+
+alter table public.interview_invites
+  add constraint interview_invites_status_check
+  check (
+    status = any (
+      array[
+        'ACTIVE',
+        'EXPIRED',
+        'USED',
+        'REVOKED',
+        'COMPLETED',
+        'CANCELLED',
+        'PREPARING',
+        'PREPARATION_FAILED'
+      ]::text[]
+    )
+  );

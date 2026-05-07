@@ -128,6 +128,31 @@ export async function ensureInterviewWorkflowSchema() {
       on public.interviews (organization_id, idempotency_key)
       where idempotency_key is not null
   `)
+
+  await prisma.$executeRawUnsafe(`
+    alter table public.interview_invites
+      drop constraint if exists interview_invites_status_check,
+      drop constraint if exists status_check
+  `)
+
+  await prisma.$executeRawUnsafe(`
+    alter table public.interview_invites
+      add constraint interview_invites_status_check
+      check (
+        status = any (
+          array[
+            'ACTIVE',
+            'EXPIRED',
+            'USED',
+            'REVOKED',
+            'COMPLETED',
+            'CANCELLED',
+            'PREPARING',
+            'PREPARATION_FAILED'
+          ]::text[]
+        )
+      )
+  `)
 }
 
 async function getWorkflowByIdempotencyKey(organizationId: string, idempotencyKey: string) {
