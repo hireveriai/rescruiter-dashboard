@@ -22,6 +22,8 @@ type ExistingJob = {
 
 type ScreeningJob = {
   id: string
+  jobId?: string
+  job_id?: string
   title: string
   description: string
   requiredSkills: string[]
@@ -216,6 +218,17 @@ function isUuid(value: string | null | undefined) {
 
 function findScreeningJobForSelection(jobs: ScreeningJob[], selectedJobId: string) {
   return jobs.find((job) => job.id === selectedJobId || job.sourceJobPositionId === selectedJobId) ?? null
+}
+
+function getScreeningJobId(job: (Partial<ScreeningJob> & Record<string, unknown>) | null | undefined) {
+  const candidates = [
+    job?.id,
+    job?.jobId,
+    job?.job_id,
+    job?.sourceJobPositionId,
+  ]
+
+  return candidates.find((value): value is string => typeof value === "string" && isUuid(value)) ?? ""
 }
 
 function isResumeReady(row: UploadRow) {
@@ -1008,7 +1021,13 @@ export default function AiScreeningPage() {
     () => findScreeningJobForSelection(screeningJobs, selectedExistingJobId),
     [screeningJobs, selectedExistingJobId]
   )
-  const resolvedActiveJob = activeJob ?? selectedScreeningJob
+  const activeJobMatchesSelection = Boolean(
+    activeJob &&
+      (!selectedExistingJobId ||
+        activeJob.id === selectedExistingJobId ||
+        activeJob.sourceJobPositionId === selectedExistingJobId)
+  )
+  const resolvedActiveJob = activeJobMatchesSelection ? activeJob : selectedScreeningJob ?? activeJob
   const hasUploadedResumes = Boolean(currentBatchId)
   const hasSelectedJob = Boolean(selectedExistingJobId)
   const isBusy = uploading || isProcessingJD || isMatching || savingNewJob || sending || cleanupBusy
@@ -1366,7 +1385,22 @@ export default function AiScreeningPage() {
     }
 
     try {
-      const jobForMatching = isUuid(job.id) ? job : selectedScreeningJob
+      const fallbackJob =
+        selectedScreeningJob ??
+        (restoredActiveJobId ? screeningJobs.find((item) => item.id === restoredActiveJobId) ?? null : null) ??
+        (selectedExistingJobId ? findScreeningJobForSelection(screeningJobs, selectedExistingJobId) : null)
+      const resolvedJobId =
+        getScreeningJobId(job) ||
+        getScreeningJobId(fallbackJob) ||
+        getScreeningJobId(activeJob) ||
+        (isUuid(restoredActiveJobId) ? restoredActiveJobId : "") ||
+        (isUuid(selectedExistingJobId) ? selectedExistingJobId : "")
+      const jobForMatching = resolvedJobId
+        ? ({
+            ...(fallbackJob ?? activeJob ?? job),
+            id: resolvedJobId,
+          } as ScreeningJob)
+        : null
 
       if (!jobForMatching || !isUuid(jobForMatching.id)) {
         setError("Analyze the selected job before matching candidates.")
@@ -1389,6 +1423,8 @@ export default function AiScreeningPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           job_id: jobForMatching.id,
+          jobId: jobForMatching.id,
+          sourceJobPositionId: selectedExistingJobId || jobForMatching.sourceJobPositionId || undefined,
           batchId: batchId || undefined,
           candidateIds,
           uploadFileNames,
@@ -1435,12 +1471,14 @@ export default function AiScreeningPage() {
   }
 
   async function handleMatchCandidates() {
-    if (!resolvedActiveJob) {
+    const jobForMatching = resolvedActiveJob ?? selectedScreeningJob ?? activeJob
+
+    if (!jobForMatching) {
       setError("Process a job description before matching candidates.")
       return
     }
 
-    await runMatching(resolvedActiveJob)
+    await runMatching(jobForMatching)
   }
 
   async function loadScreeningRun(run: ScreeningRun) {
@@ -2217,8 +2255,8 @@ export default function AiScreeningPage() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => activeJob ? void runMatching(activeJob) : undefined}
-                    disabled={isBusy || !activeJob || !hasUploadedResumes}
+                    onClick={() => resolvedActiveJob ? void runMatching(resolvedActiveJob) : undefined}
+                    disabled={isBusy || !resolvedActiveJob || !hasUploadedResumes}
                     className="rounded-xl border border-cyan-400/30 px-3 py-2 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-400/10 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Re-run matching

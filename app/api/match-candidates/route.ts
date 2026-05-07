@@ -11,6 +11,7 @@ import {
   getCandidatesForMatchingByUploadFiles,
   getMatchResults,
   getScreeningJob,
+  getScreeningJobs,
   getUploadBatchManifest,
   upsertCandidateJobMatch,
 } from "@/lib/server/ai-screening/service"
@@ -20,6 +21,27 @@ export const runtime = "nodejs"
 const BATCH_SIZE = 3
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 type MatchScope = "BATCH" | "GLOBAL"
+
+async function resolveScreeningJobId(organizationId: string, input: {
+  jobId?: string
+  sourceJobPositionId?: string
+}) {
+  const directJobId = String(input.jobId ?? "").trim()
+
+  if (directJobId) {
+    return directJobId
+  }
+
+  const sourceJobPositionId = String(input.sourceJobPositionId ?? "").trim()
+
+  if (!sourceJobPositionId) {
+    return ""
+  }
+
+  const jobs = await getScreeningJobs(organizationId)
+  const job = jobs.find((item) => item.id === sourceJobPositionId || item.sourceJobPositionId === sourceJobPositionId)
+  return job?.id ?? ""
+}
 
 function resolveMatchScope(value: unknown, includeAllCandidates: boolean): MatchScope {
   const normalized = typeof value === "string" ? value.trim().toUpperCase() : ""
@@ -51,7 +73,15 @@ export async function GET(request: Request) {
   try {
     const auth = await getRecruiterRequestContext(request)
     const url = new URL(request.url)
-    const jobId = String(url.searchParams.get("job_id") ?? url.searchParams.get("jobId") ?? "").trim()
+    const jobId = await resolveScreeningJobId(auth.organizationId, {
+      jobId: String(url.searchParams.get("job_id") ?? url.searchParams.get("jobId") ?? "").trim(),
+      sourceJobPositionId: String(
+        url.searchParams.get("sourceJobPositionId") ??
+          url.searchParams.get("source_job_position_id") ??
+          url.searchParams.get("existingJobId") ??
+          ""
+      ).trim(),
+    })
     const batchId = String(url.searchParams.get("batchId") ?? url.searchParams.get("batch_id") ?? "").trim()
     const candidateIds = String(url.searchParams.get("candidateIds") ?? url.searchParams.get("candidate_ids") ?? "")
       .split(",")
@@ -149,8 +179,21 @@ export async function POST(request: Request) {
       match_scope?: string
       includeAllCandidates?: boolean
       include_all_candidates?: boolean
+      sourceJobPositionId?: string
+      source_job_position_id?: string
+      existingJobId?: string
+      existing_job_id?: string
     }
-    const jobId = String(body.job_id ?? body.jobId ?? "").trim()
+    const jobId = await resolveScreeningJobId(auth.organizationId, {
+      jobId: String(body.job_id ?? body.jobId ?? "").trim(),
+      sourceJobPositionId: String(
+        body.sourceJobPositionId ??
+          body.source_job_position_id ??
+          body.existingJobId ??
+          body.existing_job_id ??
+          ""
+      ).trim(),
+    })
     const batchId = String(body.batchId ?? body.batch_id ?? "").trim()
     const legacyIncludeAllCandidates = body.includeAllCandidates === true || body.include_all_candidates === true
     const matchScope = resolveMatchScope(body.matchScope ?? body.match_scope, legacyIncludeAllCandidates)
