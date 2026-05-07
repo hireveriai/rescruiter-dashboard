@@ -283,6 +283,16 @@ function PlayIcon() {
   )
 }
 
+function UploadIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 16V4" />
+      <path d="m7 9 5-5 5 5" />
+      <path d="M20 16.5V19a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-2.5" />
+    </svg>
+  )
+}
+
 function SendIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
@@ -1822,6 +1832,8 @@ export default function AiScreeningPage() {
       setCompareCandidateIds([])
       setPendingSendCandidateIds([])
       setSendResults([])
+      setScreeningRuns([])
+      setSelectedRunId("")
       setConfirmSendOpen(false)
       setCompareModalOpen(false)
       setFlowStep("JD_PROCESSED")
@@ -1984,7 +1996,7 @@ export default function AiScreeningPage() {
             >
               <input type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple className="sr-only" onChange={handleFileChange} disabled={isBusy} />
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-700 bg-slate-900/80 text-cyan-200">
-                <PlayIcon />
+                <UploadIcon />
               </div>
               <p className="mt-4 text-base font-semibold text-white">Drop PDF/DOCX resumes to begin screening</p>
               <p className="mt-2 max-w-md text-sm leading-6 text-slate-400">Files are stored in Supabase Storage, parsed, email-validated, and saved to the recruiter workspace.</p>

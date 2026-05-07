@@ -142,7 +142,11 @@ model Interview {
   questionCount     Int?              @default(10) @map("question_count")
   aiStrictness      String?           @default("MEDIUM") @map("ai_strictness")
   resumeAiEnabled   Boolean?          @default(true) @map("resume_ai_enabled")
-  maxAttempts       Int?              @default(1) @map("max_attempts")
+  maxAttempts       Int?              @default(2) @map("max_attempts")
+  recoveryAllowed   Boolean           @default(true) @map("recovery_allowed")
+  recoveryUsed      Boolean           @default(false) @map("recovery_used")
+  finalStatus       String?           @map("final_status")
+  forensicTimelineId String?          @db.Uuid @map("forensic_timeline_id")
   proctoringEnabled Boolean?          @default(true) @map("proctoring_enabled")
   status            String?           @map("status")
   questionStatus    String?           @default("PENDING") @map("question_status")
@@ -156,6 +160,7 @@ model Interview {
   candidate         Candidate         @relation(fields: [candidateId], references: [candidateId])
   attempts          InterviewAttempt[]
   interviewInvites  InterviewInvite[]
+  recoveryEvents    InterviewRecoveryEvent[]
 
   @@unique([organizationId, idempotencyKey])
   @@map("interviews")
@@ -168,10 +173,49 @@ model InterviewAttempt {
   startedAt     DateTime             @default(now()) @db.Timestamptz(6) @map("started_at")
   endedAt       DateTime?            @db.Timestamptz(6) @map("ended_at")
   status        String               @map("status")
+  interruptionReason String?          @map("interruption_reason")
+  interruptionDetectedAt DateTime?    @db.Timestamptz(6) @map("interruption_detected_at")
+  completionPercentage Decimal?       @db.Decimal(6, 4) @map("completion_percentage")
+  transcriptStatus String             @default("PENDING") @map("transcript_status")
+  recordingStatus String              @default("PENDING") @map("recording_status")
+  timerRemainingSeconds Int?          @map("timer_remaining_seconds")
+  inheritedFromAttemptId String?      @db.Uuid @map("inherited_from_attempt_id")
+  recoveryLinkIssuedAt DateTime?      @db.Timestamptz(6) @map("recovery_link_issued_at")
+  recoveryLinkExpiresAt DateTime?     @db.Timestamptz(6) @map("recovery_link_expires_at")
+  recoveryDecision String?            @map("recovery_decision")
+  recoveryDecidedBy String?           @db.Uuid @map("recovery_decided_by")
+  recoveryDecidedAt DateTime?         @db.Timestamptz(6) @map("recovery_decided_at")
+  recoveryTokenHash String?           @map("recovery_token_hash")
+  recoveryTokenUsedAt DateTime?       @db.Timestamptz(6) @map("recovery_token_used_at")
+  recoveryPolicy Json                 @default("{}") @map("recovery_policy")
   interview     Interview            @relation(fields: [interviewId], references: [interviewId])
   evaluation    InterviewEvaluation?
+  inheritedFrom InterviewAttempt?     @relation("attempt_recovery_parent", fields: [inheritedFromAttemptId], references: [attemptId])
+  recoveryAttempts InterviewAttempt[] @relation("attempt_recovery_parent")
+  recoveryEvents InterviewRecoveryEvent[]
+  inheritedRecoveryEvents InterviewRecoveryEvent[] @relation("recovery_event_inherited_from")
 
   @@map("interview_attempts")
+}
+
+model InterviewRecoveryEvent {
+  recoveryEventId String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("recovery_event_id")
+  interviewId     String            @db.Uuid @map("interview_id")
+  attemptId       String?           @db.Uuid @map("attempt_id")
+  inheritedFromAttemptId String?    @db.Uuid @map("inherited_from_attempt_id")
+  eventType       String            @map("event_type")
+  classifier      String?
+  reason          String?
+  source          String            @default("system")
+  idempotencyKey  String?           @map("idempotency_key")
+  occurredAt      DateTime          @default(now()) @db.Timestamptz(6) @map("occurred_at")
+  actorId         String?           @db.Uuid @map("actor_id")
+  metadata        Json              @default("{}")
+  interview       Interview         @relation(fields: [interviewId], references: [interviewId])
+  attempt         InterviewAttempt? @relation(fields: [attemptId], references: [attemptId])
+  inheritedFrom   InterviewAttempt? @relation("recovery_event_inherited_from", fields: [inheritedFromAttemptId], references: [attemptId])
+
+  @@map("interview_recovery_events")
 }
 
 model InterviewEvaluation {

@@ -35,6 +35,7 @@ function getInterviewTypeLabel(item) {
 
 function getWorkflowStatus(item) {
   const status = String(item.status ?? "").toUpperCase()
+  if (status === "INTERRUPTED") return "Interrupted"
   if (status === "PREPARATION_FAILED") return "Preparation Failed"
   if (status === "EMAIL_FAILED") return "Email Failed"
   if (status === "SENDING_EMAIL") return "Sending Email"
@@ -44,6 +45,7 @@ function getWorkflowStatus(item) {
 
 function getWorkflowStatusClass(item) {
   const status = String(item.status ?? "").toUpperCase()
+  if (status === "INTERRUPTED") return "border-amber-300/30 bg-amber-500/10 text-amber-100"
   if (status === "PREPARATION_FAILED") return "border-rose-400/25 bg-rose-500/10 text-rose-200"
   if (status === "EMAIL_FAILED") return "border-amber-400/25 bg-amber-500/10 text-amber-200"
   if (status === "SENDING_EMAIL" || status === "PREPARING_INTERVIEW") return "border-blue-400/25 bg-blue-500/10 text-blue-200"
@@ -84,7 +86,7 @@ function NoticeModal({ open, title, message, onClose, tone = "error" }) {
 
   return (
     <BaseModalShell title={title} subtitle={null} onClose={onClose} width="max-w-xl">
-      <div className={`rounded-2xl border p-4 text-sm ${toneClass}`}>
+      <div className={`whitespace-pre-line rounded-2xl border p-4 text-sm ${toneClass}`}>
         {message}
       </div>
       <div className="mt-5 flex justify-end">
@@ -239,7 +241,21 @@ function DeleteInterviewModal({ isOpen, item, reason, onReasonChange, onClose, o
   )
 }
 
-function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, onEdit, onDelete, onRetryPreparation, onRetryEmail, nowTick, copiedLink, busyInviteId }) {
+function RecoverySummary({ recovery }) {
+  if (!recovery) {
+    return null
+  }
+
+  return (
+    <div className="mt-2 grid gap-1 text-xs text-slate-400">
+      <div>Reason: <span className="text-amber-200">{recovery.reason || "Technical interruption detected"}</span></div>
+      <div>Completion: <span className="text-cyan-200">{recovery.completionPercentage}%</span></div>
+      <div>Recovery Available: <span className={recovery.available ? "text-emerald-300" : "text-rose-300"}>{recovery.available ? "YES" : "NO"}</span></div>
+    </div>
+  )
+}
+
+function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, onEdit, onDelete, onRetryPreparation, onRetryEmail, onRecoveryAction, onViewRecoveryAudit, nowTick, copiedLink, busyInviteId }) {
   if (!isOpen) {
     return null
   }
@@ -294,6 +310,7 @@ function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, onEdit, o
                     <span className={`rounded-full border px-3 py-1 text-xs font-medium ${getWorkflowStatusClass(item)}`}>
                       {getWorkflowStatus(item)}
                     </span>
+                    <RecoverySummary recovery={item.recovery} />
                   </div>
                   <div className="text-cyan-200">{getInterviewTypeLabel(item)}</div>
                   <div className="whitespace-nowrap text-slate-400">{formatDateTime(item.createdAt)}</div>
@@ -303,6 +320,16 @@ function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, onEdit, o
                       <button type="button" disabled={busyInviteId === item.inviteId} onClick={() => onRetryPreparation(item)} className="shrink-0 rounded-full border border-rose-400/30 bg-rose-500/10 px-3 py-1.5 text-rose-100 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60">
                         {busyInviteId === item.inviteId ? "Retrying..." : "Retry Prep"}
                       </button>
+                    ) : null}
+                    {String(item.status).toUpperCase() === "INTERRUPTED" ? (
+                      <>
+                        <button type="button" disabled={busyInviteId === item.inviteId || !item.recovery?.available} onClick={() => onRecoveryAction(item, "approve")} className="shrink-0 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3 py-1.5 text-emerald-100 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50">
+                          {busyInviteId === item.inviteId ? "Issuing..." : "Send Recovery Link"}
+                        </button>
+                        <button type="button" onClick={() => onViewRecoveryAudit(item)} className="shrink-0 rounded-full border border-fuchsia-400/30 bg-fuchsia-500/10 px-3 py-1.5 text-fuchsia-100 transition hover:bg-fuchsia-500/20">
+                          Forensic Logs
+                        </button>
+                      </>
                     ) : null}
                     <button type="button" disabled={!item.link} onClick={() => onCopy(item.link)} className="shrink-0 rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1.5 text-cyan-100 transition hover:bg-cyan-400/20 disabled:cursor-not-allowed disabled:opacity-50">
                       {copiedLink === item.link ? "Copied" : "Copy"}
@@ -469,6 +496,78 @@ export default function PendingInterviews({ initialPendingInterviews }) {
     }
   }
 
+  async function handleRecoveryAction(item, action) {
+    try {
+      setBusyInviteId(item.inviteId)
+      const response = await fetch(buildAuthUrl(`/api/interview/${item.interviewId}/recovery`, searchParams), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          action,
+          idempotencyKey: `${action}:${item.recovery?.attemptId || item.interviewId}`,
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok || !data.success) {
+        throw new Error(data?.error?.message || data?.message || "Failed to update recovery workflow")
+      }
+      const recoveryLink = data.data?.recoveryLink
+      if (recoveryLink) {
+        await copyText(recoveryLink)
+      }
+      await loadPendingInterviews()
+      setNotice({
+        open: true,
+        title: action === "approve" ? "Recovery link issued" : "Recovery updated",
+        message: recoveryLink
+          ? `A single-use recovery link was created and copied: ${recoveryLink}`
+          : `Recovery status: ${data.data?.status || action}`,
+        tone: "success",
+      })
+    } catch (error) {
+      setNotice({
+        open: true,
+        title: "Unable to process recovery",
+        message: error instanceof Error ? error.message : "Failed to process recovery",
+        tone: "error",
+      })
+    } finally {
+      setBusyInviteId("")
+    }
+  }
+
+  async function handleViewRecoveryAudit(item) {
+    try {
+      const response = await fetch(buildAuthUrl(`/api/interview/${item.interviewId}/recovery`, searchParams), {
+        credentials: "include",
+        cache: "no-store",
+      })
+      const data = await response.json()
+      if (!response.ok || !data.success) {
+        throw new Error(data?.error?.message || data?.message || "Failed to load recovery audit")
+      }
+      const events = data.data?.events ?? []
+      setNotice({
+        open: true,
+        title: "Interruption Timeline",
+        message: events.length
+          ? events.map((event) => `${formatDateTime(event.occurredAt)} - ${event.eventType}: ${event.reason || event.classifier || "Forensic event"}`).join("\n")
+          : "No recovery events recorded yet.",
+        tone: "success",
+      })
+    } catch (error) {
+      setNotice({
+        open: true,
+        title: "Unable to load forensic logs",
+        message: error instanceof Error ? error.message : "Failed to load forensic logs",
+        tone: "error",
+      })
+    }
+  }
+
   function handleEditOpen(item) {
     setEditItem(item)
     setEditForm({
@@ -624,6 +723,7 @@ export default function PendingInterviews({ initialPendingInterviews }) {
                       <span className={`rounded-full border px-3 py-1 text-xs font-medium ${getWorkflowStatusClass(item)}`}>
                         {getWorkflowStatus(item)}
                       </span>
+                      <RecoverySummary recovery={item.recovery} />
                     </td>
                     <td className="p-4 text-cyan-200">{getInterviewTypeLabel(item)}</td>
                     <td className="p-4 text-yellow-400">{getExpiryLabel(item.expiresAt, nowTick)}</td>
@@ -641,6 +741,16 @@ export default function PendingInterviews({ initialPendingInterviews }) {
                           <button className="shrink-0 text-amber-300" disabled={busyInviteId === item.inviteId} onClick={() => handleRetryEmail(item)}>
                             {busyInviteId === item.inviteId ? "Sending..." : "Retry Email"}
                           </button>
+                        ) : null}
+                        {String(item.status).toUpperCase() === "INTERRUPTED" ? (
+                          <>
+                            <button className="shrink-0 text-emerald-300 disabled:text-slate-600" disabled={busyInviteId === item.inviteId || !item.recovery?.available} onClick={() => handleRecoveryAction(item, "approve")}>
+                              {busyInviteId === item.inviteId ? "Issuing..." : "Send Recovery Link"}
+                            </button>
+                            <button className="shrink-0 text-fuchsia-300" onClick={() => handleViewRecoveryAudit(item)}>
+                              Forensic Logs
+                            </button>
+                          </>
                         ) : null}
                         <button className="shrink-0 text-indigo-300 disabled:text-slate-600" disabled={String(item.status).toUpperCase() === "PREPARATION_FAILED"} onClick={() => handleEditOpen(item)}>
                           Edit
@@ -667,6 +777,8 @@ export default function PendingInterviews({ initialPendingInterviews }) {
         onDelete={handleDeleteOpen}
         onRetryPreparation={handleRetryPreparation}
         onRetryEmail={handleRetryEmail}
+        onRecoveryAction={handleRecoveryAction}
+        onViewRecoveryAudit={handleViewRecoveryAudit}
         nowTick={nowTick}
         copiedLink={copiedLink}
         busyInviteId={busyInviteId}

@@ -409,6 +409,87 @@ export async function getUploadBatchManifest(input: {
   }
 }
 
+export async function getLatestUploadBatchManifest(input: {
+  organizationId: string
+  userId?: string | null
+  fileNames?: string[]
+}) {
+  const fileNames = normalizeFileNames(input.fileNames ?? [])
+
+  async function getLatestCandidateBatch() {
+    const rows = await prisma.$queryRaw<UploadBatchManifestRow[]>(Prisma.sql`
+      select
+        c.upload_batch_id::text as batch_id,
+        jsonb_agg(c.candidate_id::text order by c.created_at desc) as candidate_ids
+      from public.candidates c
+      where c.organization_id = ${input.organizationId}::uuid
+        and c.upload_batch_id is not null
+        and coalesce(c.ai_screening_status, 'READY') <> 'ARCHIVED'
+        ${input.userId ? Prisma.sql`and (c.created_by = ${input.userId}::uuid or c.created_by is null)` : Prisma.empty}
+        ${
+          fileNames.length > 0
+            ? Prisma.sql`and lower(coalesce(c.extracted_json->>'sourceFileName', '')) in (${Prisma.join(fileNames)})`
+            : Prisma.empty
+        }
+      group by c.upload_batch_id
+      order by max(c.created_at) desc
+      limit 1
+    `)
+
+    const batch = rows[0]
+
+    if (!batch?.batch_id) {
+      return null
+    }
+
+    return {
+      batchId: batch.batch_id,
+      candidateIds: normalizeUuidList(batch.candidate_ids),
+    }
+  }
+
+  try {
+    const rows = await prisma.$queryRaw<UploadBatchManifestRow[]>(Prisma.sql`
+      select
+        batch_id::text,
+        candidate_ids
+      from public.ai_screening_upload_batches
+      where organization_id = ${input.organizationId}::uuid
+        ${input.userId ? Prisma.sql`and (created_by = ${input.userId}::uuid or created_by is null)` : Prisma.empty}
+        ${
+          fileNames.length > 0
+            ? Prisma.sql`and exists (
+                select 1
+                from jsonb_array_elements_text(file_names) as item(file_name)
+                where lower(item.file_name) in (${Prisma.join(fileNames)})
+              )`
+            : Prisma.empty
+        }
+      order by created_at desc
+      limit 1
+    `)
+
+    const manifest = rows[0]
+
+    if (!manifest?.batch_id) {
+      return getLatestCandidateBatch()
+    }
+
+    return {
+      batchId: manifest.batch_id,
+      candidateIds: normalizeUuidList(manifest.candidate_ids),
+    }
+  } catch (error) {
+    console.warn("VERIS latest upload batch manifest lookup skipped", error)
+    try {
+      return await getLatestCandidateBatch()
+    } catch (fallbackError) {
+      console.warn("VERIS latest candidate upload batch lookup skipped", fallbackError)
+      return null
+    }
+  }
+}
+
 export async function getScreeningJob(organizationId: string, jobId: string) {
   const rows = await prisma.$queryRaw<ScreeningJobRow[]>(Prisma.sql`
     select
@@ -1050,13 +1131,15 @@ export async function clearScreeningResultsForUpload(input: {
   uploadBatchId?: string | null
   candidateIds?: string[]
 }) {
+  await ensureScreeningRunTables()
+
   const jobId = await resolveRequiredScreeningJobId(input.organizationId, input.jobId)
   const batchId = normalizeUuid(input.uploadBatchId)
   const candidateIds = normalizeUuidList(input.candidateIds ?? [])
 
   requireCleanupScope(batchId, candidateIds)
 
-  const rows = await prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
+  const deletedMatches = await prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
     delete from public.candidate_job_matches m
     using public.candidates c, public.jobs j
     where c.candidate_id = m.candidate_id
@@ -1068,8 +1151,48 @@ export async function clearScreeningResultsForUpload(input: {
     returning m.id::text
   `)
 
+  const runRows = await prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
+    select distinct r.id::text
+    from public.screening_runs r
+    left join public.screening_run_matches rm
+      on rm.run_id = r.id
+      and rm.organization_id = r.organization_id
+    where r.organization_id = ${input.organizationId}::uuid
+      and r.job_id = ${jobId}::uuid
+      and (
+        ${batchId ? Prisma.sql`r.batch_id = ${batchId}::uuid` : Prisma.sql`false`}
+        ${
+          candidateIds.length > 0
+            ? Prisma.sql`or rm.candidate_id::text in (${Prisma.join(candidateIds)})
+                or rm.match_snapshot->>'candidateId' in (${Prisma.join(candidateIds)})`
+            : Prisma.empty
+        }
+      )
+  `)
+  const runIds = runRows.map((row) => row.id).filter(Boolean)
+  let deletedRunMatches: { id: string }[] = []
+  let deletedRuns: { id: string }[] = []
+
+  if (runIds.length > 0) {
+    deletedRunMatches = await prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
+      delete from public.screening_run_matches rm
+      where rm.organization_id = ${input.organizationId}::uuid
+        and rm.run_id::text in (${Prisma.join(runIds)})
+      returning rm.id::text
+    `)
+
+    deletedRuns = await prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
+      delete from public.screening_runs r
+      where r.organization_id = ${input.organizationId}::uuid
+        and r.id::text in (${Prisma.join(runIds)})
+      returning r.id::text
+    `)
+  }
+
   return {
-    deletedResults: rows.length,
+    deletedResults: deletedMatches.length,
+    deletedRunMatches: deletedRunMatches.length,
+    deletedRuns: deletedRuns.length,
   }
 }
 

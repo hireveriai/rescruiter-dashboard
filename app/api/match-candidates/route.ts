@@ -9,6 +9,7 @@ import {
   createScreeningRun,
   getCandidatesForMatching,
   getCandidatesForMatchingByUploadFiles,
+  getLatestUploadBatchManifest,
   getMatchResults,
   getScreeningJob,
   getScreeningJobs,
@@ -70,6 +71,16 @@ async function processInBatches<T, R>(items: T[], batchSize: number, worker: (it
   return results
 }
 
+function filterMatchesToCandidateIds<T extends { candidateId: string }>(matches: T[], candidateIds: string[]) {
+  const scopedIds = new Set(candidateIds.filter(Boolean))
+
+  if (scopedIds.size === 0) {
+    return matches
+  }
+
+  return matches.filter((match) => scopedIds.has(match.candidateId))
+}
+
 export async function GET(request: Request) {
   try {
     const auth = await getRecruiterRequestContext(request)
@@ -95,11 +106,23 @@ export async function GET(request: Request) {
     const legacyIncludeAllCandidates =
       url.searchParams.get("includeAllCandidates") === "true" ||
       url.searchParams.get("include_all_candidates") === "true"
-    const matchScope = resolveMatchScope(
+    const requestedMatchScope = resolveMatchScope(
       url.searchParams.get("matchScope") ?? url.searchParams.get("match_scope"),
       legacyIncludeAllCandidates
     )
-    const includeAllCandidates = matchScope === "GLOBAL"
+    const latestManifest =
+      !batchId && candidateIds.length === 0 && uploadFileNames.length > 0
+        ? await getLatestUploadBatchManifest({
+            organizationId: auth.organizationId,
+            userId: auth.userId,
+            fileNames: uploadFileNames,
+          })
+        : null
+    const effectiveBatchId = batchId || latestManifest?.batchId || ""
+    const effectiveCandidateIds = candidateIds.length > 0 ? candidateIds : latestManifest?.candidateIds ?? []
+    const hasCurrentUploadScope = Boolean(effectiveBatchId || effectiveCandidateIds.length > 0 || uploadFileNames.length > 0)
+    const includeAllCandidates = hasCurrentUploadScope ? false : requestedMatchScope === "GLOBAL"
+    const matchScope = includeAllCandidates ? "GLOBAL" : "BATCH"
 
     if (!jobId) {
       throw new ApiError(400, "JD_NOT_PROCESSED", "Analyze a job before matching candidates")
@@ -111,43 +134,48 @@ export async function GET(request: Request) {
       throw new ApiError(400, "JD_NOT_PROCESSED", "Process JD first")
     }
 
-    if (batchId && !UUID_REGEX.test(batchId)) {
+    if (effectiveBatchId && !UUID_REGEX.test(effectiveBatchId)) {
       throw new ApiError(400, "INVALID_UPLOAD_BATCH", "Current upload is invalid. Please upload resumes again.")
     }
 
-    if (!includeAllCandidates && !batchId && candidateIds.length === 0) {
+    if (!includeAllCandidates && !effectiveBatchId && effectiveCandidateIds.length === 0) {
       throw new ApiError(400, "UPLOAD_BATCH_REQUIRED", "Current upload is required. Upload resumes before matching.")
     }
 
     const manifestCandidateIds =
-      !includeAllCandidates && batchId && candidateIds.length === 0
+      !includeAllCandidates && effectiveBatchId && effectiveCandidateIds.length === 0
         ? (await getUploadBatchManifest({
-            batchId,
+            batchId: effectiveBatchId,
             organizationId: auth.organizationId,
           }))?.candidateIds ?? []
         : []
-    const scopedCandidateIds = candidateIds.length > 0 ? candidateIds : manifestCandidateIds
+    const scopedCandidateIds = effectiveCandidateIds.length > 0 ? effectiveCandidateIds : manifestCandidateIds
 
     let matches = await getMatchResults(auth.organizationId, jobId, {
-      uploadBatchId: batchId || null,
+      uploadBatchId: effectiveBatchId || null,
       candidateIds: scopedCandidateIds,
       fileNames: uploadFileNames,
       includeAllCandidates,
     })
+    matches = includeAllCandidates ? matches : filterMatchesToCandidateIds(matches, scopedCandidateIds)
 
-    if (matches.length === 0 && !includeAllCandidates && batchId && scopedCandidateIds.length > 0) {
+    if (matches.length === 0 && !includeAllCandidates && effectiveBatchId && scopedCandidateIds.length > 0) {
       matches = await getMatchResults(auth.organizationId, jobId, {
-        uploadBatchId: batchId,
+        uploadBatchId: effectiveBatchId,
+        candidateIds: scopedCandidateIds,
         fileNames: uploadFileNames,
         includeAllCandidates: false,
       })
+      matches = filterMatchesToCandidateIds(matches, scopedCandidateIds)
     }
 
-    if (matches.length === 0 && !includeAllCandidates && uploadFileNames.length > 0) {
+    if (matches.length === 0 && !includeAllCandidates && uploadFileNames.length > 0 && scopedCandidateIds.length > 0) {
       matches = await getMatchResults(auth.organizationId, jobId, {
+        candidateIds: scopedCandidateIds,
         fileNames: uploadFileNames,
         includeAllCandidates: false,
       })
+      matches = filterMatchesToCandidateIds(matches, scopedCandidateIds)
     }
 
     return NextResponse.json({
@@ -197,8 +225,7 @@ export async function POST(request: Request) {
     })
     const batchId = String(body.batchId ?? body.batch_id ?? "").trim()
     const legacyIncludeAllCandidates = body.includeAllCandidates === true || body.include_all_candidates === true
-    const matchScope = resolveMatchScope(body.matchScope ?? body.match_scope, legacyIncludeAllCandidates)
-    const includeAllCandidates = matchScope === "GLOBAL"
+    const requestedMatchScope = resolveMatchScope(body.matchScope ?? body.match_scope, legacyIncludeAllCandidates)
     const candidateIds = Array.isArray(body.candidateIds)
       ? body.candidateIds
       : Array.isArray(body.candidate_ids)
@@ -209,6 +236,19 @@ export async function POST(request: Request) {
       : Array.isArray(body.upload_file_names)
         ? body.upload_file_names
         : []
+    const latestManifest =
+      !batchId && !candidateIds?.length && uploadFileNames.length > 0
+        ? await getLatestUploadBatchManifest({
+            organizationId: auth.organizationId,
+            userId: auth.userId,
+            fileNames: uploadFileNames,
+          })
+        : null
+    const effectiveBatchId = batchId || latestManifest?.batchId || ""
+    const effectiveCandidateIds = candidateIds?.length ? candidateIds : latestManifest?.candidateIds ?? []
+    const hasCurrentUploadScope = Boolean(effectiveBatchId || effectiveCandidateIds.length > 0 || uploadFileNames.length > 0)
+    const includeAllCandidates = hasCurrentUploadScope ? false : requestedMatchScope === "GLOBAL"
+    const matchScope = includeAllCandidates ? "GLOBAL" : "BATCH"
 
     if (!jobId) {
       throw new ApiError(400, "JD_NOT_PROCESSED", "Analyze a job before matching candidates")
@@ -220,36 +260,36 @@ export async function POST(request: Request) {
       throw new ApiError(400, "JD_NOT_PROCESSED", "Process JD first")
     }
 
-    if (batchId && !UUID_REGEX.test(batchId)) {
+    if (effectiveBatchId && !UUID_REGEX.test(effectiveBatchId)) {
       throw new ApiError(400, "INVALID_UPLOAD_BATCH", "Current upload is invalid. Please upload resumes again.")
     }
 
-    if (!includeAllCandidates && !batchId && !candidateIds?.length) {
+    if (!includeAllCandidates && !effectiveBatchId && effectiveCandidateIds.length === 0) {
       throw new ApiError(400, "UPLOAD_BATCH_REQUIRED", "Current upload is required. Upload resumes before matching.")
     }
 
     const manifestCandidateIds =
-      !includeAllCandidates && batchId && !candidateIds?.length
+      !includeAllCandidates && effectiveBatchId && effectiveCandidateIds.length === 0
         ? (await getUploadBatchManifest({
-            batchId,
+            batchId: effectiveBatchId,
             organizationId: auth.organizationId,
           }))?.candidateIds ?? []
         : []
-    const scopedCandidateIds = candidateIds?.length ? candidateIds : manifestCandidateIds
+    const scopedCandidateIds = effectiveCandidateIds.length > 0 ? effectiveCandidateIds : manifestCandidateIds
 
     const source = includeAllCandidates ? "full_db" : "batch"
     let usedBatchFallback = false
     let candidates = await getCandidatesForMatching({
       organizationId: auth.organizationId,
       candidateIds: scopedCandidateIds,
-      uploadBatchId: batchId || null,
+      uploadBatchId: effectiveBatchId || null,
       includeAllCandidates,
     })
 
-    if (candidates.length === 0 && !includeAllCandidates && batchId && scopedCandidateIds.length > 0) {
+    if (candidates.length === 0 && !includeAllCandidates && effectiveBatchId && scopedCandidateIds.length > 0) {
       candidates = await getCandidatesForMatching({
         organizationId: auth.organizationId,
-        uploadBatchId: batchId,
+        uploadBatchId: effectiveBatchId,
         includeAllCandidates: false,
       })
       usedBatchFallback = candidates.length > 0
@@ -259,15 +299,15 @@ export async function POST(request: Request) {
       candidates = await getCandidatesForMatchingByUploadFiles({
         organizationId: auth.organizationId,
         userId: auth.userId,
-        uploadBatchId: batchId || null,
+        uploadBatchId: effectiveBatchId || null,
         fileNames: uploadFileNames,
       })
       usedBatchFallback = candidates.length > 0
 
-      if (candidates.length > 0 && batchId) {
+      if (candidates.length > 0 && effectiveBatchId) {
         await attachCandidatesToUploadBatch({
           organizationId: auth.organizationId,
-          uploadBatchId: batchId,
+          uploadBatchId: effectiveBatchId,
           candidateIds: candidates.map((candidate) => candidate.candidate_id),
         })
       }
@@ -281,7 +321,7 @@ export async function POST(request: Request) {
       console.warn("VERIS screening matching found no candidates", {
         organizationId: auth.organizationId,
         jobId,
-        batchId: batchId || null,
+        batchId: effectiveBatchId || null,
         candidateIdsCount: scopedCandidateIds.length,
         uploadFileNamesCount: uploadFileNames.length,
         includeAllCandidates,
@@ -351,27 +391,30 @@ export async function POST(request: Request) {
     })
 
     let matches = await getMatchResults(auth.organizationId, jobId, {
-      uploadBatchId: batchId || null,
+      uploadBatchId: effectiveBatchId || null,
       candidateIds: resolvedCandidateIds,
       fileNames: uploadFileNames,
       includeAllCandidates,
     })
+    matches = includeAllCandidates ? matches : filterMatchesToCandidateIds(matches, resolvedCandidateIds)
 
-    if (matches.length === 0 && !includeAllCandidates && uploadFileNames.length > 0) {
+    if (matches.length === 0 && !includeAllCandidates && uploadFileNames.length > 0 && resolvedCandidateIds.length > 0) {
       matches = await getMatchResults(auth.organizationId, jobId, {
+        candidateIds: resolvedCandidateIds,
         fileNames: uploadFileNames,
         includeAllCandidates: false,
       })
+      matches = filterMatchesToCandidateIds(matches, resolvedCandidateIds)
     }
 
     if (matches.length === 0) {
-      matches = generatedMatches
+      matches = includeAllCandidates ? generatedMatches : filterMatchesToCandidateIds(generatedMatches, resolvedCandidateIds)
     }
     const runId = await createScreeningRun({
       organizationId: auth.organizationId,
       userId: auth.userId,
       jobId,
-      batchId: batchId || null,
+      batchId: effectiveBatchId || null,
       matches,
     })
 

@@ -148,6 +148,22 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null }) 
     logoutRecruiter();
   };
 
+  const handleDashboardClick = (event) => {
+    event.preventDefault();
+
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem("hireveri-overview");
+      const dashboardUrl = buildAuthUrl("/", searchParams);
+
+      if (window.location.pathname === "/") {
+        window.location.reload();
+        return;
+      }
+
+      window.location.assign(dashboardUrl);
+    }
+  };
+
   return (
     <>
       <header className="sticky top-0 z-40 border-b border-slate-800/80 bg-[#0c1424]/95 text-white backdrop-blur-xl">
@@ -180,6 +196,7 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null }) 
                   <Link
                     key={item.label}
                     href={buildAuthUrl(item.href, searchParams)}
+                    onClick={item.href === "/" ? handleDashboardClick : undefined}
                     className={[
                       "whitespace-nowrap rounded-xl px-2 py-2 text-[13px] font-medium transition xl:px-2.5 xl:text-sm",
                       active
