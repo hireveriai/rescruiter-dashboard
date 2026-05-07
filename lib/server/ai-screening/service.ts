@@ -430,6 +430,34 @@ export async function getScreeningJob(organizationId: string, jobId: string) {
   return rows[0] ? normalizeJob(rows[0]) : null
 }
 
+async function getLatestScreeningJobId(organizationId: string) {
+  const rows = await prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
+    select id::text
+    from public.jobs
+    where organization_id = ${organizationId}::uuid
+    order by created_at desc
+    limit 1
+  `)
+
+  return rows[0]?.id ?? null
+}
+
+async function resolveRequiredScreeningJobId(organizationId: string, jobId: string | null | undefined) {
+  const normalized = normalizeUuid(jobId)
+
+  if (normalized) {
+    return normalized
+  }
+
+  const latestJobId = await getLatestScreeningJobId(organizationId)
+
+  if (latestJobId) {
+    return latestJobId
+  }
+
+  throw new ApiError(400, "JD_NOT_PROCESSED", "Analyze a job before matching candidates")
+}
+
 export async function getJobPositionForScreening(organizationId: string, jobId: string) {
   const rows = await prisma.$queryRaw<JobPositionRow[]>(Prisma.sql`
     select
@@ -858,12 +886,8 @@ export async function createScreeningRun(input: {
   batchId?: string | null
   matches: MatchResultRow[]
 }) {
-  const jobId = normalizeUuid(input.jobId)
+  const jobId = await resolveRequiredScreeningJobId(input.organizationId, input.jobId)
   const batchId = normalizeUuid(input.batchId)
-
-  if (!jobId) {
-    throw new ApiError(400, "JOB_NOT_SELECTED", "Job not selected")
-  }
 
   const totalCandidates = input.matches.length
   const strongFitCount = input.matches.filter((match) => match.recommendation === "STRONG_FIT").length
@@ -923,11 +947,7 @@ export async function getScreeningRuns(input: {
   jobId: string
   limit?: number
 }) {
-  const jobId = normalizeUuid(input.jobId)
-
-  if (!jobId) {
-    throw new ApiError(400, "JOB_NOT_SELECTED", "Job not selected")
-  }
+  const jobId = await resolveRequiredScreeningJobId(input.organizationId, input.jobId)
 
   const rows = await prisma.$queryRaw<ScreeningRunRow[]>(Prisma.sql`
     select
@@ -975,13 +995,9 @@ export async function clearScreeningResultsForUpload(input: {
   uploadBatchId?: string | null
   candidateIds?: string[]
 }) {
-  const jobId = normalizeUuid(input.jobId)
+  const jobId = await resolveRequiredScreeningJobId(input.organizationId, input.jobId)
   const batchId = normalizeUuid(input.uploadBatchId)
   const candidateIds = normalizeUuidList(input.candidateIds ?? [])
-
-  if (!jobId) {
-    throw new ApiError(400, "JOB_NOT_SELECTED", "Job not selected")
-  }
 
   requireCleanupScope(batchId, candidateIds)
 
