@@ -4,7 +4,11 @@ import { NextResponse } from "next/server"
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
 import { prisma } from "@/lib/server/prisma"
 import { errorResponse } from "@/lib/server/response"
-import { jobPositionsSupportCodingConfig, jobPositionsSupportIsActive } from "@/lib/server/services/jobs"
+import {
+  jobPositionsSupportCodingConfig,
+  jobPositionsSupportIsActive,
+  jobPositionsSupportQuestionTypeDefault,
+} from "@/lib/server/services/jobs"
 
 type JobRow = {
   jobId: string
@@ -13,6 +17,7 @@ type JobRow = {
   experienceLevelId: number
   difficultyProfile: string
   interviewDurationMinutes: number | null
+  questionTypeDefault: string | null
   coreSkills: string[] | null
   codingRequired: string | null
   codingAssessmentType: string | null
@@ -34,6 +39,7 @@ export async function GET(request: Request) {
       url.searchParams.get("include_inactive") === "true"
     const hasIsActive = await jobPositionsSupportIsActive()
     const hasCodingConfig = await jobPositionsSupportCodingConfig()
+    const hasQuestionTypeDefault = await jobPositionsSupportQuestionTypeDefault()
 
     const rows = await prisma.$queryRaw<JobRow[]>(Prisma.sql`
       select
@@ -43,6 +49,7 @@ export async function GET(request: Request) {
         jp.experience_level_id as "experienceLevelId",
         jp.difficulty_profile::text as "difficultyProfile",
         jp.interview_duration_minutes as "interviewDurationMinutes",
+        ${hasQuestionTypeDefault ? Prisma.sql`jp.question_type_default::text` : Prisma.sql`'AUTO'`} as "questionTypeDefault",
         jp.core_skills as "coreSkills",
         ${hasCodingConfig ? Prisma.sql`jp.coding_required::text` : Prisma.sql`null`} as "codingRequired",
         ${hasCodingConfig ? Prisma.sql`jp.coding_assessment_type::text` : Prisma.sql`null`} as "codingAssessmentType",
@@ -63,6 +70,7 @@ export async function GET(request: Request) {
         jp.experience_level_id,
         jp.difficulty_profile,
         jp.interview_duration_minutes,
+        ${hasQuestionTypeDefault ? Prisma.sql`jp.question_type_default,` : Prisma.empty}
         jp.core_skills
         ${hasIsActive ? Prisma.sql`, jp.is_active` : Prisma.empty}
       order by jp.job_id desc
@@ -77,6 +85,7 @@ export async function GET(request: Request) {
         experienceLevelId: row.experienceLevelId,
         difficultyProfile: row.difficultyProfile,
         interviewDurationMinutes: row.interviewDurationMinutes,
+        questionTypeDefault: row.questionTypeDefault ?? "AUTO",
         coreSkills: row.coreSkills ?? [],
         codingRequired: row.codingRequired,
         codingAssessmentType: row.codingAssessmentType,
@@ -91,6 +100,7 @@ export async function GET(request: Request) {
       meta: {
         supportsJobActiveState: hasIsActive,
         supportsCodingConfig: hasCodingConfig,
+        supportsQuestionTypeDefault: hasQuestionTypeDefault,
       },
     })
   } catch (error) {

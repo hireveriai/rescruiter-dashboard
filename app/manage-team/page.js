@@ -4,24 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { buildAuthUrl } from "@/lib/client/auth-query";
+import { formatDate } from "@/lib/client/date-format";
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params";
-
-function formatDate(value) {
-  if (!value) {
-    return "-";
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "-";
-  }
-
-  return date.toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-}
 
 function getPlatformRoleTone(role) {
   if (role === "ADMIN" || role === "ORG_OWNER") {

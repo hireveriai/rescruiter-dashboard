@@ -1,6 +1,19 @@
 ﻿import { z } from "zod"
 
 const uuidField = z.string().uuid()
+const questionTypeControl = z
+  .enum([
+    "AUTO",
+    "coding",
+    "technical_discussion",
+    "system_design",
+    "behavioral",
+    "architecture",
+    "troubleshooting",
+    "mcq",
+    "case_study",
+  ])
+  .default("AUTO")
 
 export const createJobSchema = z.object({
   organization_id: uuidField.optional(),
@@ -10,6 +23,7 @@ export const createJobSchema = z.object({
   core_skills: z.array(z.string().trim().min(1)).default([]),
   difficulty_profile: z.enum(["JUNIOR", "MID", "SENIOR"]).default("MID"),
   interview_duration_minutes: z.union([z.literal(30), z.literal(45), z.literal(60)]).default(30),
+  question_type_default: questionTypeControl,
   coding_required: z.enum(["NO", "YES", "AUTO"]).default("AUTO"),
   coding_assessment_type: z
     .enum(["LIVE_CODING", "DEBUGGING", "SQL", "BACKEND_LOGIC", "DSA"])
@@ -35,6 +49,7 @@ export const updateJobSchema = z.object({
   core_skills: z.array(z.string().trim().min(1)).default([]),
   difficulty_profile: z.enum(["JUNIOR", "MID", "SENIOR"]).default("MID"),
   interview_duration_minutes: z.union([z.literal(30), z.literal(45), z.literal(60)]).default(30),
+  question_type_default: questionTypeControl,
   coding_required: z.enum(["NO", "YES", "AUTO"]).default("AUTO"),
   coding_assessment_type: z
     .enum(["LIVE_CODING", "DEBUGGING", "SQL", "BACKEND_LOGIC", "DSA"])

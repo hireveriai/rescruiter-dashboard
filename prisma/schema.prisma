@@ -24,6 +24,8 @@ enum UserRole {
 model Organization {
   organizationId   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("organization_id")
   organizationName String    @map("organization_name")
+  timezone         String    @default("Asia/Kolkata")
+  timezoneLabel    String    @default("India Standard Time")
   isActive         Boolean   @default(true) @map("is_active")
   createdAt        DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
 

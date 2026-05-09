@@ -23,6 +23,18 @@ const CODING_ASSESSMENT_OPTIONS = [
 
 const INTERVIEW_DURATION_OPTIONS = [30, 45, 60];
 
+const QUESTION_TYPE_OPTIONS = [
+  { value: "AUTO", label: "Auto Detect" },
+  { value: "coding", label: "Coding" },
+  { value: "technical_discussion", label: "Technical Discussion" },
+  { value: "system_design", label: "System Design" },
+  { value: "behavioral", label: "Behavioral" },
+  { value: "architecture", label: "Architecture" },
+  { value: "troubleshooting", label: "Troubleshooting" },
+  { value: "mcq", label: "MCQ" },
+  { value: "case_study", label: "Case Study" },
+];
+
 function createDefaultForm() {
   return {
     job_title: "",
@@ -31,6 +43,7 @@ function createDefaultForm() {
     difficulty_profile: "MID",
     core_skills: "",
     interview_duration_minutes: 30,
+    question_type_default: "AUTO",
     coding_required: "NO",
     coding_assessment_type: "",
     coding_difficulty: "MEDIUM",
@@ -56,6 +69,8 @@ function mapJobToForm(job) {
     interview_duration_minutes: Number(
       job.interviewDurationMinutes ?? job.interview_duration_minutes ?? 30
     ),
+    question_type_default:
+      job.questionTypeDefault ?? job.question_type_default ?? "AUTO",
     coding_required: job.codingRequired ?? job.coding_required ?? "NO",
     coding_assessment_type: job.codingAssessmentType ?? job.coding_assessment_type ?? "",
     coding_difficulty: job.codingDifficulty ?? job.coding_difficulty ?? "MEDIUM",
@@ -363,6 +378,31 @@ export default function CreateJobModal({
 
               <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 px-4 py-3 text-sm text-cyan-100">
                 Every interview link created for this job will inherit the same interview duration.
+              </div>
+
+              <div className="md:col-span-2 rounded-[24px] border border-slate-800 bg-slate-950/40 p-5">
+                <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(260px,360px)] md:items-end">
+                  <div>
+                    <p className="text-sm font-medium text-white">Question Type</p>
+                    <p className="mt-1 text-sm text-slate-400">
+                      AI classifies every question first; use this only when a role needs a global override.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm text-slate-300">Default Question Type</label>
+                    <select
+                      value={form.question_type_default}
+                      onChange={(e) => handleChange("question_type_default", e.target.value)}
+                      className="w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition focus:border-violet-400/60 focus:shadow-[0_0_0_3px_rgba(139,92,246,0.08)]"
+                    >
+                      {QUESTION_TYPE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
               </div>
 
               <div className="md:col-span-2 rounded-[24px] border border-slate-800 bg-slate-950/40 p-5">

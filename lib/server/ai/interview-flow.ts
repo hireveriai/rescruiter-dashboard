@@ -18,6 +18,11 @@ import {
   RoleIntelligence,
   scoreAnswerForSkill,
 } from "@/lib/server/ai/skills"
+import {
+  classifyInterviewQuestion,
+  getQuestionRenderingMode,
+  InterviewQuestionType,
+} from "@/lib/server/ai/interview-question-types"
 
 export type BaseGenerationInput = {
   jobDescription?: string
@@ -47,7 +52,10 @@ export type InterviewQuestion = {
   }
   is_dynamic?: boolean
   allow_followups?: boolean
-  question_type?: "open_ended" | "behavioral"
+  question_type?: InterviewQuestionType
+  classifier_confidence?: number
+  recruiter_override?: boolean
+  rendering_mode?: string
   phase_hint?: "warmup" | "core" | "probe" | "closing"
 }
 
@@ -1071,11 +1079,21 @@ function buildQuestionMetadata(params: {
     },
     is_dynamic: true,
     allow_followups: true,
-    question_type: params.skillType === "behavioral" ? "behavioral" : "open_ended",
+    question_type:
+      params.skillType === "behavioral"
+        ? InterviewQuestionType.BEHAVIORAL
+        : InterviewQuestionType.TECHNICAL_DISCUSSION,
+    classifier_confidence: params.skillType === "behavioral" ? 0.86 : 0.72,
+    recruiter_override: false,
+    rendering_mode: getQuestionRenderingMode(
+      params.skillType === "behavioral"
+        ? InterviewQuestionType.BEHAVIORAL
+        : InterviewQuestionType.TECHNICAL_DISCUSSION
+    ),
     phase_hint: buildPhaseHint(params.index, params.total),
   } satisfies Pick<
     InterviewQuestion,
-    "source_type" | "reference_context" | "is_dynamic" | "allow_followups" | "question_type" | "phase_hint"
+    "source_type" | "reference_context" | "is_dynamic" | "allow_followups" | "question_type" | "classifier_confidence" | "recruiter_override" | "rendering_mode" | "phase_hint"
   >
 }
 
@@ -2257,6 +2275,7 @@ function buildStrictSkillQuestions(
       const id = buildInterviewQuestionId("strict", questions.length, selected.skill)
       const sourceType: InterviewQuestion["source_type"] =
         selected.source === "resume" && !jobSkillSet.has(normalizedSkill) ? "resume" : "job"
+      const classification = classifyInterviewQuestion(question, input.jobTitle, [selected.skill])
 
       questions.push({
         id,
@@ -2271,7 +2290,15 @@ function buildStrictSkillQuestions(
         },
         is_dynamic: true,
         allow_followups: true,
-        question_type: skillType === "behavioral" ? "behavioral" : "open_ended",
+        question_type:
+          skillType === "behavioral"
+            ? InterviewQuestionType.BEHAVIORAL
+            : classification.questionType,
+        classifier_confidence:
+          skillType === "behavioral" ? 0.86 : classification.confidence,
+        recruiter_override: false,
+        rendering_mode:
+          skillType === "behavioral" ? "behavioral" : classification.renderingMode,
         phase_hint: buildPhaseHint(questions.length, total),
       })
       seenQuestions.add(normalizedQuestion)

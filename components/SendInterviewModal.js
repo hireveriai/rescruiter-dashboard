@@ -6,6 +6,7 @@ import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
 import { copyText } from "@/lib/client/copy-to-clipboard"
+import { formatDateTime } from "@/lib/client/date-format"
 
 function CalendarIcon() {
   return (
@@ -337,13 +338,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
     : null
   const duplicateWarningDateLabel =
     duplicateWarningDate && !Number.isNaN(duplicateWarningDate.getTime())
-      ? duplicateWarningDate.toLocaleDateString("en-IN", {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        })
+      ? formatDateTime(duplicateWarningDate.toISOString())
       : "an earlier date"
 
   const copy = async () => {

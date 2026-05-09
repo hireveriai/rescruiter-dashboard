@@ -5,7 +5,12 @@ import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl, hasAuthQuery } from "@/lib/client/auth-query"
 import { copyText } from "@/lib/client/copy-to-clipboard"
-import { formatDateTime } from "@/lib/client/date-format"
+import {
+  convertOrgTimeToUtc,
+  formatDateTime,
+  toOrgDateTimeInputValue,
+} from "@/lib/client/date-format"
+import { useOrgTimezone } from "@/components/OrgTimezoneProvider"
 
 function getExpiryLabel(expiresAt, nowTick) {
   if (!expiresAt) {
@@ -391,6 +396,7 @@ function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, onEdit, o
 
 export default function PendingInterviews({ initialPendingInterviews }) {
   const searchParams = useAuthSearchParams()
+  const { timezone } = useOrgTimezone()
   const [interviews, setInterviews] = useState(() => initialPendingInterviews ?? [])
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editItem, setEditItem] = useState(null)
@@ -605,8 +611,8 @@ export default function PendingInterviews({ initialPendingInterviews }) {
     setEditItem(item)
     setEditForm({
       accessType: String(item.accessType ?? "FLEXIBLE").toUpperCase(),
-      startTime: item.startTime ? new Date(item.startTime).toISOString().slice(0, 16) : "",
-      endTime: item.endTime ? new Date(item.endTime).toISOString().slice(0, 16) : "",
+      startTime: item.startTime ? toOrgDateTimeInputValue(item.startTime, timezone) : "",
+      endTime: item.endTime ? toOrgDateTimeInputValue(item.endTime, timezone) : "",
     })
   }
 
@@ -641,8 +647,14 @@ export default function PendingInterviews({ initialPendingInterviews }) {
         credentials: "include",
         body: JSON.stringify({
           accessType: editForm.accessType,
-          startTime: editForm.accessType === "SCHEDULED" ? new Date(editForm.startTime).toISOString() : null,
-          endTime: editForm.accessType === "SCHEDULED" ? new Date(editForm.endTime).toISOString() : null,
+          startTime:
+            editForm.accessType === "SCHEDULED"
+              ? convertOrgTimeToUtc(editForm.startTime, timezone)
+              : null,
+          endTime:
+            editForm.accessType === "SCHEDULED"
+              ? convertOrgTimeToUtc(editForm.endTime, timezone)
+              : null,
         }),
       })
 

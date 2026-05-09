@@ -9,6 +9,8 @@ export async function POST(request: Request) {
 
     const result = evaluateAnswer({
       questionId: body.questionId,
+      question: body.question,
+      questionType: body.questionType,
       answer: body.answer,
       roleType: body.roleType,
       skillTags: body.skillTags ?? [],

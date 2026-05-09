@@ -54,6 +54,14 @@ export async function createJob(input: CreateJobInput) {
       throw new ApiError(500, "JOB_CREATE_FAILED", "Failed to create job")
     }
 
+    if (await jobPositionsSupportQuestionTypeDefault()) {
+      await prisma.$executeRaw(Prisma.sql`
+        update public.job_positions
+        set question_type_default = ${input.question_type_default}
+        where job_id = ${job.job_id}::uuid
+      `)
+    }
+
     return { job_id: job.job_id }
   } catch (error) {
     throw toFunctionApiError(error, {
@@ -66,6 +74,32 @@ export async function createJob(input: CreateJobInput) {
 
 let hasJobIsActiveColumnCache: boolean | null = null
 let hasJobCodingColumnsCache: boolean | null = null
+let hasJobQuestionTypeDefaultColumnCache: boolean | null = null
+
+export async function jobPositionsSupportQuestionTypeDefault() {
+  if (hasJobQuestionTypeDefaultColumnCache !== null) {
+    return hasJobQuestionTypeDefaultColumnCache
+  }
+
+  try {
+    const rows = await prisma.$queryRaw<ColumnExistsRow[]>(Prisma.sql`
+      select exists (
+        select 1
+        from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'job_positions'
+          and column_name = 'question_type_default'
+      )
+    `)
+
+    hasJobQuestionTypeDefaultColumnCache = Boolean(rows[0]?.exists)
+    return hasJobQuestionTypeDefaultColumnCache
+  } catch (error) {
+    console.warn("Job position question type default capability lookup failed", error)
+    hasJobQuestionTypeDefaultColumnCache = false
+    return false
+  }
+}
 
 export async function jobPositionsSupportIsActive() {
   if (hasJobIsActiveColumnCache !== null) {
@@ -154,6 +188,15 @@ export async function updateJob(input: UpdateJobInput) {
           coding_difficulty = ${input.coding_difficulty ?? null},
           coding_duration_minutes = ${input.coding_duration_minutes ?? null}::integer,
           coding_languages = ${input.coding_languages}::text[]
+        where job_id = ${input.job_id}::uuid
+          and organization_id = ${input.organization_id}::uuid
+      `)
+    }
+
+    if (await jobPositionsSupportQuestionTypeDefault()) {
+      await prisma.$executeRaw(Prisma.sql`
+        update public.job_positions
+        set question_type_default = ${input.question_type_default}
         where job_id = ${input.job_id}::uuid
           and organization_id = ${input.organization_id}::uuid
       `)

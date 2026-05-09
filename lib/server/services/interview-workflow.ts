@@ -54,6 +54,10 @@ type InterviewContextRow = {
   candidate_name: string | null
   candidate_email: string | null
   resume_text: string | null
+  start_time?: Date | string | null
+  end_time?: Date | string | null
+  organization_timezone?: string | null
+  organization_timezone_label?: string | null
   token: string | null
   link: string | null
   status?: string | null
@@ -303,6 +307,10 @@ async function getInterviewContext(organizationId: string, interviewId: string) 
       c.full_name as candidate_name,
       c.email as candidate_email,
       c.resume_text,
+      ii.start_time,
+      ii.end_time,
+      o.timezone as organization_timezone,
+      o.timezone_label as organization_timezone_label,
       ii.token,
       i.status,
       i.question_status,
@@ -311,6 +319,7 @@ async function getInterviewContext(organizationId: string, interviewId: string) 
     from public.interviews i
     inner join public.job_positions jp on jp.job_id = i.job_id
     inner join public.candidates c on c.candidate_id = i.candidate_id
+    inner join public.organizations o on o.organization_id = i.organization_id
     left join lateral (
       select token
       from public.interview_invites
@@ -519,6 +528,10 @@ export async function sendInterviewEmailForInterview(organizationId: string, int
       to: context.candidate_email,
       name: context.candidate_name || "Candidate",
       link: context.link,
+      organizationTimezone: context.organization_timezone ?? null,
+      organizationTimezoneLabel: context.organization_timezone_label ?? null,
+      scheduledStartUtc: context.start_time ?? null,
+      scheduledEndUtc: context.end_time ?? null,
     })
     await markEmailSucceeded(organizationId, interviewId)
     return { emailSent: true, emailError: null, link: context.link }

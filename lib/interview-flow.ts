@@ -12,6 +12,10 @@ import {
   presentSkillName,
   sanitizeSkillList,
 } from "@/lib/server/ai/skills"
+import {
+  classifyInterviewQuestion,
+  InterviewQuestionType,
+} from "@/lib/server/ai/interview-question-types"
 
 function resolveSeniorityLevel(level?: string) {
   const normalized = String(level ?? "").toLowerCase().trim()
@@ -59,6 +63,9 @@ function mapQuestion(
 ): InterviewQuestion {
   const displaySkill = presentSkillName(question.skill)
   const skillType = classifySkillType(displaySkill)
+  const classification = classifyInterviewQuestion(question.question, undefined, [
+    displaySkill,
+  ])
   const questionId = question.id || `q-${index}`
   const sourceType = question.source_type === "resume" ? "resume" : question.source_type === "behavioral" ? "behavioral" : "job"
 
@@ -75,7 +82,15 @@ function mapQuestion(
     },
     is_dynamic: true,
     allow_followups: true,
-    question_type: skillType === "behavioral" ? "behavioral" : "open_ended",
+    question_type:
+      skillType === "behavioral"
+        ? InterviewQuestionType.BEHAVIORAL
+        : classification.questionType,
+    classifier_confidence:
+      skillType === "behavioral" ? 0.86 : classification.confidence,
+    recruiter_override: false,
+    rendering_mode:
+      skillType === "behavioral" ? "behavioral" : classification.renderingMode,
   }
 }
 

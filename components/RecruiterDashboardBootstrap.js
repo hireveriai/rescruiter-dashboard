@@ -5,6 +5,7 @@ import { useEffect, useState } from "react"
 import { buildAuthUrl } from "@/lib/client/auth-query"
 import { clearHireveriSessionCookie, getRecruiterLoginUrl } from "@/lib/client/auth-session"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
+import { useOrgTimezone } from "@/components/OrgTimezoneProvider"
 
 function WorkspaceShell({ tone = "loading", title, message, ctaLabel, onCtaClick }) {
   const isError = tone === "error"
@@ -83,6 +84,7 @@ function WorkspaceShell({ tone = "loading", title, message, ctaLabel, onCtaClick
 
 export default function RecruiterDashboardBootstrap({ children }) {
   const searchParams = useAuthSearchParams()
+  const { setTimezoneState } = useOrgTimezone()
   const [state, setState] = useState({
     status: "loading",
     profile: null,
@@ -167,6 +169,10 @@ export default function RecruiterDashboardBootstrap({ children }) {
         }
 
         const profile = profileData.data ?? null
+        setTimezoneState({
+          timezone: profile?.timezone,
+          timezoneLabel: profile?.timezoneLabel,
+        })
 
         setState((current) => ({
           status: "ready",
@@ -207,6 +213,10 @@ export default function RecruiterDashboardBootstrap({ children }) {
           profile: overview?.profile ?? profile,
           overview,
           message: "",
+        })
+        setTimezoneState({
+          timezone: overview?.profile?.timezone ?? profile?.timezone,
+          timezoneLabel: overview?.profile?.timezoneLabel ?? profile?.timezoneLabel,
         })
       } catch (error) {
         if (!active) {

@@ -3,6 +3,11 @@ import { Prisma } from "@prisma/client"
 import { validateQuestionStrict } from "@/lib/question-validator"
 import { prisma } from "@/lib/server/prisma"
 import { InterviewQuestion } from "@/lib/server/ai/interview-flow"
+import {
+  classifyInterviewQuestion,
+  getQuestionRenderingMode,
+  InterviewQuestionType,
+} from "@/lib/server/ai/interview-question-types"
 
 type ColumnInfo = {
   column_name: string
@@ -32,6 +37,9 @@ type QuestionColumnMap = {
   target_skill?: string
   target_skill_id?: string | null
   question_type?: string
+  classifier_confidence?: number | null
+  recruiter_override?: boolean
+  rendering_mode?: string | null
 }
 
 const QUESTION_TABLE = "interview_questions"
@@ -102,7 +110,23 @@ function cleanQuestionsForSave(questions: InterviewQuestion[]) {
     question: question.question,
     source_type: question.source_type ?? "job",
     is_dynamic: true,
-    question_type: question.question_type ?? (question.skill_type === "behavioral" ? "behavioral" : "open_ended"),
+    question_type:
+      question.question_type ??
+      (question.skill_type === "behavioral"
+        ? InterviewQuestionType.BEHAVIORAL
+        : classifyInterviewQuestion(question.question, undefined, [question.skill]).questionType),
+    classifier_confidence:
+      question.classifier_confidence ??
+      classifyInterviewQuestion(question.question, undefined, [question.skill]).confidence,
+    recruiter_override: question.recruiter_override ?? false,
+    rendering_mode:
+      question.rendering_mode ??
+      getQuestionRenderingMode(
+        question.question_type ??
+          (question.skill_type === "behavioral"
+            ? InterviewQuestionType.BEHAVIORAL
+            : classifyInterviewQuestion(question.question, undefined, [question.skill]).questionType)
+      ),
     allow_followups: question.allow_followups ?? true,
     id: question.id || `q-${index}`,
   }))
@@ -284,7 +308,12 @@ export async function verifyInterviewQuestionsPersisted(
 
 function buildColumnValues(question: InterviewQuestion, orderIndex: number): QuestionColumnMap {
   const phaseHint = question.phase_hint ?? "core"
-  const questionType = question.question_type ?? (question.skill_type === "behavioral" ? "behavioral" : "open_ended")
+  const classification = classifyInterviewQuestion(question.question, undefined, [question.skill])
+  const questionType =
+    question.question_type ??
+    (question.skill_type === "behavioral"
+      ? InterviewQuestionType.BEHAVIORAL
+      : classification.questionType)
   const sourceType = question.source_type === "resume" || question.source_type === "job" || question.source_type === "behavioral"
     ? question.source_type
     : question.skill_type === "behavioral"
@@ -313,6 +342,9 @@ function buildColumnValues(question: InterviewQuestion, orderIndex: number): Que
     target_skill: question.skill,
     target_skill_id: null,
     question_type: questionType,
+    classifier_confidence: question.classifier_confidence ?? classification.confidence,
+    recruiter_override: question.recruiter_override ?? false,
+    rendering_mode: question.rendering_mode ?? getQuestionRenderingMode(questionType),
   }
 }
 
@@ -349,7 +381,13 @@ function buildInsertStatement(
       return true
     }
 
-    if (name === "phase_hint" || name === "question_type") {
+    if (
+      name === "phase_hint" ||
+      name === "question_type" ||
+      name === "classifier_confidence" ||
+      name === "recruiter_override" ||
+      name === "rendering_mode"
+    ) {
       return true
     }
 

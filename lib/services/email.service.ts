@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { formatOrgDateTime } from "@/lib/time";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const DEFAULT_EMAIL_FROM = "HireVeri Recruiter <no-reply@mil.hireveri.com>";
@@ -7,6 +8,10 @@ type SendEmailParams = {
   to: string;
   name: string;
   link: string;
+  organizationTimezone?: string | null;
+  organizationTimezoneLabel?: string | null;
+  scheduledStartUtc?: string | Date | null;
+  scheduledEndUtc?: string | Date | null;
 };
 
 type SendRecruiterAccessEmailParams = {
@@ -16,10 +21,30 @@ type SendRecruiterAccessEmailParams = {
   link: string;
 };
 
-export async function sendInterviewEmail({ to, name, link }: SendEmailParams) {
+export async function sendInterviewEmail({
+  to,
+  name,
+  link,
+  organizationTimezone,
+  organizationTimezoneLabel,
+  scheduledStartUtc,
+  scheduledEndUtc,
+}: SendEmailParams) {
   if (!process.env.RESEND_API_KEY) {
     throw new Error("RESEND_API_KEY is not configured");
   }
+
+  const scheduleHtml =
+    scheduledStartUtc && scheduledEndUtc
+      ? `
+        <p style="margin-top:20px;">
+          Interview Scheduled:<br />
+          <strong>${formatOrgDateTime(scheduledStartUtc, organizationTimezone ?? undefined)}</strong><br />
+          <span style="color:#475569;">Ends ${formatOrgDateTime(scheduledEndUtc, organizationTimezone ?? undefined)}</span><br />
+          <span style="color:#475569;">Timezone: ${organizationTimezoneLabel ?? organizationTimezone ?? "Organization Time"}</span>
+        </p>
+      `
+      : ""
 
   const response = await resend.emails.send({
     from: process.env.EMAIL_FROM || DEFAULT_EMAIL_FROM,
@@ -32,6 +57,7 @@ export async function sendInterviewEmail({ to, name, link }: SendEmailParams) {
         <p>Hi ${name},</p>
 
         <p>You have been invited to complete an interview on HireVeri. Use the secure link below to begin.</p>
+        ${scheduleHtml}
 
         <a href="${link}"
            style="display:inline-block;padding:12px 18px;background:#0f172a;color:#fff;text-decoration:none;border-radius:10px;font-weight:600;">

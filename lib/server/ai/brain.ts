@@ -1,5 +1,9 @@
 import { enforceBehavioralQuestions, Question, RoleType } from "@/lib/server/ai/behavioral"
 import { assignSkillsToQuestions, buildSkillUniverse, classifySkillType, presentSkillName } from "@/lib/server/ai/skills"
+import {
+  classifyInterviewQuestion,
+  InterviewQuestionType,
+} from "@/lib/server/ai/interview-question-types"
 
 export type GenerateQuestionsInput = {
   roleType: RoleType
@@ -19,6 +23,8 @@ export type GenerateQuestionsInput = {
 
 export type EvaluateAnswerInput = {
   questionId: string
+  question?: string
+  questionType?: string
   answer: string
   roleType: RoleType
   skillTags: string[]
@@ -851,11 +857,55 @@ export function generateQuestions(input: GenerateQuestionsInput) {
   })
 }
 
-export function evaluateAnswer(_input: EvaluateAnswerInput): EvaluateAnswerResult {
+function rubricSignals(questionType: InterviewQuestionType) {
+  switch (questionType) {
+    case InterviewQuestionType.CODING:
+      return ["correctness", "optimization", "syntax", "complexity", "execution"]
+    case InterviewQuestionType.SYSTEM_DESIGN:
+      return ["scalability", "tradeoffs", "resilience", "architecture_maturity"]
+    case InterviewQuestionType.BEHAVIORAL:
+      return ["communication", "ownership", "emotional_maturity", "leadership"]
+    case InterviewQuestionType.ARCHITECTURE:
+      return ["strategy", "governance", "enterprise_integration", "risk"]
+    case InterviewQuestionType.TROUBLESHOOTING:
+      return ["debugging_methodology", "rca_quality", "prioritization", "operational_maturity"]
+    case InterviewQuestionType.CASE_STUDY:
+      return ["scenario_analysis", "structure", "tradeoffs", "decision_quality"]
+    case InterviewQuestionType.MCQ:
+      return ["objective_accuracy", "explanation_quality"]
+    case InterviewQuestionType.TECHNICAL_DISCUSSION:
+    default:
+      return ["technical_depth", "real_world_experience", "terminology", "measurable_outcomes", "clarity"]
+  }
+}
+
+export function evaluateAnswer(input: EvaluateAnswerInput): EvaluateAnswerResult {
+  const classified = classifyInterviewQuestion(
+    input.question ?? input.questionId,
+    input.roleType,
+    input.skillTags
+  )
+  const questionType =
+    input.questionType && Object.values(InterviewQuestionType).includes(input.questionType as InterviewQuestionType)
+      ? (input.questionType as InterviewQuestionType)
+      : classified.questionType
+  const wordCount = input.answer.trim().split(/\s+/).filter(Boolean).length
+  const hasSpecifics =
+    /\b\d+(\.\d+)?%?\b|\b(production|migration|latency|cost|scale|users|requests|sla|rollback|index|cache|queue|incident)\b/i.test(
+      input.answer
+    )
+  const score = Math.max(
+    0,
+    Math.min(
+      100,
+      Math.round((wordCount >= 40 ? 55 : 35) + (hasSpecifics ? 25 : 0) + classified.confidence * 20)
+    )
+  )
+
   return {
-    score: 0,
-    rationale: "Evaluation pipeline not wired yet",
-    signals: [],
+    score,
+    rationale: `Evaluated as ${questionType}; scoring rubric is type-specific and does not assume coding unless executable output was requested.`,
+    signals: rubricSignals(questionType),
   }
 }
 

@@ -9,8 +9,12 @@ import { InsightTooltip } from "@/components/ui/InsightTooltip"
 import { ProcessingTimeline, type TimelineStep } from "@/components/ui/ProcessingTimeline"
 import { StepProgress } from "@/components/ui/StepProgress"
 import { buildAuthUrl } from "@/lib/client/auth-query"
-import { formatDateTime } from "@/lib/client/date-format"
+import {
+  convertOrgTimeToUtc,
+  formatDateTime,
+} from "@/lib/client/date-format"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
+import { useOrgTimezone } from "@/components/OrgTimezoneProvider"
 
 type ExistingJob = {
   jobId: string
@@ -263,16 +267,6 @@ function getResumeStatusClass(status: ResumeDisplayStatus) {
     case "FAILED":
       return "border-rose-500/25 bg-rose-500/10 text-rose-300"
   }
-}
-
-function getDateTimeValue(value: string) {
-  if (!value) {
-    return null
-  }
-
-  const date = new Date(value)
-
-  return Number.isNaN(date.getTime()) ? null : date
 }
 
 function PlayIcon() {
@@ -623,6 +617,7 @@ function authUrl(path: string) {
 }
 
 export default function AiScreeningPage() {
+  const { timezone } = useOrgTimezone()
   const searchParams = useAuthSearchParams()
   const resultsSectionRef = useRef<HTMLElement>(null)
   const defaultFlowState = getDefaultFlowState()
@@ -1669,14 +1664,14 @@ export default function AiScreeningPage() {
   }
 
   function validateScheduleWindow(startTime: string, endTime: string, label: string) {
-    const start = getDateTimeValue(startTime)
-    const end = getDateTimeValue(endTime)
+    const start = convertOrgTimeToUtc(startTime, timezone)
+    const end = convertOrgTimeToUtc(endTime, timezone)
 
     if (!start || !end) {
       return `${label} needs a valid start and end time.`
     }
 
-    if (end <= start) {
+    if (new Date(end) <= new Date(start)) {
       return `${label} end time must be after start time.`
     }
 
@@ -1716,8 +1711,8 @@ export default function AiScreeningPage() {
       scheduledCandidates.push({
         candidateId: match.candidateId,
         accessType: "SCHEDULED",
-        startTime: getDateTimeValue(draft.startTime)?.toISOString() ?? null,
-        endTime: getDateTimeValue(draft.endTime)?.toISOString() ?? null,
+        startTime: convertOrgTimeToUtc(draft.startTime, timezone),
+        endTime: convertOrgTimeToUtc(draft.endTime, timezone),
       })
     }
 

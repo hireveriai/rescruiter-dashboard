@@ -1,5 +1,6 @@
 import "./globals.css";
 
+import { OrgTimezoneProvider } from "@/components/OrgTimezoneProvider";
 import SessionInactivityGuard from "@/components/SessionInactivityGuard";
 
 export const metadata = {
@@ -17,8 +18,10 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body className="antialiased">
-        <SessionInactivityGuard />
-        {children}
+        <OrgTimezoneProvider>
+          <SessionInactivityGuard />
+          {children}
+        </OrgTimezoneProvider>
       </body>
     </html>
   );

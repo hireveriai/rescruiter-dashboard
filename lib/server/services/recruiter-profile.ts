@@ -8,6 +8,8 @@ type RecruiterBaseRow = {
   recruiter_name: string | null
   recruiter_email: string
   organization_name: string | null
+  timezone: string | null
+  timezone_label: string | null
 }
 
 type RecruiterProfileRow = {
@@ -20,6 +22,8 @@ export type RecruiterProfile = {
   name: string
   email: string
   organization: string
+  timezone: string
+  timezoneLabel: string
   userId: string
   organizationId: string
   recruiterRoleId: number | null
@@ -36,7 +40,9 @@ export async function getRecruiterProfile(auth: RecruiterRequestContext): Promis
       select
         u.full_name as recruiter_name,
         u.email as recruiter_email,
-        o.organization_name
+        o.organization_name,
+        o.timezone,
+        o.timezone_label
       from public.users u
       left join public.organizations o
         on o.organization_id = u.organization_id
@@ -95,6 +101,8 @@ export async function getRecruiterProfile(auth: RecruiterRequestContext): Promis
     name: recruiter.recruiter_name ?? recruiter.recruiter_email,
     email: recruiter.recruiter_email,
     organization: recruiter.organization_name ?? profileCompanyName ?? "",
+    timezone: recruiter.timezone ?? "Asia/Kolkata",
+    timezoneLabel: recruiter.timezone_label ?? "India Standard Time",
     userId: auth.userId,
     organizationId: auth.organizationId,
     recruiterRoleId,

@@ -1,20 +1,13 @@
-import { Prisma } from "@prisma/client"
 import { NextResponse } from "next/server"
 
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
 import { errorResponse } from "@/lib/server/response"
 import { prisma } from "@/lib/server/prisma"
-import { getInterviewAppUrl } from "@/lib/server/interview-url"
 import { getCandidatesDashboard } from "@/lib/server/services/dashboard.service"
 import { getDashboardPipelineData } from "@/lib/server/services/dashboard-pipeline"
+import { getDashboardRecordings } from "@/lib/server/services/dashboard-recordings"
 import { getRecruiterProfile } from "@/lib/server/services/recruiter-profile"
 import { getVerisSummaryCards, type VerisSummaryCard } from "@/lib/server/services/reports.service"
-
-type PipelineFunctionRow = {
-  fn_get_dashboard_pipeline: {
-    recordedInterviews?: Array<Record<string, unknown>>
-  }
-}
 
 type OverviewPayload = {
   profile: Awaited<ReturnType<typeof getRecruiterProfile>>
@@ -51,27 +44,19 @@ const inFlight = new Map<string, Promise<OverviewPayload>>()
 async function buildOverview(
   auth: Awaited<ReturnType<typeof getRecruiterRequestContext>>
 ): Promise<OverviewPayload> {
-  const appUrl = getInterviewAppUrl()
-
-  const [profile, pipelineRows, veris, candidates] = await Promise.all([
+  const [profile, veris, candidates, recordedInterviews] = await Promise.all([
     getRecruiterProfile(auth),
-    prisma.$queryRaw<PipelineFunctionRow[]>(Prisma.sql`
-      select public.fn_get_dashboard_pipeline(
-        ${auth.organizationId}::uuid,
-        ${appUrl}
-      )
-    `),
     getVerisSummaryCards(auth.organizationId, 6),
     getCandidatesDashboard({
       organizationId: auth.organizationId,
       limit: 5,
     }),
+    getDashboardRecordings(auth.organizationId),
   ])
   const pipelineData = await getDashboardPipelineData({
     organizationId: auth.organizationId,
   })
 
-  const payload = pipelineRows[0]?.fn_get_dashboard_pipeline ?? {}
   const [jobs, invites, decisionsPending] = await Promise.all([
     prisma.jobPosition.count({
       where: {
@@ -119,7 +104,7 @@ async function buildOverview(
       decisionsPending,
     },
     pendingInterviews: pipelineData.pendingInterviews,
-    recordedInterviews: payload.recordedInterviews ?? [],
+    recordedInterviews,
     candidates: candidates ?? [],
     veris,
   }

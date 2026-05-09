@@ -11,6 +11,31 @@ function getRetentionLabel(days) {
   return `${days ?? 30} days retention`
 }
 
+function getRecordingUrl(item) {
+  return item?.recordingUrl || item?.audioUrl || ""
+}
+
+function ViewRecordingLink({ item, compact = false }) {
+  const recordingUrl = getRecordingUrl(item)
+  const className = compact
+    ? "inline-flex items-center justify-center rounded border border-blue-400/40 bg-blue-500/15 px-3 py-1 text-sm text-blue-100 transition hover:border-blue-300 hover:bg-blue-500/25"
+    : "inline-flex items-center justify-center rounded-xl border border-blue-400/40 bg-blue-500/15 px-3 py-2 text-sm font-medium text-blue-100 transition hover:border-blue-300 hover:bg-blue-500/25"
+
+  if (!recordingUrl) {
+    return (
+      <span className={`${className} cursor-not-allowed opacity-45`} title="Recording URL is missing for this row">
+        View Recording
+      </span>
+    )
+  }
+
+  return (
+    <a href={recordingUrl} target="_blank" rel="noreferrer" className={className}>
+      View Recording
+    </a>
+  )
+}
+
 function RecordedInterviewsModal({ isOpen, onClose, interviews }) {
   if (!isOpen) {
     return null
@@ -39,12 +64,13 @@ function RecordedInterviewsModal({ isOpen, onClose, interviews }) {
         </div>
 
         <div className="max-h-[75vh] overflow-auto px-8 py-6">
-          <div className="grid grid-cols-[1.1fr_1fr_1.6fr_0.9fr_0.9fr] gap-4 border-b border-white/10 pb-3 text-xs uppercase tracking-[0.24em] text-slate-500">
+          <div className="grid grid-cols-[1.1fr_1fr_1.5fr_0.85fr_0.85fr_0.85fr] gap-4 border-b border-white/10 pb-3 text-xs uppercase tracking-[0.24em] text-slate-500">
             <div>Candidate</div>
             <div>Job</div>
             <div>Transcript Preview</div>
             <div>Recorded</div>
             <div>Retention</div>
+            <div>Action</div>
           </div>
 
           <div className="mt-4 space-y-3">
@@ -56,13 +82,16 @@ function RecordedInterviewsModal({ isOpen, onClose, interviews }) {
               interviews.map((item) => (
                 <div
                   key={item.recordingId}
-                  className="grid grid-cols-[1.1fr_1fr_1.6fr_0.9fr_0.9fr] gap-4 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-4 text-sm text-slate-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+                  className="grid grid-cols-[1.1fr_1fr_1.5fr_0.85fr_0.85fr_0.85fr] gap-4 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-4 text-sm text-slate-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
                 >
                   <div className="font-medium text-white">{item.candidateName}</div>
                   <div className="text-slate-300">{item.jobTitle}</div>
                   <div className="text-slate-400">{item.transcriptPreview}</div>
                   <div className="whitespace-nowrap text-slate-400">{formatDateTime(item.createdAt)}</div>
                   <div className="text-fuchsia-200">{getRetentionLabel(item.retentionDays)}</div>
+                  <div>
+                    <ViewRecordingLink item={item} compact />
+                  </div>
                 </div>
               ))
             )}
@@ -168,9 +197,7 @@ export default function RecordedInterviews({ initialRecordedInterviews, organiza
                 </div>
 
                 <div className="flex gap-2">
-                  <button className="bg-blue-500/70 px-3 py-1 rounded text-sm cursor-default">
-                    View Recording
-                  </button>
+                  <ViewRecordingLink item={item} compact />
 
                   <button
                     type="button"
