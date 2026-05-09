@@ -255,6 +255,41 @@ function RecoverySummary({ recovery }) {
   )
 }
 
+function openDashboardAction(action) {
+  if (typeof window === "undefined") {
+    return
+  }
+
+  window.dispatchEvent(new CustomEvent(action))
+}
+
+function GuidedInterviewEmptyState({ compact = false }) {
+  return (
+    <div className={`rounded-2xl border border-cyan-300/15 bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.12),transparent_34%),linear-gradient(135deg,rgba(15,23,42,0.82),rgba(2,6,23,0.72))] text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] ${compact ? "px-4 py-6" : "px-6 py-8"}`}>
+      <p className="text-base font-semibold text-white">No interviews created yet.</p>
+      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-400">
+        Start by creating a job and inviting candidates. The hiring workflow will guide screening, AI interviews, reports, and final decisions.
+      </p>
+      <div className="mt-4 flex flex-wrap justify-center gap-3">
+        <button
+          type="button"
+          onClick={() => openDashboardAction("hireveri:open-create-job")}
+          className="rounded-xl border border-blue-300/25 bg-blue-500/10 px-4 py-2 text-sm font-semibold text-blue-100 transition hover:border-blue-300/45 hover:bg-blue-500/20"
+        >
+          Create Job
+        </button>
+        <button
+          type="button"
+          onClick={() => openDashboardAction("hireveri:open-send-interview")}
+          className="rounded-xl border border-cyan-300/25 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300/45 hover:bg-cyan-500/20"
+        >
+          Send Interview Link
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, onEdit, onDelete, onRetryPreparation, onRetryEmail, onRecoveryAction, onViewRecoveryAudit, nowTick, copiedLink, busyInviteId }) {
   if (!isOpen) {
     return null
@@ -295,9 +330,7 @@ function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, onEdit, o
 
           <div className="mt-4 space-y-3">
             {interviews.length === 0 ? (
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-6 text-center text-slate-400">
-                No invited interviews
-              </div>
+              <GuidedInterviewEmptyState />
             ) : (
               interviews.map((item) => (
                 <div
@@ -710,8 +743,8 @@ export default function PendingInterviews({ initialPendingInterviews }) {
             <tbody>
               {previewInterviews.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-4 text-center text-gray-400">
-                    No invited interviews
+                  <td colSpan={6} className="p-4">
+                    <GuidedInterviewEmptyState compact />
                   </td>
                 </tr>
               ) : (

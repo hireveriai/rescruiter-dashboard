@@ -24,6 +24,14 @@ type OverviewPayload = {
     completed: number
     flagged: number
   }
+  workflowMetrics: {
+    jobs: number
+    invites: number
+    screenings: number
+    interviewsRunning: number
+    reportsReady: number
+    decisionsPending: number
+  }
   pendingInterviews: Array<Record<string, unknown>>
   recordedInterviews: Array<Record<string, unknown>>
   candidates: Awaited<ReturnType<typeof getCandidatesDashboard>>
@@ -64,10 +72,52 @@ async function buildOverview(
   })
 
   const payload = pipelineRows[0]?.fn_get_dashboard_pipeline ?? {}
+  const [jobs, invites, decisionsPending] = await Promise.all([
+    prisma.jobPosition.count({
+      where: {
+        organizationId: auth.organizationId,
+      },
+    }),
+    prisma.interviewInvite.count({
+      where: {
+        interview: {
+          organizationId: auth.organizationId,
+        },
+      },
+    }),
+    prisma.interviewAttempt.count({
+      where: {
+        interview: {
+          organizationId: auth.organizationId,
+        },
+        status: {
+          in: ["COMPLETED", "SUBMITTED", "EVALUATED"],
+        },
+        OR: [
+          {
+            evaluation: null,
+          },
+          {
+            evaluation: {
+              decision: null,
+            },
+          },
+        ],
+      },
+    }),
+  ])
 
   return {
     profile,
     pipeline: pipelineData.pipeline,
+    workflowMetrics: {
+      jobs,
+      invites,
+      screenings: veris.length,
+      interviewsRunning: pipelineData.pipeline.inProgress,
+      reportsReady: pipelineData.pipeline.completed,
+      decisionsPending,
+    },
     pendingInterviews: pipelineData.pendingInterviews,
     recordedInterviews: payload.recordedInterviews ?? [],
     candidates: candidates ?? [],

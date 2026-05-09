@@ -22,8 +22,8 @@ function DashboardContent({ profile, showRestoreOverlay, overview }) {
     <div className="relative min-h-screen bg-[#0b1220] text-white">
       <Navbar onSendInterviewClick={() => setIsModalOpen(true)} initialProfile={profile} />
 
-      <div className="grid grid-cols-4 gap-6 p-8">
-        <div className="col-span-3">
+      <div className="grid grid-cols-1 gap-6 p-4 sm:p-6 lg:grid-cols-4 lg:p-8">
+        <div className="lg:col-span-3">
           <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <h1 className="text-2xl font-semibold">Recruiter Dashboard</h1>
@@ -44,8 +44,8 @@ function DashboardContent({ profile, showRestoreOverlay, overview }) {
           <WarRoomButton organizationId={profile?.organizationId} />
         </div>
 
-        <div className="col-span-1">
-          <Sidebar initialProfile={profile} />
+        <div className="lg:col-span-1">
+          <Sidebar initialProfile={profile} overview={overview} />
           <AlertsPanel />
         </div>
       </div>

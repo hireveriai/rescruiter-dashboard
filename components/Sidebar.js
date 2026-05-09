@@ -1,60 +1,15 @@
 "use client"
 
-import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 
 import { buildAuthUrl, hasAuthQuery } from "@/lib/client/auth-query"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import CreateJobModal from "./CreateJobModal"
+import HiringWorkflow from "./HiringWorkflow"
 import SendInterviewModal from "./SendInterviewModal"
 
-const quickActions = [
-  {
-    id: "create-job",
-    title: "Create Job",
-    description: "Open a new role and configure the interview track.",
-    tone: "primary",
-  },
-  {
-    id: "send-link",
-    title: "Send Interview Link",
-    description: "Generate secure interview access for a candidate.",
-    tone: "secondary",
-  },
-  {
-    id: "upload-candidate",
-    title: "Upload Candidate",
-    description: "Review the full candidate registry and uploaded profiles.",
-    tone: "neutral",
-    href: "/candidates",
-  },
-  {
-    id: "generate-report",
-    title: "Generate Report",
-    description: "Open decision-ready reports across funnel, fraud, and audit intelligence.",
-    tone: "neutral",
-    href: "/reports",
-  },
-]
-
-function getCardClasses(tone, disabled) {
-  if (disabled || tone === "disabled") {
-    return "border-slate-800 bg-slate-950/30 text-slate-500"
-  }
-
-  if (tone === "primary") {
-    return "border-blue-500/20 bg-[linear-gradient(135deg,rgba(59,130,246,0.22),rgba(37,99,235,0.08))] text-white hover:border-blue-400/40 hover:bg-[linear-gradient(135deg,rgba(59,130,246,0.28),rgba(37,99,235,0.12))]"
-  }
-
-  if (tone === "secondary") {
-    return "border-cyan-500/20 bg-[linear-gradient(135deg,rgba(34,211,238,0.16),rgba(15,23,42,0.3))] text-white hover:border-cyan-400/40 hover:bg-[linear-gradient(135deg,rgba(34,211,238,0.22),rgba(15,23,42,0.45))]"
-  }
-
-  return "border-slate-700 bg-slate-900/65 text-white hover:border-slate-500 hover:bg-slate-900/90"
-}
-
-export default function Sidebar({ initialProfile = null }) {
+export default function Sidebar({ initialProfile = null, overview = null }) {
   const searchParams = useAuthSearchParams()
   const [user, setUser] = useState(initialProfile)
   const [profileError, setProfileError] = useState("")
@@ -66,6 +21,10 @@ export default function Sidebar({ initialProfile = null }) {
 
     function handleOpenCreateJobEvent() {
       setOpenCreateJob(true)
+    }
+
+    function handleOpenSendInterviewEvent() {
+      setOpenSendInterview(true)
     }
 
     if (!initialProfile && hasAuthQuery(searchParams)) {
@@ -97,10 +56,12 @@ export default function Sidebar({ initialProfile = null }) {
     }
 
     window.addEventListener("hireveri:open-create-job", handleOpenCreateJobEvent)
+    window.addEventListener("hireveri:open-send-interview", handleOpenSendInterviewEvent)
 
     return () => {
       isMounted = false
       window.removeEventListener("hireveri:open-create-job", handleOpenCreateJobEvent)
+      window.removeEventListener("hireveri:open-send-interview", handleOpenSendInterviewEvent)
     }
   }, [initialProfile, searchParams])
 
@@ -123,6 +84,11 @@ export default function Sidebar({ initialProfile = null }) {
     }
 
     if (id === "send-link") {
+      setOpenSendInterview(true)
+      return
+    }
+
+    if (id === "skip-screening") {
       setOpenSendInterview(true)
     }
   }
@@ -151,53 +117,7 @@ export default function Sidebar({ initialProfile = null }) {
           </div>
         ) : null}
 
-        <div className="mt-7">
-          <h3 className="text-xs font-medium uppercase tracking-[0.34em] text-slate-500">Quick Actions</h3>
-
-          <div className="mt-4 grid gap-3">
-            {quickActions.map((action) => {
-              const className = [
-                "group block rounded-2xl border p-4 text-left transition xl:p-3.5",
-                getCardClasses(action.tone, action.disabled),
-                action.disabled ? "cursor-not-allowed" : "cursor-pointer",
-              ].join(" ")
-
-              const content = (
-                <>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-[1.02rem] font-semibold leading-tight xl:text-[15px]">{action.title}</p>
-                      <p className="mt-2 text-sm leading-6 text-inherit/80 xl:text-[13px] xl:leading-5">{action.description}</p>
-                    </div>
-                    <span className="shrink-0 pt-0.5 text-sm text-inherit/60 transition group-hover:text-inherit">?</span>
-                  </div>
-                </>
-              )
-
-              if (action.disabled) {
-                return (
-                  <div key={action.id} className={className} aria-disabled="true">
-                    {content}
-                  </div>
-                )
-              }
-
-              if (action.href) {
-                return (
-                  <Link key={action.id} href={buildAuthUrl(action.href, searchParams)} className={className}>
-                    {content}
-                  </Link>
-                )
-              }
-
-              return (
-                <button key={action.id} type="button" className={className} onClick={() => handleAction(action.id)}>
-                  {content}
-                </button>
-              )
-            })}
-          </div>
-        </div>
+        <HiringWorkflow overview={overview} searchParams={searchParams} onAction={handleAction} />
       </aside>
 
       <CreateJobModal open={openCreateJob} setOpen={setOpenCreateJob} />
