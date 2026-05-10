@@ -20,6 +20,10 @@ function quoteIdentifier(value: string) {
   return `"${value.replace(/"/g, "\"\"")}"`
 }
 
+function buildRecordingPlaybackUrl(recordingId: string) {
+  return `/api/recordings/${encodeURIComponent(recordingId)}`
+}
+
 async function getRecordingColumns() {
   const rows = await prisma.$queryRaw<RecordingColumnRow[]>`
     select column_name
@@ -81,5 +85,11 @@ export async function getDashboardRecordings(organizationId: string): Promise<Da
     order by ${columns.has("created_at") ? "ir.created_at desc nulls last" : `ir.${quoteIdentifier(idColumn)} desc`}
   `
 
-  return prisma.$queryRawUnsafe<DashboardRecordingRow[]>(query, organizationId).catch(() => [])
+  const rows = await prisma.$queryRawUnsafe<DashboardRecordingRow[]>(query, organizationId).catch(() => [])
+
+  return rows.map((row) => ({
+    ...row,
+    recordingUrl: buildRecordingPlaybackUrl(row.recordingId),
+    audioUrl: buildRecordingPlaybackUrl(row.recordingId),
+  }))
 }
