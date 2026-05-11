@@ -119,9 +119,12 @@ async function requestSignedUrl(bucket: string, path: string) {
 
 async function createSignedUrl(bucket: string, path: string) {
   const fallbackBucket = getStorageBucket()
+  const strippedFallbackPath = path.startsWith(`${fallbackBucket}/`) ? path.slice(fallbackBucket.length + 1) : null
   const candidates = [
     { bucket, path },
+    ...(strippedFallbackPath ? [{ bucket, path: strippedFallbackPath }] : []),
     ...(bucket !== fallbackBucket ? [{ bucket: fallbackBucket, path }] : []),
+    ...(bucket !== fallbackBucket && strippedFallbackPath ? [{ bucket: fallbackBucket, path: strippedFallbackPath }] : []),
   ]
   let lastFailure: { status: number; message: string } | null = null
 
@@ -143,9 +146,11 @@ async function createSignedUrl(bucket: string, path: string) {
   }
 
   throw new ApiError(
-    lastFailure?.status ?? 500,
-    "RECORDING_SIGN_URL_FAILED",
-    lastFailure?.message || "Unable to create recording playback URL"
+    lastFailure?.status === 400 && /not found/i.test(lastFailure.message) ? 404 : lastFailure?.status ?? 500,
+    "RECORDING_FILE_MISSING",
+    lastFailure?.message && /not found/i.test(lastFailure.message)
+      ? "The recording row exists, but the video file is missing from Supabase Storage."
+      : lastFailure?.message || "Unable to create recording playback URL"
   )
 }
 

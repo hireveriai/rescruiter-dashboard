@@ -24,7 +24,7 @@ function ViewRecordingLink({ item, compact = false }) {
   if (!recordingUrl) {
     return (
       <span className={`${className} cursor-not-allowed opacity-45`} title="Recording URL is missing for this row">
-        View Recording
+        {item?.hasRecordingFile === false ? "File Missing" : "View Recording"}
       </span>
     )
   }

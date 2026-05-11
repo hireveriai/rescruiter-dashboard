@@ -10,10 +10,16 @@ type DashboardRecordingRow = {
   jobTitle: string
   recordingUrl: string | null
   audioUrl: string | null
+  storagePath: string | null
+  hasRecordingFile: boolean
   transcriptPreview: string
   retentionDays: number | null
   expiresAt: string | null
   createdAt: string | null
+}
+
+type StorageListItem = {
+  name: string
 }
 
 function quoteIdentifier(value: string) {
@@ -22,6 +28,83 @@ function quoteIdentifier(value: string) {
 
 function buildRecordingPlaybackUrl(recordingId: string) {
   return `/api/recordings/${encodeURIComponent(recordingId)}`
+}
+
+function getSupabaseUrl() {
+  return process.env.NEXT_PUBLIC_SUPABASE_URL?.trim().replace(/\/+$/, "") || null
+}
+
+function getStorageBucket() {
+  return process.env.SUPABASE_STORAGE_BUCKET?.trim() || "recordings"
+}
+
+function extractStoragePath(value: string | null) {
+  if (!value) {
+    return null
+  }
+
+  const trimmed = value.trim()
+  const supabaseUrl = getSupabaseUrl()
+
+  if (!trimmed) {
+    return null
+  }
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    const parsedUrl = new URL(trimmed)
+    const prefixes = ["/storage/v1/object/public/", "/storage/v1/object/sign/", "/storage/v1/object/"]
+    const matchingPrefix = prefixes.find((prefix) => parsedUrl.pathname.includes(prefix))
+
+    if (!supabaseUrl || parsedUrl.origin !== supabaseUrl || !matchingPrefix) {
+      return null
+    }
+
+    const objectParts = decodeURIComponent(parsedUrl.pathname.slice(parsedUrl.pathname.indexOf(matchingPrefix) + matchingPrefix.length)).split("/").filter(Boolean)
+    objectParts.shift()
+    return objectParts.join("/") || null
+  }
+
+  return trimmed.replace(/^\/+/, "") || null
+}
+
+async function listRecordingObjectPaths() {
+  const supabaseUrl = getSupabaseUrl()
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
+  const bucket = getStorageBucket()
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    return null
+  }
+
+  const response = await fetch(`${supabaseUrl}/storage/v1/object/list/${encodeURIComponent(bucket)}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: serviceRoleKey,
+      Authorization: `Bearer ${serviceRoleKey}`,
+    },
+    body: JSON.stringify({
+      prefix: "recordings",
+      limit: 1000,
+      offset: 0,
+      sortBy: {
+        column: "name",
+        order: "asc",
+      },
+    }),
+  })
+
+  if (!response.ok) {
+    return null
+  }
+
+  const items = await response.json().catch(() => null) as StorageListItem[] | null
+
+  if (!Array.isArray(items)) {
+    return null
+  }
+
+  return new Set(items.map((item) => `recordings/${item.name}`))
 }
 
 async function getRecordingColumns() {
@@ -64,6 +147,7 @@ export async function getDashboardRecordings(organizationId: string): Promise<Da
   const retentionExpression = columns.has("retention_days") ? "coalesce(ir.retention_days, 30)" : "30"
   const expiresExpression = columns.has("expires_at") ? "ir.expires_at::text" : "null::text"
   const createdExpression = columns.has("created_at") ? "ir.created_at::text" : "null::text"
+  const filePathExpression = columns.has("file_path") ? "ir.file_path::text" : "null::text"
 
   const query = `
     select
@@ -72,6 +156,8 @@ export async function getDashboardRecordings(organizationId: string): Promise<Da
       coalesce(jp.job_title, '-') as "jobTitle",
       ir.${quoteIdentifier(urlColumn)}::text as "recordingUrl",
       ir.${quoteIdentifier(urlColumn)}::text as "audioUrl",
+      ${filePathExpression} as "storagePath",
+      true as "hasRecordingFile",
       ${transcriptExpression} as "transcriptPreview",
       ${retentionExpression}::int as "retentionDays",
       ${expiresExpression} as "expiresAt",
@@ -86,10 +172,17 @@ export async function getDashboardRecordings(organizationId: string): Promise<Da
   `
 
   const rows = await prisma.$queryRawUnsafe<DashboardRecordingRow[]>(query, organizationId).catch(() => [])
+  const existingObjectPaths = await listRecordingObjectPaths()
 
   return rows.map((row) => ({
     ...row,
-    recordingUrl: buildRecordingPlaybackUrl(row.recordingId),
-    audioUrl: buildRecordingPlaybackUrl(row.recordingId),
+    storagePath: row.storagePath || extractStoragePath(row.recordingUrl),
+    hasRecordingFile: existingObjectPaths ? existingObjectPaths.has(row.storagePath || extractStoragePath(row.recordingUrl) || "") : true,
+    recordingUrl: existingObjectPaths && !existingObjectPaths.has(row.storagePath || extractStoragePath(row.recordingUrl) || "")
+      ? null
+      : buildRecordingPlaybackUrl(row.recordingId),
+    audioUrl: existingObjectPaths && !existingObjectPaths.has(row.storagePath || extractStoragePath(row.recordingUrl) || "")
+      ? null
+      : buildRecordingPlaybackUrl(row.recordingId),
   }))
 }
