@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useMemo, useState } from "react"
+import { useMemo } from "react"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
 
@@ -133,20 +133,7 @@ function AiIcon() {
   )
 }
 
-function ChevronIcon({ expanded }) {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className={`h-3.5 w-3.5 transition ${expanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="m6 9 6 6 6-6" />
-    </svg>
-  )
-}
-
-function getOrganizationWorkflowKey(overview) {
-  const organizationId = overview?.profile?.organizationId || overview?.profile?.organization_id || "default"
-  return `hireveri:workflow-screening-skipped:${organizationId}`
-}
-
-function getWorkflowFacts(overview, screeningSkippedOverride = false) {
+function getWorkflowFacts(overview) {
   const metrics = overview?.workflowMetrics ?? {}
   const pipeline = overview?.pipeline ?? {}
   const hasJobs = Number(metrics.jobs ?? 0) > 0
@@ -156,7 +143,9 @@ function getWorkflowFacts(overview, screeningSkippedOverride = false) {
   const activeInterviews = Number(metrics.interviewsRunning ?? pipeline.inProgress ?? 0)
   const pendingReports = Number(metrics.pendingReports ?? metrics.reportsReady ?? pipeline.completed ?? 0)
   const pendingDecisions = Number(metrics.decisionsPending ?? 0)
-  const screeningSkipped = Boolean(screeningSkippedOverride || (!screeningStarted && invitesSent))
+  const completedInterviews = Number(metrics.completedInterviews ?? pipeline.completed ?? 0)
+  const reviewedReports = Number(metrics.reviewedReports ?? 0)
+  const screeningSkipped = Boolean(!screeningStarted && invitesSent)
 
   return {
     hasJobs,
@@ -167,6 +156,8 @@ function getWorkflowFacts(overview, screeningSkippedOverride = false) {
     activeInterviews,
     pendingReports,
     pendingDecisions,
+    completedInterviews,
+    reviewedReports,
     shortlistedCandidates: Number(metrics.shortlistedCandidates ?? 0),
   }
 }
@@ -190,8 +181,18 @@ function buildStepStatuses(activeStepId, completedStepIds = [], skippedStepIds =
   }, {})
 }
 
-function getWorkflowState(overview, screeningSkippedOverride = false) {
-  const facts = getWorkflowFacts(overview, screeningSkippedOverride)
+function getCompletedStageCount(facts) {
+  return (
+    Number(facts.hasJobs) +
+    Number(facts.screeningCompleted || facts.screeningSkipped) +
+    Number(facts.invitesSent) +
+    Number(facts.completedInterviews > 0) +
+    Number(facts.reviewedReports > 0)
+  )
+}
+
+function getWorkflowState(overview) {
+  const facts = getWorkflowFacts(overview)
 
   if (!facts.hasJobs) {
     return {
@@ -215,19 +216,6 @@ function getWorkflowState(overview, screeningSkippedOverride = false) {
     }
   }
 
-  if (facts.pendingReports > 0) {
-    return {
-      activeStepId: "review-reports",
-      recommendation: `${facts.pendingReports} interview report${facts.pendingReports === 1 ? " is" : "s are"} ready for review.`,
-      statuses: buildStepStatuses(
-        "review-reports",
-        ["create-job", "send-link", "ai-interview", ...(facts.screeningCompleted ? ["veris-screening"] : [])],
-        facts.screeningSkipped ? ["veris-screening"] : []
-      ),
-      facts,
-    }
-  }
-
   if (facts.pendingDecisions > 0) {
     return {
       activeStepId: "hiring-decision",
@@ -235,6 +223,19 @@ function getWorkflowState(overview, screeningSkippedOverride = false) {
       statuses: buildStepStatuses(
         "hiring-decision",
         ["create-job", "send-link", "ai-interview", "review-reports", ...(facts.screeningCompleted ? ["veris-screening"] : [])],
+        facts.screeningSkipped ? ["veris-screening"] : []
+      ),
+      facts,
+    }
+  }
+
+  if (facts.pendingReports > 0) {
+    return {
+      activeStepId: "review-reports",
+      recommendation: `${facts.pendingReports} interview report${facts.pendingReports === 1 ? " is" : "s are"} ready for review.`,
+      statuses: buildStepStatuses(
+        "review-reports",
+        ["create-job", "send-link", "ai-interview", ...(facts.screeningCompleted ? ["veris-screening"] : [])],
         facts.screeningSkipped ? ["veris-screening"] : []
       ),
       facts,
@@ -294,9 +295,7 @@ function getStepStatus(step, state) {
 }
 
 function getProgressLabel(state) {
-  const completedCount = Object.values(state.statuses).filter((status) => status === "completed").length
-  const skippedCount = Object.values(state.statuses).filter((status) => status === "skipped").length
-  return `${completedCount}/6 complete${skippedCount ? `, ${skippedCount} skipped` : ""}`
+  return `${getCompletedStageCount(state.facts)} of 5 workflow stages completed`
 }
 
 function getActiveSummary(state) {
@@ -319,7 +318,7 @@ function getStepSignal(step, status) {
 
 function WorkflowAction({ step, searchParams, onAction, highlighted = false }) {
   const baseClass = [
-    "inline-flex items-center justify-center rounded-xl border px-3 py-2 text-xs font-semibold transition duration-200",
+    "inline-flex items-center justify-center rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition duration-200",
     highlighted
       ? "border-white/20 bg-white text-slate-950 shadow-[0_10px_30px_rgba(255,255,255,0.12)] hover:bg-cyan-50"
       : "border-white/10 bg-white/10 text-white hover:border-white/25 hover:bg-white/15",
@@ -340,16 +339,16 @@ function WorkflowAction({ step, searchParams, onAction, highlighted = false }) {
   )
 }
 
-function WorkflowStepCard({ step, status, searchParams, onAction, expanded, onToggle }) {
+function WorkflowStepCard({ step, status, searchParams, onAction }) {
   const theme = stepThemes[step.theme]
   const isActive = status === "active"
   const isCompleted = status === "completed"
   const isSkipped = status === "skipped"
   const isPending = status === "pending"
-  const shouldExpand = isActive || Boolean(expanded)
+  const shouldExpand = isActive
   const cardClass = [
-    "group relative overflow-hidden rounded-2xl border text-left transition duration-200 hover:-translate-y-0.5",
-    shouldExpand ? "p-3.5" : "p-3",
+    "group relative overflow-hidden rounded-xl border text-left transition duration-200",
+    shouldExpand ? "p-3" : "px-3 py-2",
     isActive ? `${theme.border} bg-gradient-to-br ${theme.background} ${theme.glow} hiring-workflow-active scale-[1.01]` : "",
     isCompleted ? "border-emerald-400/20 bg-emerald-500/[0.045] text-slate-300" : "",
     isSkipped ? "border-violet-400/12 bg-slate-950/30 text-slate-500 opacity-70" : "",
@@ -359,10 +358,10 @@ function WorkflowStepCard({ step, status, searchParams, onAction, expanded, onTo
   return (
     <div className={cardClass}>
       <div className={`absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-current to-transparent opacity-30 ${theme.text}`} />
-      <div className="flex w-full items-start gap-3 text-left">
+      <div className="flex w-full items-start gap-2.5 text-left">
         <div className="relative shrink-0">
           <div className={[
-            "flex h-8 w-8 items-center justify-center rounded-xl border text-xs font-semibold transition",
+            "flex h-7 w-7 items-center justify-center rounded-lg border text-[11px] font-semibold transition",
             isActive ? `${theme.border} ${theme.text} bg-white/10 shadow-[0_0_18px_currentColor]` : "",
             isCompleted ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200" : "",
             isSkipped ? "border-violet-400/20 bg-violet-500/5 text-violet-300" : "",
@@ -374,32 +373,31 @@ function WorkflowStepCard({ step, status, searchParams, onAction, expanded, onTo
         </div>
 
         <div className="min-w-0 flex-1">
-          <button type="button" onClick={onToggle} className="flex w-full items-start justify-between gap-2 text-left" aria-expanded={shouldExpand}>
+          <div className="flex w-full items-start justify-between gap-2 text-left">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <p className="text-sm font-semibold leading-tight text-white">{step.title}</p>
+              <p className="truncate text-[13px] font-semibold leading-tight text-white">{step.title}</p>
               {step.optional ? (
-                <span className="rounded-full border border-violet-300/25 bg-violet-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-violet-200">
+                <span className="rounded-full border border-violet-300/25 bg-violet-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-violet-200">
                   Optional - AI Enhanced
                 </span>
               ) : null}
               {isSkipped ? (
-                <span className="rounded-full border border-slate-600 bg-slate-900 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                <span className="rounded-full border border-slate-600 bg-slate-900 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                   Skipped
                 </span>
               ) : null}
             </div>
-            <div className="flex shrink-0 items-center gap-2 pt-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+            <div className="flex shrink-0 items-center gap-2 pt-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500">
               <span className={isActive ? theme.text : isCompleted ? "text-emerald-300" : isSkipped ? "text-violet-300" : ""}>
                 {getStepSignal(step, status)}
               </span>
-              {!isActive ? <ChevronIcon expanded={shouldExpand} /> : null}
             </div>
-          </button>
+          </div>
 
           {shouldExpand ? (
             <>
-              <p className="mt-2 text-[12px] leading-5 text-slate-400">{step.description}</p>
-              <div className="mt-3 flex flex-wrap gap-2">
+              <p className="mt-1.5 text-[11px] leading-4 text-slate-400">{step.description}</p>
+              <div className="mt-2.5 flex flex-wrap gap-2">
                 <WorkflowAction step={step} searchParams={searchParams} onAction={onAction} highlighted={isActive} />
                 {step.secondaryCta && isActive ? (
                   <button
@@ -420,84 +418,54 @@ function WorkflowStepCard({ step, status, searchParams, onAction, expanded, onTo
 }
 
 export default function HiringWorkflow({ overview, searchParams, onAction }) {
-  const [skippedKeys, setSkippedKeys] = useState({})
-  const [expandedSteps, setExpandedSteps] = useState({})
-  const skipStorageKey = useMemo(() => getOrganizationWorkflowKey(overview), [overview])
-  const screeningSkippedOverride = Boolean(
-    skippedKeys[skipStorageKey] ||
-    (typeof window !== "undefined" && window.localStorage.getItem(skipStorageKey) === "true")
-  )
-  const state = useMemo(() => getWorkflowState(overview, screeningSkippedOverride), [overview, screeningSkippedOverride])
+  const state = useMemo(() => getWorkflowState(overview), [overview])
 
   const handleAction = (action) => {
-    if (action === "skip-screening") {
-      setSkippedKeys((current) => ({
-        ...current,
-        [skipStorageKey]: true,
-      }))
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(skipStorageKey, "true")
-      }
-    }
-
     onAction(action)
   }
 
-  const toggleStep = (stepId, status) => {
-    if (status === "active") {
-      return
-    }
-
-    setExpandedSteps((current) => ({
-      ...current,
-      [stepId]: !current[stepId],
-    }))
-  }
-
   return (
-    <div className="mt-7">
-      <h3 className="text-xs font-medium uppercase tracking-[0.34em] text-slate-500">Hiring Workflow</h3>
+    <div className="mt-6">
+      <h3 className="text-[11px] font-medium uppercase tracking-[0.3em] text-slate-500">Hiring Workflow</h3>
 
-      <div className="mt-4 overflow-hidden rounded-2xl border border-cyan-300/15 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.14),transparent_38%),linear-gradient(135deg,rgba(15,23,42,0.95),rgba(2,6,23,0.84))] p-4 shadow-[0_18px_60px_rgba(2,6,23,0.3)]">
-        <div className="flex items-start gap-3">
-          <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-cyan-300/25 bg-cyan-400/10 text-cyan-100 shadow-[0_0_28px_rgba(34,211,238,0.18)]">
+      <div className="mt-3 overflow-hidden rounded-xl border border-cyan-300/15 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.12),transparent_38%),linear-gradient(135deg,rgba(15,23,42,0.95),rgba(2,6,23,0.84))] p-3 shadow-[0_14px_44px_rgba(2,6,23,0.28)]">
+        <div className="flex items-start gap-2.5">
+          <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-cyan-300/25 bg-cyan-400/10 text-cyan-100 shadow-[0_0_24px_rgba(34,211,238,0.16)]">
             <AiIcon />
-            <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-cyan-300 hiring-workflow-pulse" />
+            <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-cyan-300 hiring-workflow-pulse" />
           </div>
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-200/80">AI Recommended Next Action</p>
-            <p className="mt-2 text-sm leading-6 text-white">{state.recommendation}</p>
-            <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]">
-              <span className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-2.5 py-1 text-cyan-100">{getProgressLabel(state)}</span>
-              <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-slate-300">{getActiveSummary(state)}</span>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-200/80">AI Recommended Next Action</p>
+            <p className="mt-1.5 text-[13px] leading-5 text-white">{state.recommendation}</p>
+            <div className="mt-2.5 flex flex-wrap gap-2 text-[9px] font-semibold uppercase tracking-[0.14em]">
+              <span className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-2 py-0.5 text-cyan-100">{getProgressLabel(state)}</span>
+              <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-slate-300">{getActiveSummary(state)}</span>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="relative mt-5 space-y-3 pl-3">
-        <div className="absolute bottom-7 left-[28px] top-7 w-px overflow-hidden bg-slate-800">
+      <div className="relative mt-4 space-y-2 pl-2">
+        <div className="absolute bottom-5 left-[22px] top-5 w-px overflow-hidden bg-slate-800">
           <div className="h-1/2 w-full bg-gradient-to-b from-blue-400 via-violet-400 to-cyan-300 hiring-workflow-flow" />
         </div>
         {workflowSteps.map((step) => {
           const status = getStepStatus(step, state)
 
           return (
-            <div key={step.id} className="relative pl-8">
+            <div key={step.id} className="relative pl-7">
               <WorkflowStepCard
                 step={step}
                 status={status}
                 searchParams={searchParams}
                 onAction={handleAction}
-                expanded={expandedSteps[step.id]}
-                onToggle={() => toggleStep(step.id, status)}
               />
             </div>
           )
         })}
       </div>
 
-      <div className="mt-4 grid grid-cols-3 gap-2 text-center text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+      <div className="mt-3 grid grid-cols-3 gap-2 text-center text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500">
         <span>Start</span>
         <span>Progress</span>
         <span>Decision</span>

@@ -25,7 +25,9 @@ type OverviewPayload = {
     screeningStarted: boolean
     screeningCompleted: boolean
     interviewsRunning: number
+    completedInterviews: number
     pendingReports: number
+    reviewedReports: number
     decisionsPending: number
   }
   pendingInterviews: Array<Record<string, unknown>>
@@ -108,6 +110,8 @@ async function getReportAndDecisionMetrics(organizationId: string) {
   return {
     pendingReports: Number(rows[0]?.pending_reports ?? 0),
     decisionsPending: Number(rows[0]?.decisions_pending ?? 0),
+    completedInterviews: Number(rows[0]?.pending_reports ?? 0) + Number(rows[0]?.decisions_pending ?? 0),
+    reviewedReports: Number(rows[0]?.decisions_pending ?? 0),
   }
 }
 
@@ -155,7 +159,9 @@ async function buildOverview(
       screeningStarted: screeningMetrics.screeningRuns > 0,
       screeningCompleted: screeningMetrics.screeningRuns > 0 && screeningMetrics.shortlistedCandidates > 0,
       interviewsRunning: pipelineData.pipeline.inProgress,
+      completedInterviews: reportMetrics.completedInterviews,
       pendingReports: reportMetrics.pendingReports,
+      reviewedReports: reportMetrics.reviewedReports,
       decisionsPending: reportMetrics.decisionsPending,
     },
     pendingInterviews: pipelineData.pendingInterviews,
