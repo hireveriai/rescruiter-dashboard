@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client"
+import { createHmac, timingSafeEqual } from "crypto"
 
 import { ApiError } from "@/lib/server/errors"
 import { prisma } from "@/lib/server/prisma"
@@ -28,6 +29,14 @@ type AuthUserRow = {
 type RecruiterLookupRow = {
   user_id: string
   organization_id: string
+}
+
+type JwtClaims = {
+  sub?: string
+  userId?: string
+  orgId?: string
+  organizationId?: string
+  role?: string
 }
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -85,7 +94,7 @@ function decodeBase64Url(value: string): string | null {
   }
 }
 
-function decodeJwtSub(token: string | null | undefined): string | null {
+function parseJwtClaims(token: string | null | undefined): JwtClaims | null {
   if (!token) {
     return null
   }
@@ -101,11 +110,68 @@ function decodeJwtSub(token: string | null | undefined): string | null {
   }
 
   try {
-    const parsed = JSON.parse(payload) as { sub?: string }
-    const sub = parsed.sub?.trim()
-    return sub && UUID_REGEX.test(sub) ? sub : null
+    return JSON.parse(payload) as JwtClaims
   } catch {
     return null
+  }
+}
+
+function decodeJwtSub(token: string | null | undefined): string | null {
+  const sub = parseJwtClaims(token)?.sub?.trim()
+  return sub && UUID_REGEX.test(sub) ? sub : null
+}
+
+function base64UrlEncode(value: Buffer | string) {
+  return Buffer.from(value)
+    .toString("base64")
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replace(/=+$/, "")
+}
+
+function verifyHs256Jwt(token: string) {
+  const secret = process.env.JWT_SECRET
+  if (!secret) {
+    return false
+  }
+
+  const parts = token.split(".")
+  if (parts.length !== 3) {
+    return false
+  }
+
+  const expected = base64UrlEncode(createHmac("sha256", secret).update(`${parts[0]}.${parts[1]}`).digest())
+  const received = parts[2]
+
+  try {
+    return timingSafeEqual(Buffer.from(expected), Buffer.from(received))
+  } catch {
+    return false
+  }
+}
+
+function decodeVerifiedRecruiterJwt(token: string | null | undefined): RecruiterLookupRow | null {
+  if (!token || !verifyHs256Jwt(token)) {
+    return null
+  }
+
+  const claims = parseJwtClaims(token)
+  const userId = claims?.userId?.trim()
+  const organizationId = (claims?.orgId ?? claims?.organizationId)?.trim()
+
+  if (
+    claims?.role !== "recruiter" ||
+    !userId ||
+    !organizationId ||
+    !UUID_REGEX.test(userId) ||
+    !UUID_REGEX.test(organizationId)
+  ) {
+    return null
+  }
+
+  return {
+    user_id: userId,
+    organization_id: organizationId,
   }
 }
 
@@ -196,7 +262,17 @@ function extractJwtFromRequest(request: Request, cookieMap: Record<string, strin
     }
   }
 
-  return extractSupabaseJwtFromCookies(cookieMap)
+  const supabaseJwt = extractSupabaseJwtFromCookies(cookieMap)
+  if (supabaseJwt) {
+    return supabaseJwt
+  }
+
+  return (
+    normalizeCookieValue(cookieMap.authToken) ||
+    normalizeCookieValue(cookieMap.accessToken) ||
+    normalizeCookieValue(cookieMap.access_token) ||
+    normalizeCookieValue(cookieMap.token)
+  )
 }
 
 export function getAuthTokenFromRequest(request: Request): string | null {
@@ -261,6 +337,31 @@ async function lookupRecruiterByIdentity(
     `)
   } catch (error) {
     console.error("Recruiter user lookup failed", error)
+    throw new ApiError(500, "RECRUITER_LOOKUP_FAILED", `Could not validate recruiter access: ${getErrorMessage(error)}`)
+  }
+
+  return recruiterRows[0] ?? null
+}
+
+async function lookupRecruiterByUserOrg(
+  userId: string,
+  organizationId: string
+): Promise<RecruiterLookupRow | null> {
+  let recruiterRows
+
+  try {
+    recruiterRows = await prisma.$queryRaw<RecruiterLookupRow[]>(Prisma.sql`
+      select u.user_id::text as user_id,
+             u.organization_id::text as organization_id
+      from public.users u
+      where u.user_id::text = ${userId}
+        and u.organization_id::text = ${organizationId}
+        and u.role in ('RECRUITER', 'ADMIN', 'ORG_OWNER')
+        and u.is_active = true
+      limit 1
+    `)
+  } catch (error) {
+    console.error("Recruiter token lookup failed", error)
     throw new ApiError(500, "RECRUITER_LOOKUP_FAILED", `Could not validate recruiter access: ${getErrorMessage(error)}`)
   }
 
@@ -372,6 +473,21 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
   const sessionId = sessionCookie
   const jwt = extractJwtFromRequest(request, cookieMap)
   const jwtSub = decodeJwtSub(jwt)
+  const recruiterJwt = decodeVerifiedRecruiterJwt(jwt)
+
+  if (recruiterJwt) {
+    const recruiter = await lookupRecruiterByUserOrg(recruiterJwt.user_id, recruiterJwt.organization_id)
+
+    if (recruiter?.user_id && recruiter.organization_id) {
+      return {
+        userId: recruiter.user_id,
+        organizationId: recruiter.organization_id,
+        sessionCookiePresent: Boolean(sessionCookie),
+        sessionCookieMatched: true,
+        sessionValidatedVia: "jwt",
+      }
+    }
+  }
 
   if (!sessionCookie && !jwtSub) {
     if (DEV_AUTH_BYPASS) {

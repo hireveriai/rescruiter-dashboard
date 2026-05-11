@@ -47,6 +47,10 @@ function hasAuthorizationHeader(request: NextRequest) {
 function hasAuthenticatedSession(request: NextRequest) {
   return Boolean(
     request.cookies.get("hireveri_session")?.value ||
+      request.cookies.get("authToken")?.value ||
+      request.cookies.get("accessToken")?.value ||
+      request.cookies.get("access_token")?.value ||
+      request.cookies.get("token")?.value ||
       hasSupabaseAuthCookie(request) ||
       hasAuthorizationHeader(request)
   )
