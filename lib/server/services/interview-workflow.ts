@@ -175,7 +175,7 @@ async function getWorkflowByIdempotencyKey(organizationId: string, idempotencyKe
       i.email_sent_at
     from public.interviews i
     left join lateral (
-      select token
+      select token, start_time, end_time
       from public.interview_invites
       where interview_id = i.interview_id
       order by created_at desc
@@ -321,7 +321,7 @@ async function getInterviewContext(organizationId: string, interviewId: string) 
     inner join public.candidates c on c.candidate_id = i.candidate_id
     inner join public.organizations o on o.organization_id = i.organization_id
     left join lateral (
-      select token
+      select token, start_time, end_time
       from public.interview_invites
       where interview_id = i.interview_id
       order by created_at desc

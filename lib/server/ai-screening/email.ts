@@ -34,11 +34,7 @@ function getResendClient() {
 function getEmailFrom() {
   const configured = process.env.EMAIL_FROM?.trim()
 
-  if (!configured || configured.includes("@resend.dev")) {
-    return DEFAULT_EMAIL_FROM
-  }
-
-  return configured
+  return configured || DEFAULT_EMAIL_FROM
 }
 
 function getErrorMessage(error: unknown) {
