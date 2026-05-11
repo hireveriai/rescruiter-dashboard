@@ -111,9 +111,16 @@ async function requestSignedUrl(bucket: string, path: string) {
     }
   }
 
+  const signedPath = String(payload.signedURL)
+  const signedUrl = signedPath.startsWith("http")
+    ? signedPath
+    : signedPath.startsWith("/storage/v1/")
+      ? `${supabaseUrl}${signedPath}`
+      : `${supabaseUrl}/storage/v1${signedPath.startsWith("/") ? signedPath : `/${signedPath}`}`
+
   return {
     ok: true as const,
-    signedUrl: `${supabaseUrl}${payload.signedURL}`,
+    signedUrl,
   }
 }
 
