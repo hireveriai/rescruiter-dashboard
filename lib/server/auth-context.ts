@@ -31,6 +31,13 @@ type RecruiterLookupRow = {
   organization_id: string
 }
 
+type AuthServiceRecruiterSession = {
+  userId?: string
+  organizationId?: string
+  identityId?: string
+  email?: string
+}
+
 type JwtClaims = {
   sub?: string
   userId?: string
@@ -40,6 +47,12 @@ type JwtClaims = {
 }
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const AUTH_APP_URL =
+  process.env.AUTH_APP_URL ||
+  process.env.NEXT_PUBLIC_AUTH_APP_URL ||
+  process.env.NEXT_PUBLIC_RECRUITER_LOGIN_URL ||
+  process.env.NEXT_PUBLIC_LOGIN_URL ||
+  "https://auth.hireveri.com"
 const DEV_AUTH_BYPASS =
   process.env.NODE_ENV !== "production" &&
   (process.env.DEV_AUTH_BYPASS === "true" ||
@@ -368,6 +381,46 @@ async function lookupRecruiterByUserOrg(
   return recruiterRows[0] ?? null
 }
 
+async function lookupRecruiterViaAuthService(sessionId: string): Promise<RecruiterLookupRow | null> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 5_000)
+
+  try {
+    const url = new URL("/api/auth/recruiter-session", AUTH_APP_URL)
+    const response = await fetch(url, {
+      headers: {
+        cookie: `hireveri_session=${encodeURIComponent(sessionId)}`,
+      },
+      cache: "no-store",
+      signal: controller.signal,
+    })
+
+    if (!response.ok) {
+      console.warn("Recruiter auth service session validation failed", {
+        status: response.status,
+      })
+      return null
+    }
+
+    const payload = (await response.json()) as AuthServiceRecruiterSession
+    const userId = payload.userId?.trim()
+    const organizationId = payload.organizationId?.trim()
+
+    if (!userId || !organizationId || !UUID_REGEX.test(userId) || !UUID_REGEX.test(organizationId)) {
+      console.warn("Recruiter auth service returned invalid session payload")
+      return null
+    }
+
+    const recruiter = await lookupRecruiterByUserOrg(userId, organizationId)
+    return recruiter?.user_id && recruiter.organization_id ? recruiter : null
+  } catch (error) {
+    console.warn("Recruiter auth service session lookup failed", error)
+    return null
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 async function fetchAuthUserEmail(identityId: string): Promise<string | null> {
   try {
     const rows = await prisma.$queryRaw<AuthUserRow[]>(Prisma.sql`
@@ -536,6 +589,20 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
 
   if (matchedSession) {
     await reactivateAuthSessionIfNeeded(matchedSession)
+  }
+
+  if (!identityId && sessionId) {
+    const recruiter = await lookupRecruiterViaAuthService(sessionId)
+
+    if (recruiter?.user_id && recruiter.organization_id) {
+      return {
+        userId: recruiter.user_id,
+        organizationId: recruiter.organization_id,
+        sessionCookiePresent: true,
+        sessionCookieMatched: true,
+        sessionValidatedVia: "auth_session",
+      }
+    }
   }
 
   if (!identityId) {
