@@ -1,6 +1,14 @@
 import { NextResponse } from "next/server"
 
 const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30
+const AUTH_COOKIE_NAMES = [
+  "hireveri_session",
+  "authToken",
+  "accessToken",
+  "access_token",
+  "token",
+]
+const LEGACY_COOKIE_DOMAINS = [".hireveri.com", ".verihireai.work"]
 
 function sameOriginPath(value: string | null) {
   if (!value) {
@@ -41,9 +49,18 @@ export async function GET(request: Request) {
   const response = NextResponse.redirect(new URL(next, url.origin))
   const options = cookieOptions(request)
 
+  for (const name of AUTH_COOKIE_NAMES) {
+    for (const domain of LEGACY_COOKIE_DOMAINS) {
+      response.cookies.set(name, "", {
+        ...options,
+        domain,
+        maxAge: 0,
+      })
+    }
+  }
+
   if (token) {
     response.cookies.set("authToken", token, options)
-    response.cookies.set("accessToken", token, options)
   }
 
   if (session) {
