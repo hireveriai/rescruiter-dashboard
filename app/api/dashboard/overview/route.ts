@@ -20,9 +20,12 @@ type OverviewPayload = {
   workflowMetrics: {
     jobs: number
     invites: number
-    screenings: number
+    screeningRuns: number
+    shortlistedCandidates: number
+    screeningStarted: boolean
+    screeningCompleted: boolean
     interviewsRunning: number
-    reportsReady: number
+    pendingReports: number
     decisionsPending: number
   }
   pendingInterviews: Array<Record<string, unknown>>
@@ -41,6 +44,73 @@ const CACHE_MAX = 50
 const overviewCache = new Map<string, CacheEntry>()
 const inFlight = new Map<string, Promise<OverviewPayload>>()
 
+async function tableExists(tableName: string) {
+  const rows = await prisma.$queryRaw<Array<{ exists: boolean }>>`
+    select exists (
+      select 1
+      from information_schema.tables
+      where table_schema = 'public'
+        and table_name = ${tableName}
+    ) as exists
+  `
+
+  return Boolean(rows[0]?.exists)
+}
+
+async function getScreeningWorkflowMetrics(organizationId: string) {
+  if (!(await tableExists("screening_runs"))) {
+    return {
+      screeningRuns: 0,
+      shortlistedCandidates: 0,
+    }
+  }
+
+  const rows = await prisma.$queryRaw<Array<{ screening_runs: number; shortlisted_candidates: number }>>`
+    select
+      count(*)::int as screening_runs,
+      coalesce(sum(strong_fit_count), 0)::int as shortlisted_candidates
+    from public.screening_runs
+    where organization_id = ${organizationId}::uuid
+  `
+
+  return {
+    screeningRuns: Number(rows[0]?.screening_runs ?? 0),
+    shortlistedCandidates: Number(rows[0]?.shortlisted_candidates ?? 0),
+  }
+}
+
+async function getReportAndDecisionMetrics(organizationId: string) {
+  const rows = await prisma.$queryRaw<Array<{ pending_reports: number; decisions_pending: number }>>`
+    with latest_attempts as (
+      select distinct on (ia.interview_id)
+        ia.attempt_id,
+        ia.interview_id,
+        ia.status,
+        ia.ended_at
+      from public.interview_attempts ia
+      inner join public.interviews i on i.interview_id = ia.interview_id
+      where i.organization_id = ${organizationId}::uuid
+      order by ia.interview_id, ia.started_at desc
+    )
+    select
+      count(*) filter (
+        where (upper(coalesce(la.status, '')) in ('COMPLETED', 'SUBMITTED', 'EVALUATED') or la.ended_at is not null)
+          and (ie.evaluation_id is null or ie.decision is null)
+      )::int as pending_reports,
+      count(*) filter (
+        where (upper(coalesce(la.status, '')) in ('COMPLETED', 'SUBMITTED', 'EVALUATED') or la.ended_at is not null)
+          and ie.decision is not null
+      )::int as decisions_pending
+    from latest_attempts la
+    left join public.interview_evaluations ie on ie.attempt_id = la.attempt_id
+  `
+
+  return {
+    pendingReports: Number(rows[0]?.pending_reports ?? 0),
+    decisionsPending: Number(rows[0]?.decisions_pending ?? 0),
+  }
+}
+
 async function buildOverview(
   auth: Awaited<ReturnType<typeof getRecruiterRequestContext>>
 ): Promise<OverviewPayload> {
@@ -57,7 +127,7 @@ async function buildOverview(
     organizationId: auth.organizationId,
   })
 
-  const [jobs, invites, decisionsPending] = await Promise.all([
+  const [jobs, invites, screeningMetrics, reportMetrics] = await Promise.all([
     prisma.jobPosition.count({
       where: {
         organizationId: auth.organizationId,
@@ -70,26 +140,8 @@ async function buildOverview(
         },
       },
     }),
-    prisma.interviewAttempt.count({
-      where: {
-        interview: {
-          organizationId: auth.organizationId,
-        },
-        status: {
-          in: ["COMPLETED", "SUBMITTED", "EVALUATED"],
-        },
-        OR: [
-          {
-            evaluation: null,
-          },
-          {
-            evaluation: {
-              decision: null,
-            },
-          },
-        ],
-      },
-    }),
+    getScreeningWorkflowMetrics(auth.organizationId),
+    getReportAndDecisionMetrics(auth.organizationId),
   ])
 
   return {
@@ -98,10 +150,13 @@ async function buildOverview(
     workflowMetrics: {
       jobs,
       invites,
-      screenings: veris.length,
+      screeningRuns: screeningMetrics.screeningRuns,
+      shortlistedCandidates: screeningMetrics.shortlistedCandidates,
+      screeningStarted: screeningMetrics.screeningRuns > 0,
+      screeningCompleted: screeningMetrics.screeningRuns > 0 && screeningMetrics.shortlistedCandidates > 0,
       interviewsRunning: pipelineData.pipeline.inProgress,
-      reportsReady: pipelineData.pipeline.completed,
-      decisionsPending,
+      pendingReports: reportMetrics.pendingReports,
+      decisionsPending: reportMetrics.decisionsPending,
     },
     pendingInterviews: pipelineData.pendingInterviews,
     recordedInterviews,

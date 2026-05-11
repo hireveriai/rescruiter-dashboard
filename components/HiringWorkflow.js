@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { useMemo, useState } from "react"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
 
@@ -132,83 +133,197 @@ function AiIcon() {
   )
 }
 
-function getWorkflowState(overview) {
+function ChevronIcon({ expanded }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className={`h-3.5 w-3.5 transition ${expanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  )
+}
+
+function getOrganizationWorkflowKey(overview) {
+  const organizationId = overview?.profile?.organizationId || overview?.profile?.organization_id || "default"
+  return `hireveri:workflow-screening-skipped:${organizationId}`
+}
+
+function getWorkflowFacts(overview, screeningSkippedOverride = false) {
   const metrics = overview?.workflowMetrics ?? {}
   const pipeline = overview?.pipeline ?? {}
-  const jobs = Number(metrics.jobs ?? 0)
-  const invites = Number(metrics.invites ?? overview?.pendingInterviews?.length ?? 0)
-  const screenings = Number(metrics.screenings ?? overview?.veris?.length ?? 0)
-  const running = Number(metrics.interviewsRunning ?? pipeline.inProgress ?? 0)
-  const reportsReady = Number(metrics.reportsReady ?? pipeline.completed ?? 0)
-  const decisionsPending = Number(metrics.decisionsPending ?? 0)
+  const hasJobs = Number(metrics.jobs ?? 0) > 0
+  const invitesSent = Number(metrics.invites ?? overview?.pendingInterviews?.length ?? 0) > 0
+  const screeningStarted = Boolean(metrics.screeningStarted) || Number(metrics.screeningRuns ?? 0) > 0 || Number(overview?.veris?.length ?? 0) > 0
+  const screeningCompleted = Boolean(metrics.screeningCompleted) || Number(metrics.shortlistedCandidates ?? 0) > 0 || Number(overview?.veris?.length ?? 0) > 0
+  const activeInterviews = Number(metrics.interviewsRunning ?? pipeline.inProgress ?? 0)
+  const pendingReports = Number(metrics.pendingReports ?? metrics.reportsReady ?? pipeline.completed ?? 0)
+  const pendingDecisions = Number(metrics.decisionsPending ?? 0)
+  const screeningSkipped = Boolean(screeningSkippedOverride || (!screeningStarted && invitesSent))
 
-  if (jobs <= 0) {
+  return {
+    hasJobs,
+    screeningStarted,
+    screeningCompleted,
+    screeningSkipped,
+    invitesSent,
+    activeInterviews,
+    pendingReports,
+    pendingDecisions,
+    shortlistedCandidates: Number(metrics.shortlistedCandidates ?? 0),
+  }
+}
+
+function buildStepStatuses(activeStepId, completedStepIds = [], skippedStepIds = []) {
+  const completed = new Set(completedStepIds)
+  const skipped = new Set(skippedStepIds)
+
+  return workflowSteps.reduce((statuses, step) => {
+    if (step.id === activeStepId) {
+      statuses[step.id] = "active"
+    } else if (skipped.has(step.id)) {
+      statuses[step.id] = "skipped"
+    } else if (completed.has(step.id)) {
+      statuses[step.id] = "completed"
+    } else {
+      statuses[step.id] = "pending"
+    }
+
+    return statuses
+  }, {})
+}
+
+function getWorkflowState(overview, screeningSkippedOverride = false) {
+  const facts = getWorkflowFacts(overview, screeningSkippedOverride)
+
+  if (!facts.hasJobs) {
     return {
       activeStepId: "create-job",
-      skippedOptional: false,
-      message: "Start by creating your first job.",
+      recommendation: "Start by creating your first job.",
+      statuses: buildStepStatuses("create-job"),
+      facts,
     }
   }
 
-  if (running > 0) {
+  if (facts.activeInterviews > 0) {
     return {
       activeStepId: "ai-interview",
-      skippedOptional: screenings <= 0 && invites > 0,
-      message: `${running} interview${running === 1 ? " is" : "s are"} currently active.`,
+      recommendation: `${facts.activeInterviews} interview${facts.activeInterviews === 1 ? " is" : "s are"} currently active. Monitor cognitive telemetry and interview progress.`,
+      statuses: buildStepStatuses(
+        "ai-interview",
+        ["create-job", "send-link", ...(facts.screeningCompleted ? ["veris-screening"] : [])],
+        facts.screeningSkipped ? ["veris-screening"] : []
+      ),
+      facts,
     }
   }
 
-  if (decisionsPending > 0) {
-    return {
-      activeStepId: "hiring-decision",
-      skippedOptional: screenings <= 0 && invites > 0,
-      message: `${decisionsPending} completed interview${decisionsPending === 1 ? " needs" : "s need"} a hiring decision.`,
-    }
-  }
-
-  if (reportsReady > 0) {
+  if (facts.pendingReports > 0) {
     return {
       activeStepId: "review-reports",
-      skippedOptional: screenings <= 0 && invites > 0,
-      message: `${reportsReady} completed interview${reportsReady === 1 ? " is" : "s are"} ready for review.`,
+      recommendation: `${facts.pendingReports} interview report${facts.pendingReports === 1 ? " is" : "s are"} ready for review.`,
+      statuses: buildStepStatuses(
+        "review-reports",
+        ["create-job", "send-link", "ai-interview", ...(facts.screeningCompleted ? ["veris-screening"] : [])],
+        facts.screeningSkipped ? ["veris-screening"] : []
+      ),
+      facts,
     }
   }
 
-  if (invites > 0) {
+  if (facts.pendingDecisions > 0) {
+    return {
+      activeStepId: "hiring-decision",
+      recommendation: "Finalize hiring decisions for shortlisted candidates.",
+      statuses: buildStepStatuses(
+        "hiring-decision",
+        ["create-job", "send-link", "ai-interview", "review-reports", ...(facts.screeningCompleted ? ["veris-screening"] : [])],
+        facts.screeningSkipped ? ["veris-screening"] : []
+      ),
+      facts,
+    }
+  }
+
+  if (facts.invitesSent) {
     return {
       activeStepId: "ai-interview",
-      skippedOptional: screenings <= 0,
-      message: "Interview links are out. Monitor starts, recovery signals, and live progress.",
+      recommendation: "Interview links are out. Monitor starts, recovery signals, and interview progress.",
+      statuses: buildStepStatuses(
+        "ai-interview",
+        ["create-job", "send-link", ...(facts.screeningCompleted ? ["veris-screening"] : [])],
+        facts.screeningSkipped ? ["veris-screening"] : []
+      ),
+      facts,
     }
   }
 
-  if (screenings > 0) {
+  if (facts.screeningSkipped) {
     return {
       activeStepId: "send-link",
-      skippedOptional: false,
-      message: "Recommended: Send interview links to shortlisted candidates.",
+      recommendation: "Invite candidates to begin AI interviews.",
+      statuses: buildStepStatuses("send-link", ["create-job"], ["veris-screening"]),
+      facts,
+    }
+  }
+
+  if (facts.screeningCompleted) {
+    return {
+      activeStepId: "send-link",
+      recommendation: "Send interview links to shortlisted candidates.",
+      statuses: buildStepStatuses("send-link", ["create-job", "veris-screening"]),
+      facts,
+    }
+  }
+
+  if (facts.screeningStarted) {
+    return {
+      activeStepId: "veris-screening",
+      recommendation: "VERIS Screening is in progress. Review shortlists before inviting candidates.",
+      statuses: buildStepStatuses("veris-screening", ["create-job"]),
+      facts,
     }
   }
 
   return {
     activeStepId: "veris-screening",
-    skippedOptional: false,
-    message: "Recommended: Run VERIS Screening before inviting candidates.",
+    recommendation: "You created a job successfully. Recommended: Run VERIS Screening before inviting candidates.",
+    statuses: buildStepStatuses("veris-screening", ["create-job"]),
+    facts,
   }
 }
 
 function getStepStatus(step, state) {
-  const activeIndex = workflowSteps.findIndex((item) => item.id === state.activeStepId)
-  const stepIndex = workflowSteps.findIndex((item) => item.id === step.id)
-
-  if (step.optional && state.skippedOptional) return "skipped"
-  if (step.id === state.activeStepId) return "active"
-  if (stepIndex < activeIndex) return "completed"
-  return "pending"
+  return state.statuses[step.id] ?? "pending"
 }
 
-function WorkflowAction({ step, searchParams, onAction }) {
-  const baseClass = "inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-semibold text-white transition duration-200 hover:border-white/25 hover:bg-white/15"
+function getProgressLabel(state) {
+  const completedCount = Object.values(state.statuses).filter((status) => status === "completed").length
+  const skippedCount = Object.values(state.statuses).filter((status) => status === "skipped").length
+  return `${completedCount}/6 complete${skippedCount ? `, ${skippedCount} skipped` : ""}`
+}
+
+function getActiveSummary(state) {
+  const facts = state.facts
+
+  if (state.activeStepId === "ai-interview" && facts.activeInterviews > 0) return `${facts.activeInterviews} live`
+  if (state.activeStepId === "review-reports" && facts.pendingReports > 0) return `${facts.pendingReports} ready`
+  if (state.activeStepId === "hiring-decision" && facts.pendingDecisions > 0) return `${facts.pendingDecisions} pending`
+  if (state.activeStepId === "send-link" && facts.shortlistedCandidates > 0) return `${facts.shortlistedCandidates} shortlisted`
+  return "Recommended"
+}
+
+function getStepSignal(step, status) {
+  if (status === "active") return "Now"
+  if (status === "completed") return "Done"
+  if (status === "skipped") return "Skipped"
+  if (step.optional) return "Optional"
+  return "Pending"
+}
+
+function WorkflowAction({ step, searchParams, onAction, highlighted = false }) {
+  const baseClass = [
+    "inline-flex items-center justify-center rounded-xl border px-3 py-2 text-xs font-semibold transition duration-200",
+    highlighted
+      ? "border-white/20 bg-white text-slate-950 shadow-[0_10px_30px_rgba(255,255,255,0.12)] hover:bg-cyan-50"
+      : "border-white/10 bg-white/10 text-white hover:border-white/25 hover:bg-white/15",
+  ].join(" ")
 
   if (step.href) {
     return (
@@ -225,15 +340,17 @@ function WorkflowAction({ step, searchParams, onAction }) {
   )
 }
 
-function WorkflowStepCard({ step, status, searchParams, onAction }) {
+function WorkflowStepCard({ step, status, searchParams, onAction, expanded, onToggle }) {
   const theme = stepThemes[step.theme]
   const isActive = status === "active"
   const isCompleted = status === "completed"
   const isSkipped = status === "skipped"
   const isPending = status === "pending"
+  const shouldExpand = isActive || Boolean(expanded)
   const cardClass = [
-    "group relative overflow-hidden rounded-2xl border p-3.5 text-left transition duration-200 hover:-translate-y-0.5 hover:scale-[1.01]",
-    isActive ? `${theme.border} bg-gradient-to-br ${theme.background} ${theme.glow} hiring-workflow-active` : "",
+    "group relative overflow-hidden rounded-2xl border text-left transition duration-200 hover:-translate-y-0.5",
+    shouldExpand ? "p-3.5" : "p-3",
+    isActive ? `${theme.border} bg-gradient-to-br ${theme.background} ${theme.glow} hiring-workflow-active scale-[1.01]` : "",
     isCompleted ? "border-emerald-400/20 bg-emerald-500/[0.045] text-slate-300" : "",
     isSkipped ? "border-violet-400/12 bg-slate-950/30 text-slate-500 opacity-70" : "",
     isPending ? "border-slate-800 bg-slate-950/35 text-slate-400 opacity-80" : "",
@@ -242,7 +359,7 @@ function WorkflowStepCard({ step, status, searchParams, onAction }) {
   return (
     <div className={cardClass}>
       <div className={`absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-current to-transparent opacity-30 ${theme.text}`} />
-      <div className="flex items-start gap-3">
+      <div className="flex w-full items-start gap-3 text-left">
         <div className="relative shrink-0">
           <div className={[
             "flex h-8 w-8 items-center justify-center rounded-xl border text-xs font-semibold transition",
@@ -257,30 +374,45 @@ function WorkflowStepCard({ step, status, searchParams, onAction }) {
         </div>
 
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-sm font-semibold leading-tight text-white">{step.title}</p>
-            {step.optional ? (
-              <span className="rounded-full border border-violet-300/25 bg-violet-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-violet-200">
-                Optional • AI Enhanced
+          <button type="button" onClick={onToggle} className="flex w-full items-start justify-between gap-2 text-left" aria-expanded={shouldExpand}>
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <p className="text-sm font-semibold leading-tight text-white">{step.title}</p>
+              {step.optional ? (
+                <span className="rounded-full border border-violet-300/25 bg-violet-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-violet-200">
+                  Optional - AI Enhanced
+                </span>
+              ) : null}
+              {isSkipped ? (
+                <span className="rounded-full border border-slate-600 bg-slate-900 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  Skipped
+                </span>
+              ) : null}
+            </div>
+            <div className="flex shrink-0 items-center gap-2 pt-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+              <span className={isActive ? theme.text : isCompleted ? "text-emerald-300" : isSkipped ? "text-violet-300" : ""}>
+                {getStepSignal(step, status)}
               </span>
-            ) : null}
-            {isSkipped ? (
-              <span className="rounded-full border border-slate-600 bg-slate-900 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Skipped
-              </span>
-            ) : null}
-          </div>
+              {!isActive ? <ChevronIcon expanded={shouldExpand} /> : null}
+            </div>
+          </button>
 
-          <p className="mt-2 text-[12px] leading-5 text-slate-400">{step.description}</p>
-
-          <div className="mt-3 flex flex-wrap gap-2">
-            <WorkflowAction step={step} searchParams={searchParams} onAction={onAction} />
-            {step.secondaryCta ? (
-              <button type="button" className="inline-flex items-center justify-center rounded-xl border border-violet-300/15 px-3 py-2 text-xs font-semibold text-violet-200 transition duration-200 hover:border-violet-300/35 hover:bg-violet-500/10" onClick={() => onAction("skip-screening")}>
-                {step.secondaryCta}
-              </button>
-            ) : null}
-          </div>
+          {shouldExpand ? (
+            <>
+              <p className="mt-2 text-[12px] leading-5 text-slate-400">{step.description}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <WorkflowAction step={step} searchParams={searchParams} onAction={onAction} highlighted={isActive} />
+                {step.secondaryCta && isActive ? (
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center rounded-xl border border-violet-300/15 px-3 py-2 text-xs font-semibold text-violet-200 transition duration-200 hover:border-violet-300/35 hover:bg-violet-500/10"
+                    onClick={() => onAction("skip-screening")}
+                  >
+                    {step.secondaryCta}
+                  </button>
+                ) : null}
+              </div>
+            </>
+          ) : null}
         </div>
       </div>
     </div>
@@ -288,7 +420,39 @@ function WorkflowStepCard({ step, status, searchParams, onAction }) {
 }
 
 export default function HiringWorkflow({ overview, searchParams, onAction }) {
-  const state = getWorkflowState(overview)
+  const [skippedKeys, setSkippedKeys] = useState({})
+  const [expandedSteps, setExpandedSteps] = useState({})
+  const skipStorageKey = useMemo(() => getOrganizationWorkflowKey(overview), [overview])
+  const screeningSkippedOverride = Boolean(
+    skippedKeys[skipStorageKey] ||
+    (typeof window !== "undefined" && window.localStorage.getItem(skipStorageKey) === "true")
+  )
+  const state = useMemo(() => getWorkflowState(overview, screeningSkippedOverride), [overview, screeningSkippedOverride])
+
+  const handleAction = (action) => {
+    if (action === "skip-screening") {
+      setSkippedKeys((current) => ({
+        ...current,
+        [skipStorageKey]: true,
+      }))
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(skipStorageKey, "true")
+      }
+    }
+
+    onAction(action)
+  }
+
+  const toggleStep = (stepId, status) => {
+    if (status === "active") {
+      return
+    }
+
+    setExpandedSteps((current) => ({
+      ...current,
+      [stepId]: !current[stepId],
+    }))
+  }
 
   return (
     <div className="mt-7">
@@ -302,7 +466,11 @@ export default function HiringWorkflow({ overview, searchParams, onAction }) {
           </div>
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-200/80">AI Recommended Next Action</p>
-            <p className="mt-2 text-sm leading-6 text-white">{state.message}</p>
+            <p className="mt-2 text-sm leading-6 text-white">{state.recommendation}</p>
+            <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]">
+              <span className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-2.5 py-1 text-cyan-100">{getProgressLabel(state)}</span>
+              <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-slate-300">{getActiveSummary(state)}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -311,16 +479,27 @@ export default function HiringWorkflow({ overview, searchParams, onAction }) {
         <div className="absolute bottom-7 left-[28px] top-7 w-px overflow-hidden bg-slate-800">
           <div className="h-1/2 w-full bg-gradient-to-b from-blue-400 via-violet-400 to-cyan-300 hiring-workflow-flow" />
         </div>
-        {workflowSteps.map((step) => (
-          <div key={step.id} className="relative pl-8">
-            <WorkflowStepCard step={step} status={getStepStatus(step, state)} searchParams={searchParams} onAction={onAction} />
-          </div>
-        ))}
+        {workflowSteps.map((step) => {
+          const status = getStepStatus(step, state)
+
+          return (
+            <div key={step.id} className="relative pl-8">
+              <WorkflowStepCard
+                step={step}
+                status={status}
+                searchParams={searchParams}
+                onAction={handleAction}
+                expanded={expandedSteps[step.id]}
+                onToggle={() => toggleStep(step.id, status)}
+              />
+            </div>
+          )
+        })}
       </div>
 
       <div className="mt-4 grid grid-cols-3 gap-2 text-center text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
         <span>Start</span>
-        <span>Process</span>
+        <span>Progress</span>
         <span>Decision</span>
       </div>
     </div>
