@@ -44,6 +44,11 @@ type JwtClaims = {
   orgId?: string
   organizationId?: string
   role?: string
+  email?: string
+}
+
+type RecruiterJwtLookup = RecruiterLookupRow & {
+  email?: string
 }
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -163,7 +168,7 @@ function verifyHs256Jwt(token: string) {
   }
 }
 
-function decodeVerifiedRecruiterJwt(token: string | null | undefined): RecruiterLookupRow | null {
+function decodeVerifiedRecruiterJwt(token: string | null | undefined): RecruiterJwtLookup | null {
   if (!token || !verifyHs256Jwt(token)) {
     return null
   }
@@ -185,6 +190,7 @@ function decodeVerifiedRecruiterJwt(token: string | null | undefined): Recruiter
   return {
     user_id: userId,
     organization_id: organizationId,
+    email: claims?.email?.trim().toLowerCase(),
   }
 }
 
@@ -381,6 +387,32 @@ async function lookupRecruiterByUserOrg(
   return recruiterRows[0] ?? null
 }
 
+async function lookupRecruiterByEmailOrg(
+  email: string,
+  organizationId: string
+): Promise<RecruiterLookupRow | null> {
+  let recruiterRows
+
+  try {
+    recruiterRows = await prisma.$queryRaw<RecruiterLookupRow[]>(Prisma.sql`
+      select u.user_id::text as user_id,
+             u.organization_id::text as organization_id
+      from public.users u
+      where lower(u.email) = ${email}
+        and u.organization_id::text = ${organizationId}
+        and u.role in ('RECRUITER', 'ADMIN', 'ORG_OWNER')
+        and u.is_active = true
+      order by u.created_at asc
+      limit 1
+    `)
+  } catch (error) {
+    console.error("Recruiter token email lookup failed", error)
+    throw new ApiError(500, "RECRUITER_LOOKUP_FAILED", `Could not validate recruiter access: ${getErrorMessage(error)}`)
+  }
+
+  return recruiterRows[0] ?? null
+}
+
 async function lookupRecruiterViaAuthService(sessionId: string): Promise<RecruiterLookupRow | null> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 5_000)
@@ -529,7 +561,11 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
   const recruiterJwt = decodeVerifiedRecruiterJwt(jwt)
 
   if (recruiterJwt) {
-    const recruiter = await lookupRecruiterByUserOrg(recruiterJwt.user_id, recruiterJwt.organization_id)
+    let recruiter = await lookupRecruiterByUserOrg(recruiterJwt.user_id, recruiterJwt.organization_id)
+
+    if (!recruiter && recruiterJwt.email) {
+      recruiter = await lookupRecruiterByEmailOrg(recruiterJwt.email, recruiterJwt.organization_id)
+    }
 
     if (recruiter?.user_id && recruiter.organization_id) {
       return {
