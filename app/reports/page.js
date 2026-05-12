@@ -7,7 +7,7 @@ import Navbar from "@/components/Navbar"
 import SendInterviewModal from "@/components/SendInterviewModal"
 import { ChartSkeleton, MetricSkeleton, TableSkeleton, TimelineSkeleton } from "@/components/system/skeletons"
 import { buildAuthUrl } from "@/lib/client/auth-query"
-import { formatDateTime } from "@/lib/client/date-format"
+import { formatDate, formatDateTime, formatTime } from "@/lib/client/date-format"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 function formatPercent(value) {
@@ -156,12 +156,15 @@ export default function ReportsPage() {
     }
   }, [searchParams])
 
-  const generatedAt = useMemo(() => {
-    return report?.generatedAt ? formatDateTime(report.generatedAt) : "-"
+  const generatedDate = useMemo(() => {
+    return report?.generatedAt ? formatDate(report.generatedAt).toUpperCase() : "-"
+  }, [report])
+  const generatedTime = useMemo(() => {
+    return report?.generatedAt ? formatTime(report.generatedAt).replace(/\s+IN\s+([A-Z]{2,5})$/i, " $1") : "-"
   }, [report])
 
   return (
-    <div className="min-h-screen bg-[#08111f] text-white">
+    <div className="hv-page-enter min-h-screen bg-[#08111f] text-white">
       <Navbar onSendInterviewClick={() => setOpenSendInterview(true)} />
 
       <main className="mx-auto max-w-[1680px] px-4 py-7 sm:px-6 lg:px-8">
@@ -178,14 +181,17 @@ export default function ReportsPage() {
               </p>
             </div>
 
-            <div className="grid min-w-0 gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+            <div className="grid min-w-0 auto-rows-fr gap-3 sm:grid-cols-2">
+              <div className="flex min-h-[136px] min-w-0 flex-col justify-center rounded-2xl border border-cyan-400/15 bg-slate-950/40 p-4 shadow-[0_0_28px_rgba(34,211,238,0.06)]">
                 <p className="text-sm text-slate-500">Generated</p>
-                <p className="mt-3 whitespace-nowrap text-lg font-semibold text-white">{generatedAt}</p>
+                <div className="mt-3 min-w-0">
+                  <p className="truncate text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{generatedDate}</p>
+                  <p className="mt-1 truncate text-xl font-semibold tracking-normal text-cyan-50 sm:text-2xl">{generatedTime}</p>
+                </div>
               </div>
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+              <div className="flex min-h-[136px] min-w-0 flex-col justify-center rounded-2xl border border-cyan-400/15 bg-slate-950/40 p-4 shadow-[0_0_28px_rgba(34,211,238,0.06)]">
                 <p className="text-sm text-slate-500">Module State</p>
-                <p className="mt-3 text-lg font-semibold text-cyan-200">Live Aggregation</p>
+                <p className="mt-3 truncate text-xl font-semibold text-cyan-200 sm:text-2xl">Live Aggregation</p>
               </div>
             </div>
           </div>

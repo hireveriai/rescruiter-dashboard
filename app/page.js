@@ -20,7 +20,7 @@ function DashboardContent({ profile, showRestoreOverlay, overview, isLoading }) 
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   return (
-    <div className="relative min-h-screen bg-[#0b1220] text-white">
+    <div className="hv-page-enter relative min-h-screen bg-[#0b1220] text-white">
       <Navbar onSendInterviewClick={() => setIsModalOpen(true)} initialProfile={profile} />
 
       <div className="grid grid-cols-1 gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1fr)_minmax(320px,350px)] lg:p-8 xl:grid-cols-[minmax(0,1fr)_minmax(340px,372px)]">

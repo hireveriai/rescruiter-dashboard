@@ -1,11 +1,15 @@
 ﻿import { Prisma } from "@prisma/client"
+import { createHash, createHmac, randomBytes, randomUUID } from "crypto"
 import { NextResponse } from "next/server"
 
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
 import { ApiError } from "@/lib/server/errors"
 import { prisma } from "@/lib/server/prisma"
 import { errorResponse } from "@/lib/server/response"
-import { sendRecruiterAccessEmail } from "@/lib/services/email.service"
+import {
+  sendRecruiterOnboardingEmail,
+  sendRecruiterOrganizationAddedEmail,
+} from "@/lib/services/email.service"
 
 type PermissionDetail = {
   code: string
@@ -23,6 +27,8 @@ type TeamMemberRow = {
   recruiter_role_code: string | null
   recruiter_role_description: string | null
   permission_details: PermissionDetail[] | null
+  invite_status: "PENDING" | "ACCEPTED" | "EXPIRED" | null
+  invite_expires_at: string | null
 }
 
 type TeamSummaryRow = {
@@ -51,6 +57,11 @@ type TeamMemberLookupRow = {
   full_name: string | null
   email: string
   organization_name: string | null
+  recruiter_role_id: number | null
+  recruiter_role_code: string | null
+  recruiter_role_description: string | null
+  invite_status: "PENDING" | "ACCEPTED" | "EXPIRED" | null
+  invite_expires_at: string | null
 }
 
 type ManageTeamMemberRow = {
@@ -68,6 +79,28 @@ type ExistsRow = {
   exists: boolean
 }
 
+type RoleLookupRow = {
+  recruiter_role_id: number
+  code: string | null
+  description: string | null
+}
+
+type ActorLookupRow = {
+  full_name: string | null
+  email: string
+}
+
+type ExistingUserRow = {
+  user_id: string
+  full_name: string | null
+  email: string
+  organization_id: string
+  is_active: boolean
+  recruiter_role_id: number | null
+}
+
+const INVITE_TTL_HOURS = 72
+
 function getRecruiterAppUrl() {
   return (
     process.env.RECRUITER_APP_URL ||
@@ -75,6 +108,62 @@ function getRecruiterAppUrl() {
     process.env.NEXT_PUBLIC_APP_URL ||
     "https://recruiter.verihireai.work"
   )
+}
+
+function getOnboardingBaseUrl() {
+  const authUrl =
+    process.env.AUTH_APP_URL ||
+    process.env.NEXT_PUBLIC_AUTH_APP_URL ||
+    process.env.NEXT_PUBLIC_RECRUITER_LOGIN_URL ||
+    process.env.NEXT_PUBLIC_LOGIN_URL ||
+    "https://auth.hireveri.com"
+  const defaultUrl = new URL(authUrl)
+
+  if (defaultUrl.pathname === "/" || defaultUrl.pathname === "") {
+    defaultUrl.pathname = "/recruiter-access"
+  }
+
+  return (
+    process.env.RECRUITER_ONBOARDING_URL ||
+    process.env.NEXT_PUBLIC_RECRUITER_ONBOARDING_URL ||
+    defaultUrl.toString()
+  )
+}
+
+function getTokenSecret() {
+  return process.env.RECRUITER_INVITE_TOKEN_SECRET || process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET || "hireveri-dev-invite-secret"
+}
+
+function sha256(value: string) {
+  return createHash("sha256").update(value).digest("hex")
+}
+
+function signInviteToken(payload: string) {
+  return createHmac("sha256", getTokenSecret()).update(payload).digest("base64url")
+}
+
+function createInviteToken(inviteId: string, expiresAt: Date) {
+  const nonce = randomBytes(18).toString("base64url")
+  const payload = `${inviteId}.${Math.floor(expiresAt.getTime() / 1000)}.${nonce}`
+  return `${payload}.${signInviteToken(payload)}`
+}
+
+function getInviteStatus(status: string | null, expiresAt: string | null) {
+  const normalized = String(status || "").toUpperCase()
+
+  if (normalized === "ACCEPTED") {
+    return "Accepted"
+  }
+
+  if (expiresAt && new Date(expiresAt).getTime() < Date.now()) {
+    return "Expired"
+  }
+
+  if (normalized === "PENDING") {
+    return "Pending"
+  }
+
+  return "Accepted"
 }
 
 async function functionExists(functionName: string) {
@@ -104,6 +193,118 @@ async function tableExists(tableName: string) {
   return rows[0]?.exists ?? false
 }
 
+async function ensureTeamInviteTables() {
+  await prisma.$executeRaw(Prisma.sql`
+    create table if not exists public.recruiter_team_invites (
+      invite_id uuid primary key default gen_random_uuid(),
+      org_id uuid not null references public.organizations(organization_id) on delete cascade,
+      invited_email text not null,
+      invited_user_id uuid null references public.users(user_id) on delete cascade,
+      invited_by uuid not null references public.users(user_id),
+      invited_at timestamptz not null default now(),
+      role_assigned smallint not null references public.recruiter_role_pool(recruiter_role_id),
+      token_hash text not null,
+      expires_at timestamptz not null,
+      accepted_at timestamptz null,
+      status text not null default 'PENDING',
+      email_status text not null default 'PENDING',
+      last_sent_at timestamptz null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    )
+  `)
+
+  await prisma.$executeRaw(Prisma.sql`
+    create table if not exists public.recruiter_team_invite_audit_logs (
+      audit_id uuid primary key default gen_random_uuid(),
+      invite_id uuid null,
+      invited_by uuid not null,
+      invited_at timestamptz not null default now(),
+      role_assigned smallint not null,
+      org_id uuid not null,
+      invited_email text not null,
+      action text not null,
+      metadata jsonb not null default '{}'::jsonb
+    )
+  `)
+
+  await prisma.$executeRaw(Prisma.sql`
+    create index if not exists idx_recruiter_team_invites_org_email
+      on public.recruiter_team_invites (org_id, lower(invited_email), invited_at desc)
+  `)
+
+  await prisma.$executeRaw(Prisma.sql`
+    create index if not exists idx_recruiter_team_invites_token_hash
+      on public.recruiter_team_invites (token_hash)
+  `)
+}
+
+async function getRoleOrThrow(roleId: number) {
+  const rows = await prisma.$queryRaw<RoleLookupRow[]>(Prisma.sql`
+    select recruiter_role_id, code, description
+    from public.recruiter_role_pool
+    where recruiter_role_id = ${roleId}::smallint
+    limit 1
+  `)
+
+  const role = rows[0]
+
+  if (!role) {
+    throw new ApiError(400, "INVALID_RECRUITER_ROLE", "Selected organization role is not available")
+  }
+
+  return role
+}
+
+async function getActor(auth: RecruiterAuth) {
+  const rows = await prisma.$queryRaw<ActorLookupRow[]>(Prisma.sql`
+    select full_name, email
+    from public.users
+    where user_id = ${auth.userId}::uuid
+      and organization_id = ${auth.organizationId}::uuid
+    limit 1
+  `)
+
+  return rows[0] ?? null
+}
+
+async function assertCanManageUsers(auth: RecruiterAuth) {
+  const rows = await prisma.$queryRaw<{ can_manage: boolean }[]>(Prisma.sql`
+    select exists (
+      select 1
+      from public.recruiter_profiles arp
+      inner join public.role_permissions perms
+        on perms.recruiter_role_id = arp.recruiter_role_id
+      where arp.recruiter_id = ${auth.userId}::uuid
+        and arp.organization_id = ${auth.organizationId}::uuid
+        and perms.permission = 'users.manage'
+    ) as can_manage
+  `)
+
+  if (!rows[0]?.can_manage) {
+    throw new ApiError(403, "INSUFFICIENT_PERMISSION", "users.manage is required")
+  }
+}
+
+async function getExistingUserByEmail(email: string) {
+  const rows = await prisma.$queryRaw<ExistingUserRow[]>(Prisma.sql`
+    select
+      u.user_id::text,
+      u.full_name,
+      u.email,
+      u.organization_id::text,
+      u.is_active,
+      rp.recruiter_role_id
+    from public.users u
+    left join public.recruiter_profiles rp
+      on rp.recruiter_id = u.user_id
+    where lower(u.email) = lower(${email})
+    limit 1
+  `)
+
+  return rows[0] ?? null
+}
+
 async function getTeamWorkspace(auth: RecruiterAuth) {
   const [hasEnsureProfileFn, hasRecruiterProfiles, hasRecruiterRolePool, hasRolePermissions, hasPermissions] =
     await Promise.all([
@@ -129,6 +330,10 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
 
   const hasRoleSystem =
     hasRecruiterProfiles && hasRecruiterRolePool && hasRolePermissions && hasPermissions
+
+  if (hasRoleSystem) {
+    await ensureTeamInviteTables()
+  }
 
   const summaryRows = await prisma.$queryRaw<TeamSummaryRow[]>(Prisma.sql`
     select
@@ -180,6 +385,8 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
           rp.recruiter_role_id,
           rrp.code as recruiter_role_code,
           rrp.description as recruiter_role_description,
+          latest_invite.status as invite_status,
+          latest_invite.expires_at::text as invite_expires_at,
           coalesce(
             jsonb_agg(
               distinct jsonb_build_object(
@@ -198,6 +405,20 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
           on perms.recruiter_role_id = rp.recruiter_role_id
         left join public.permissions pd
           on pd.permission_code = perms.permission
+        left join lateral (
+          select
+            case
+              when rti.accepted_at is not null or rti.status = 'ACCEPTED' then 'ACCEPTED'
+              when rti.expires_at < now() then 'EXPIRED'
+              else rti.status
+            end as status,
+            rti.expires_at
+          from public.recruiter_team_invites rti
+          where rti.org_id = u.organization_id
+            and lower(rti.invited_email) = lower(u.email)
+          order by rti.invited_at desc
+          limit 1
+        ) latest_invite on true
         where u.organization_id = ${auth.organizationId}::uuid
           and u.role in ('RECRUITER', 'ADMIN', 'ORG_OWNER')
         group by
@@ -209,7 +430,9 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
           u.created_at,
           rp.recruiter_role_id,
           rrp.code,
-          rrp.description
+          rrp.description,
+          latest_invite.status,
+          latest_invite.expires_at
         order by
           case when u.user_id = ${auth.userId}::uuid then 0 else 1 end,
           u.created_at desc
@@ -225,6 +448,8 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
           null::smallint as recruiter_role_id,
           null::text as recruiter_role_code,
           null::text as recruiter_role_description,
+          null::text as invite_status,
+          null::text as invite_expires_at,
           '[]'::jsonb as permission_details
         from public.users u
         where u.organization_id = ${auth.organizationId}::uuid
@@ -278,6 +503,8 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
     organizationRoleCode: member.recruiter_role_code,
     organizationRoleDescription: member.recruiter_role_description,
     permissions: member.permission_details ?? [],
+    inviteStatus: getInviteStatus(member.invite_status, member.invite_expires_at),
+    inviteExpiresAt: member.invite_expires_at,
     isCurrentUser: member.user_id === auth.userId,
   }))
 
@@ -311,10 +538,34 @@ async function getTeamMemberForAccessEmail(auth: RecruiterAuth, targetUserId: st
       u.user_id,
       u.full_name,
       u.email,
-      o.organization_name
+      o.organization_name,
+      rp.recruiter_role_id,
+      rrp.code as recruiter_role_code,
+      rrp.description as recruiter_role_description,
+      latest_invite.status as invite_status,
+      latest_invite.expires_at::text as invite_expires_at
     from public.users u
     inner join public.organizations o
       on o.organization_id = u.organization_id
+    left join public.recruiter_profiles rp
+      on rp.recruiter_id = u.user_id
+      and rp.organization_id = u.organization_id
+    left join public.recruiter_role_pool rrp
+      on rrp.recruiter_role_id = rp.recruiter_role_id
+    left join lateral (
+      select
+        case
+          when rti.accepted_at is not null or rti.status = 'ACCEPTED' then 'ACCEPTED'
+          when rti.expires_at < now() then 'EXPIRED'
+          else rti.status
+        end as status,
+        rti.expires_at
+      from public.recruiter_team_invites rti
+      where rti.org_id = u.organization_id
+        and lower(rti.invited_email) = lower(u.email)
+      order by rti.invited_at desc
+      limit 1
+    ) latest_invite on true
     where u.user_id = ${targetUserId}::uuid
       and u.organization_id = ${auth.organizationId}::uuid
       and u.role in ('RECRUITER', 'ADMIN', 'ORG_OWNER')
@@ -322,6 +573,150 @@ async function getTeamMemberForAccessEmail(auth: RecruiterAuth, targetUserId: st
   `)
 
   return rows[0] ?? null
+}
+
+async function createInviteRecord(input: {
+  auth: RecruiterAuth
+  email: string
+  userId: string
+  inviteId: string
+  roleId: number
+  expiresAt: Date
+  token: string
+  action: "INVITED" | "ADDED_EXISTING" | "RESENT"
+}) {
+  const tokenHash = sha256(input.token)
+  const rows = await prisma.$queryRaw<{ invite_id: string }[]>(Prisma.sql`
+    insert into public.recruiter_team_invites (
+      invite_id,
+      org_id,
+      invited_email,
+      invited_user_id,
+      invited_by,
+      role_assigned,
+      token_hash,
+      expires_at,
+      status,
+      email_status,
+      last_sent_at
+    )
+    values (
+      ${input.inviteId}::uuid,
+      ${input.auth.organizationId}::uuid,
+      lower(${input.email}),
+      ${input.userId}::uuid,
+      ${input.auth.userId}::uuid,
+      ${input.roleId}::smallint,
+      ${tokenHash},
+      ${input.expiresAt}::timestamptz,
+      'PENDING',
+      'PENDING',
+      null
+    )
+    returning invite_id::text
+  `)
+
+  const inviteId = rows[0]?.invite_id
+
+  if (!inviteId) {
+    throw new ApiError(500, "INVITE_CREATE_FAILED", "Failed to create team invite")
+  }
+
+  await prisma.$executeRaw(Prisma.sql`
+    insert into public.recruiter_team_invite_audit_logs (
+      invite_id,
+      invited_by,
+      role_assigned,
+      org_id,
+      invited_email,
+      action,
+      metadata
+    )
+    values (
+      ${inviteId}::uuid,
+      ${input.auth.userId}::uuid,
+      ${input.roleId}::smallint,
+      ${input.auth.organizationId}::uuid,
+      lower(${input.email}),
+      ${input.action},
+      jsonb_build_object('email_status', 'PENDING')
+    )
+  `)
+
+  return inviteId
+}
+
+async function markInviteEmailSent(inviteId: string) {
+  await prisma.$executeRaw(Prisma.sql`
+    update public.recruiter_team_invites
+    set
+      email_status = 'SENT',
+      last_sent_at = now(),
+      updated_at = now()
+    where invite_id = ${inviteId}::uuid
+  `)
+}
+
+async function markInviteEmailFailed(inviteId: string, error: unknown) {
+  const message = error instanceof Error ? error.message : "Unknown email delivery error"
+
+  await prisma.$executeRaw(Prisma.sql`
+    update public.recruiter_team_invites
+    set
+      email_status = 'FAILED',
+      updated_at = now()
+    where invite_id = ${inviteId}::uuid
+  `)
+
+  await prisma.$executeRaw(Prisma.sql`
+    insert into public.recruiter_team_invite_audit_logs (
+      invite_id,
+      invited_by,
+      role_assigned,
+      org_id,
+      invited_email,
+      action,
+      metadata
+    )
+    select
+      invite_id,
+      invited_by,
+      role_assigned,
+      org_id,
+      invited_email,
+      'EMAIL_FAILED',
+      jsonb_build_object('error', ${message})
+    from public.recruiter_team_invites
+    where invite_id = ${inviteId}::uuid
+  `)
+}
+
+async function rollbackNewPendingUser(input: { userId: string; inviteId: string; auth: RecruiterAuth }) {
+  await prisma.$executeRaw(Prisma.sql`
+    delete from public.recruiter_team_invites
+    where invite_id = ${input.inviteId}::uuid
+      and org_id = ${input.auth.organizationId}::uuid
+  `)
+
+  await prisma.$executeRaw(Prisma.sql`
+    delete from public.recruiter_profiles
+    where recruiter_id = ${input.userId}::uuid
+      and organization_id = ${input.auth.organizationId}::uuid
+  `)
+
+  await prisma.$executeRaw(Prisma.sql`
+    delete from public.users
+    where user_id = ${input.userId}::uuid
+      and organization_id = ${input.auth.organizationId}::uuid
+      and is_email_verified = false
+      and last_login_at is null
+  `)
+}
+
+function getSetupLink(token: string) {
+  const url = new URL(getOnboardingBaseUrl())
+  url.searchParams.set("setupToken", token)
+  return url.toString()
 }
 
 export async function GET(request: Request) {
@@ -360,20 +755,160 @@ export async function POST(request: Request) {
       )
     }
 
-    const rows = await prisma.$queryRaw<CreateTeamMemberRow[]>(Prisma.sql`
-      select *
-      from public.fn_upsert_team_member(
-        ${auth.userId}::uuid,
-        ${auth.organizationId}::uuid,
-        ${fullName},
-        ${email},
-        ${recruiterRoleId}::smallint,
-        'RECRUITER',
-        true
-      )
-    `)
+    await assertCanManageUsers(auth)
+    await ensureTeamInviteTables()
 
-    const created = rows[0]
+    const [role, actor, existingUser] = await Promise.all([
+      getRoleOrThrow(recruiterRoleId),
+      getActor(auth),
+      getExistingUserByEmail(email),
+    ])
+    const organizationRows = await prisma.$queryRaw<{ organization_name: string | null }[]>(Prisma.sql`
+      select organization_name
+      from public.organizations
+      where organization_id = ${auth.organizationId}::uuid
+      limit 1
+    `)
+    const organizationName = organizationRows[0]?.organization_name ?? "HireVeri"
+    const roleName = role.code || "Organization Role"
+    const inviterName = actor?.full_name || actor?.email || "Your team admin"
+    const expiresAt = new Date(Date.now() + INVITE_TTL_HOURS * 60 * 60 * 1000)
+    const inviteId = randomUUID()
+    const token = createInviteToken(inviteId, expiresAt)
+    const setupLink = getSetupLink(token)
+    const workspaceLink = `${getRecruiterAppUrl().replace(/\/$/, "")}/`
+    const createdNew = !existingUser
+    const targetUserId = existingUser?.user_id ?? randomUUID()
+
+    if (existingUser && existingUser.organization_id !== auth.organizationId) {
+      throw new ApiError(409, "EMAIL_BELONGS_TO_DIFFERENT_ORGANIZATION", "This email already belongs to another organization workspace.")
+    }
+
+    let inviteCreated = false
+
+    try {
+      if (createdNew) {
+        await prisma.$transaction(async (tx) => {
+          await tx.$executeRaw(Prisma.sql`
+            insert into public.users (
+              user_id,
+              organization_id,
+              full_name,
+              email,
+              role,
+              is_active,
+              is_email_verified,
+              created_at
+            )
+            values (
+              ${targetUserId}::uuid,
+              ${auth.organizationId}::uuid,
+              ${fullName},
+              lower(${email}),
+              'RECRUITER',
+              false,
+              false,
+              now()
+            )
+          `)
+
+          await tx.$executeRaw(Prisma.sql`
+            insert into public.recruiter_profiles (
+              recruiter_id,
+              company_name,
+              recruiter_role_id,
+              organization_id
+            )
+            values (
+              ${targetUserId}::uuid,
+              ${organizationName},
+              ${recruiterRoleId}::smallint,
+              ${auth.organizationId}::uuid
+            )
+            on conflict (recruiter_id) do update
+            set
+              company_name = excluded.company_name,
+              recruiter_role_id = excluded.recruiter_role_id,
+              organization_id = excluded.organization_id
+          `)
+        })
+      } else {
+        await prisma.$executeRaw(Prisma.sql`
+          update public.users
+          set
+            full_name = coalesce(nullif(${fullName}, ''), full_name),
+            is_active = true
+          where user_id = ${targetUserId}::uuid
+            and organization_id = ${auth.organizationId}::uuid
+        `)
+
+        await prisma.$executeRaw(Prisma.sql`
+          insert into public.recruiter_profiles (
+            recruiter_id,
+            company_name,
+            recruiter_role_id,
+            organization_id
+          )
+          values (
+            ${targetUserId}::uuid,
+            ${organizationName},
+            ${recruiterRoleId}::smallint,
+            ${auth.organizationId}::uuid
+          )
+          on conflict (recruiter_id) do update
+          set
+            company_name = excluded.company_name,
+            recruiter_role_id = excluded.recruiter_role_id,
+            organization_id = excluded.organization_id
+        `)
+      }
+
+      await createInviteRecord({
+        auth,
+        email,
+        userId: targetUserId,
+        inviteId,
+        roleId: recruiterRoleId,
+        expiresAt,
+        token,
+        action: createdNew ? "INVITED" : "ADDED_EXISTING",
+      })
+      inviteCreated = true
+
+      if (createdNew) {
+        await sendRecruiterOnboardingEmail({
+          to: email,
+          name: fullName,
+          organization: organizationName,
+          role: roleName,
+          inviterName,
+          link: setupLink,
+          expiresAt,
+        })
+      } else {
+        await sendRecruiterOrganizationAddedEmail({
+          to: email,
+          name: existingUser.full_name || fullName,
+          organization: organizationName,
+          role: roleName,
+          inviterName,
+          link: workspaceLink,
+        })
+      }
+
+      await markInviteEmailSent(inviteId)
+    } catch (inviteError) {
+      if (inviteCreated) {
+        await markInviteEmailFailed(inviteId, inviteError).catch(() => null)
+      }
+
+      if (createdNew) {
+        await rollbackNewPendingUser({ userId: targetUserId, inviteId, auth }).catch(() => null)
+      }
+
+      throw new ApiError(502, "INVITATION_EMAIL_FAILED", "Could not send invitation email. No pending invite was left active.")
+    }
+
     const data = await getTeamWorkspace(auth)
 
     return NextResponse.json(
@@ -381,10 +916,13 @@ export async function POST(request: Request) {
         success: true,
         data,
         createdUser: {
-          userId: created?.user_id ?? null,
-          recruiterRoleId: created?.recruiter_role_id ?? recruiterRoleId,
-          createdNew: created?.created_new ?? false,
+          userId: targetUserId,
+          recruiterRoleId,
+          createdNew,
+          inviteStatus: createdNew ? "Pending" : "Accepted",
+          emailSent: true,
         },
+        message: "Invitation sent successfully",
       },
       { status: 201 }
     )
@@ -405,24 +943,71 @@ export async function PATCH(request: Request) {
     }
 
     if (action === "resend-invite") {
+      await ensureTeamInviteTables()
       const teamMember = await getTeamMemberForAccessEmail(auth, targetUserId)
 
       if (!teamMember) {
         throw new ApiError(404, "TEAM_MEMBER_NOT_FOUND", "Team member not found in this organization")
       }
 
-      const workspaceLink = `${getRecruiterAppUrl().replace(/\/$/, "")}/`
+      const roleId = teamMember.recruiter_role_id
+      if (!roleId) {
+        throw new ApiError(400, "ROLE_NOT_ASSIGNED", "Assign an organization role before resending an invite")
+      }
 
-      await sendRecruiterAccessEmail({
-        to: teamMember.email,
-        name: teamMember.full_name ?? teamMember.email,
-        organization: teamMember.organization_name ?? "HireVeri",
-        link: workspaceLink,
+      const actor = await getActor(auth)
+      const expiresAt = new Date(Date.now() + INVITE_TTL_HOURS * 60 * 60 * 1000)
+      const inviteId = randomUUID()
+      const token = createInviteToken(inviteId, expiresAt)
+      const setupLink = getSetupLink(token)
+      const workspaceLink = `${getRecruiterAppUrl().replace(/\/$/, "")}/`
+      const inviteStatus = getInviteStatus(teamMember.invite_status, teamMember.invite_expires_at)
+      const organization = teamMember.organization_name ?? "HireVeri"
+      const roleName = teamMember.recruiter_role_code || "Organization Role"
+      const inviterName = actor?.full_name || actor?.email || "Your team admin"
+
+      await createInviteRecord({
+        auth,
+        email: teamMember.email,
+        userId: teamMember.user_id,
+        inviteId,
+        roleId,
+        expiresAt,
+        token,
+        action: "RESENT",
       })
+
+      try {
+        if (inviteStatus === "Accepted") {
+          await sendRecruiterOrganizationAddedEmail({
+            to: teamMember.email,
+            name: teamMember.full_name ?? teamMember.email,
+            organization,
+            role: roleName,
+            inviterName,
+            link: workspaceLink,
+          })
+        } else {
+          await sendRecruiterOnboardingEmail({
+            to: teamMember.email,
+            name: teamMember.full_name ?? teamMember.email,
+            organization,
+            role: roleName,
+            inviterName,
+            link: setupLink,
+            expiresAt,
+          })
+        }
+
+        await markInviteEmailSent(inviteId)
+      } catch (emailError) {
+        await markInviteEmailFailed(inviteId, emailError).catch(() => null)
+        throw new ApiError(502, "INVITATION_EMAIL_FAILED", "Could not resend invitation email. Please retry.")
+      }
 
       return NextResponse.json({
         success: true,
-        message: "Access email sent successfully",
+        message: "Invitation sent successfully",
       })
     }
 

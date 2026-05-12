@@ -1,10 +1,40 @@
 import { CardSkeleton, ChartSkeleton, MetricSkeleton, TableSkeleton, TimelineSkeleton } from "."
+import { AIIntelligenceLoader } from "@/components/system/loaders"
 
 type RouteLoadingShellProps = {
   title: string
   subtitle?: string
   tableColumns?: number
   mode?: "dashboard" | "table" | "reports" | "forensic"
+  intelligenceVariant?: "dashboard" | "candidates" | "veris" | "interviews" | "reports" | "default"
+  intelligenceSteps?: string[]
+}
+
+const defaultStepsByMode = {
+  dashboard: [
+    "Loading recruiter insights",
+    "Synchronizing hiring intelligence",
+    "Building AI recruiter insights",
+    "Preparing workflow recommendations",
+  ],
+  table: [
+    "Loading candidate registry",
+    "Synchronizing workspace permissions",
+    "Building cognition matrix",
+    "Preparing recruiter view",
+  ],
+  reports: [
+    "Loading organization analytics",
+    "Correlating interview telemetry",
+    "Preparing forensic analysis",
+    "Building recruiter intelligence report",
+  ],
+  forensic: [
+    "Loading candidate registry",
+    "Running forensic resume correlation",
+    "Building cognitive evaluation matrix",
+    "Preparing forensic recommendations",
+  ],
 }
 
 export default function RouteLoadingShell({
@@ -12,22 +42,22 @@ export default function RouteLoadingShell({
   subtitle = "Streaming recruiter workspace data.",
   tableColumns = 6,
   mode = "table",
+  intelligenceVariant = mode === "forensic" ? "veris" : mode === "table" ? "default" : mode,
+  intelligenceSteps,
 }: RouteLoadingShellProps) {
+  const steps = intelligenceSteps ?? defaultStepsByMode[mode]
+
   return (
     <div className="min-h-screen bg-[#08111f] text-white">
       <main className="mx-auto max-w-[1600px] px-4 py-8 sm:px-6 lg:px-8">
-        <section className="rounded-[28px] border border-slate-800 bg-[linear-gradient(180deg,rgba(15,23,42,0.96),rgba(8,17,31,0.98))] p-8 shadow-[0_24px_80px_rgba(2,6,23,0.45)]">
-          <p className="text-xs font-semibold uppercase tracking-[0.32em] text-cyan-300/75">{title}</p>
-          <div className="mt-4 grid gap-6 xl:grid-cols-[1fr_0.75fr] xl:items-end">
-            <div>
-              <div className="h-10 max-w-xl rounded-2xl border border-cyan-300/10 bg-slate-900/70" />
-              <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-400">{subtitle}</p>
-            </div>
-            <MetricSkeleton count={mode === "dashboard" ? 4 : 3} className={mode === "dashboard" ? "grid-cols-2 lg:grid-cols-4" : "sm:grid-cols-3"} />
-          </div>
-        </section>
+        <AIIntelligenceLoader
+          title={title}
+          steps={steps}
+          variant={intelligenceVariant}
+        />
 
         <div className="mt-8 grid gap-6">
+          <MetricSkeleton count={mode === "dashboard" ? 4 : 3} className={mode === "dashboard" ? "grid-cols-2 lg:grid-cols-4" : "sm:grid-cols-3"} />
           {mode === "reports" ? <ChartSkeleton title="Streaming analytics" /> : null}
           {mode === "forensic" ? (
             <TimelineSkeleton

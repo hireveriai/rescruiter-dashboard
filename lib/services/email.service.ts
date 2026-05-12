@@ -26,6 +26,17 @@ type SendRecruiterAccessEmailParams = {
   link: string;
 };
 
+type SendRecruiterOnboardingEmailParams = SendRecruiterAccessEmailParams & {
+  role: string;
+  inviterName: string;
+  expiresAt: string | Date;
+};
+
+type SendRecruiterOrganizationAddedEmailParams = SendRecruiterAccessEmailParams & {
+  role: string;
+  inviterName: string;
+};
+
 function escapeHtml(value: string) {
   return value
     .replace(/&/g, "&amp;")
@@ -203,5 +214,113 @@ export async function sendRecruiterAccessEmail({
         <p style="margin-top:24px;">Regards,<br />HireVeri Recruiter Workspace</p>
       </div>
     `,
+  });
+}
+
+function recruiterShellHtml(content: string) {
+  return `
+    <div style="margin:0;padding:0;background:#081120;font-family:Arial,Helvetica,sans-serif;color:#e2e8f0;">
+      <div style="max-width:640px;margin:0 auto;padding:32px 18px;">
+        <div style="border:1px solid rgba(51,65,85,0.9);border-radius:24px;overflow:hidden;background:linear-gradient(180deg,#0f172a,#0a1222);box-shadow:0 24px 80px rgba(2,6,23,0.45);">
+          <div style="padding:26px 28px;border-bottom:1px solid rgba(51,65,85,0.75);background:radial-gradient(circle at top right,rgba(59,130,246,0.18),transparent 34%);">
+            <div style="font-size:11px;letter-spacing:0.28em;text-transform:uppercase;color:#93c5fd;">HireVeri Recruiter</div>
+            <h1 style="margin:12px 0 0;font-size:24px;line-height:1.25;color:#ffffff;">Organization access</h1>
+          </div>
+          <div style="padding:28px;">
+            ${content}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function actionButtonHtml(link: string, label: string) {
+  return `
+    <a href="${escapeHtml(link)}"
+       style="display:inline-block;margin-top:18px;padding:13px 18px;border-radius:12px;background:#ffffff;color:#0f172a;text-decoration:none;font-weight:700;">
+      ${escapeHtml(label)}
+    </a>
+  `;
+}
+
+export async function sendRecruiterOnboardingEmail({
+  to,
+  name,
+  organization,
+  role,
+  inviterName,
+  link,
+  expiresAt,
+}: SendRecruiterOnboardingEmailParams) {
+  const safeName = escapeHtml(name || "Recruiter");
+  const safeOrganization = escapeHtml(organization || "your organization");
+  const safeRole = escapeHtml(role || "Recruiter");
+  const safeInviter = escapeHtml(inviterName || "your team admin");
+  const expiry = expiresAt instanceof Date ? expiresAt.toISOString() : expiresAt;
+
+  return sendWithRetry({
+    from: getEmailFrom(),
+    to,
+    subject: `Set up your HireVeri access for ${organization}`,
+    text: [
+      `Hi ${name || "Recruiter"},`,
+      `${inviterName || "Your team admin"} invited you to ${organization || "your organization"} on HireVeri Recruiter.`,
+      `Assigned role: ${role || "Recruiter"}`,
+      `This setup link expires at ${expiry}.`,
+      "Set up access:",
+      link,
+    ].join("\n"),
+    html: recruiterShellHtml(`
+      <p style="margin:0 0 14px;color:#cbd5e1;font-size:15px;line-height:1.7;">Hi ${safeName},</p>
+      <p style="margin:0 0 18px;color:#cbd5e1;font-size:15px;line-height:1.7;">
+        ${safeInviter} invited you to join <strong style="color:#ffffff;">${safeOrganization}</strong> on HireVeri Recruiter.
+      </p>
+      <div style="margin:18px 0;padding:14px 16px;border:1px solid rgba(59,130,246,0.24);border-radius:16px;background:rgba(15,23,42,0.72);">
+        <div style="font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:#94a3b8;">Assigned Role</div>
+        <div style="margin-top:6px;color:#bfdbfe;font-size:16px;font-weight:700;">${safeRole}</div>
+      </div>
+      <p style="margin:0;color:#94a3b8;font-size:13px;line-height:1.6;">Use the secure setup link below. It expires at ${escapeHtml(expiry)}.</p>
+      ${actionButtonHtml(link, "Set Up Recruiter Access")}
+      <p style="margin-top:18px;word-break:break-all;color:#64748b;font-size:12px;">${escapeHtml(link)}</p>
+    `),
+  });
+}
+
+export async function sendRecruiterOrganizationAddedEmail({
+  to,
+  name,
+  organization,
+  role,
+  inviterName,
+  link,
+}: SendRecruiterOrganizationAddedEmailParams) {
+  const safeName = escapeHtml(name || "Recruiter");
+  const safeOrganization = escapeHtml(organization || "your organization");
+  const safeRole = escapeHtml(role || "Recruiter");
+  const safeInviter = escapeHtml(inviterName || "your team admin");
+
+  return sendWithRetry({
+    from: getEmailFrom(),
+    to,
+    subject: `You were added to ${organization} on HireVeri`,
+    text: [
+      `Hi ${name || "Recruiter"},`,
+      `You were added to organization ${organization || "your organization"} by ${inviterName || "your team admin"}.`,
+      `Assigned role: ${role || "Recruiter"}`,
+      "Open workspace:",
+      link,
+    ].join("\n"),
+    html: recruiterShellHtml(`
+      <p style="margin:0 0 14px;color:#cbd5e1;font-size:15px;line-height:1.7;">Hi ${safeName},</p>
+      <p style="margin:0 0 18px;color:#cbd5e1;font-size:15px;line-height:1.7;">
+        ${safeInviter} added you to organization <strong style="color:#ffffff;">${safeOrganization}</strong>.
+      </p>
+      <div style="margin:18px 0;padding:14px 16px;border:1px solid rgba(16,185,129,0.24);border-radius:16px;background:rgba(15,23,42,0.72);">
+        <div style="font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:#94a3b8;">Assigned Role</div>
+        <div style="margin-top:6px;color:#a7f3d0;font-size:16px;font-weight:700;">${safeRole}</div>
+      </div>
+      ${actionButtonHtml(link, "Open Recruiter Workspace")}
+    `),
   });
 }

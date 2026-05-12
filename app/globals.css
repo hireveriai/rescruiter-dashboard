@@ -3,6 +3,11 @@
 :root {
   --background: #08111f;
   --foreground: #f8fafc;
+  --hv-loader-shimmer-duration: 3.4s;
+  --hv-loader-scan-duration: 5.8s;
+  --hv-loader-pulse-duration: 2.8s;
+  --hv-loader-transition-duration: 320ms;
+  --hv-loader-glow-opacity: 0.14;
 }
 
 @theme inline {
@@ -125,4 +130,135 @@ a {
 
 .hiring-workflow-flow {
   animation: hiring-workflow-flow 4s linear infinite;
+}
+
+@keyframes hv-ai-scan {
+  0% {
+    transform: translateY(-120%);
+    opacity: 0;
+  }
+
+  18%,
+  72% {
+    opacity: 0.55;
+  }
+
+  100% {
+    transform: translateY(220%);
+    opacity: 0;
+  }
+}
+
+@keyframes hv-ai-stream {
+  0%,
+  100% {
+    opacity: 0.42;
+    transform: scaleX(0.82);
+  }
+
+  50% {
+    opacity: 0.95;
+    transform: scaleX(1);
+  }
+}
+
+@keyframes hv-ai-node-pulse {
+  0%,
+  100% {
+    opacity: 0.48;
+    box-shadow: 0 0 0 0 rgba(34, 211, 238, 0);
+  }
+
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 0 5px rgba(34, 211, 238, 0.08);
+  }
+}
+
+@keyframes hv-ai-fade-cycle {
+  0%,
+  100% {
+    opacity: 0.52;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes hv-page-content-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hv-ai-panel {
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(rgba(34, 211, 238, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(59, 130, 246, 0.035) 1px, transparent 1px),
+    radial-gradient(circle at top right, rgba(34, 211, 238, var(--hv-loader-glow-opacity)), transparent 34%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(8, 17, 31, 0.98));
+  background-size: 36px 36px, 36px 36px, auto, auto;
+}
+
+.hv-ai-panel::before {
+  content: "";
+  position: absolute;
+  inset: -40% 0 auto;
+  height: 48%;
+  background: linear-gradient(180deg, transparent, rgba(34, 211, 238, 0.14), transparent);
+  animation: hv-ai-scan var(--hv-loader-scan-duration) ease-in-out infinite;
+  pointer-events: none;
+}
+
+.hv-ai-panel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 20%, rgba(255, 255, 255, 0.035), transparent 46%);
+  transform: translateX(-120%);
+  animation: hireveri-skeleton-shimmer var(--hv-loader-shimmer-duration) ease-in-out infinite;
+  pointer-events: none;
+}
+
+.hv-ai-node {
+  animation: hv-ai-node-pulse var(--hv-loader-pulse-duration) ease-in-out infinite;
+}
+
+.hv-ai-stream {
+  animation: hv-ai-stream 2.6s ease-in-out infinite;
+  transform-origin: left center;
+}
+
+.hv-ai-fade {
+  animation: hv-ai-fade-cycle 3.2s ease-in-out infinite;
+}
+
+.hv-page-enter {
+  animation: hv-page-content-in var(--hv-loader-transition-duration) ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hireveri-skeleton,
+  .hireveri-skeleton::after,
+  .hiring-workflow-pulse,
+  .hiring-workflow-flow,
+  .hv-ai-panel::before,
+  .hv-ai-panel::after,
+  .hv-ai-node,
+  .hv-ai-stream,
+  .hv-ai-fade,
+  .hv-page-enter {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
 }

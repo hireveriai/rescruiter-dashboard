@@ -1916,7 +1916,7 @@ export default function AiScreeningPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#08111f] text-white">
+    <div className="hv-page-enter min-h-screen bg-[#08111f] text-white">
       <Navbar onSendInterviewClick={() => setOpenSendInterview(true)} />
 
       <main className="mx-auto max-w-[1600px] px-4 py-8 sm:px-6 lg:px-8">

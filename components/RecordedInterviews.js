@@ -4,40 +4,11 @@ import { useEffect, useMemo, useState } from "react"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl, hasAuthQuery } from "@/lib/client/auth-query"
-import { formatDateTime } from "@/lib/client/date-format"
 import { openWarRoom } from "@/lib/client/war-room"
 import { CardSkeleton } from "@/components/system/skeletons"
+import RecordedInterviewCard from "@/components/interviews/RecordedInterviewCard"
 
-function getRetentionLabel(days) {
-  return `${days ?? 30} days retention`
-}
-
-function getRecordingUrl(item) {
-  return item?.recordingUrl || item?.audioUrl || ""
-}
-
-function ViewRecordingLink({ item, compact = false }) {
-  const recordingUrl = getRecordingUrl(item)
-  const className = compact
-    ? "inline-flex items-center justify-center rounded border border-blue-400/40 bg-blue-500/15 px-3 py-1 text-sm text-blue-100 transition hover:border-blue-300 hover:bg-blue-500/25"
-    : "inline-flex items-center justify-center rounded-xl border border-blue-400/40 bg-blue-500/15 px-3 py-2 text-sm font-medium text-blue-100 transition hover:border-blue-300 hover:bg-blue-500/25"
-
-  if (!recordingUrl) {
-    return (
-      <span className={`${className} cursor-not-allowed opacity-45`} title="Recording URL is missing for this row">
-        {item?.hasRecordingFile === false ? "File Missing" : "View Recording"}
-      </span>
-    )
-  }
-
-  return (
-    <a href={recordingUrl} target="_blank" rel="noreferrer" className={className}>
-      View Recording
-    </a>
-  )
-}
-
-function RecordedInterviewsModal({ isOpen, onClose, interviews }) {
+function RecordedInterviewsModal({ isOpen, onClose, interviews, organizationId }) {
   if (!isOpen) {
     return null
   }
@@ -49,9 +20,9 @@ function RecordedInterviewsModal({ isOpen, onClose, interviews }) {
 
         <div className="flex items-center justify-between border-b border-white/10 px-8 py-6">
           <div>
-            <h3 className="text-2xl font-semibold text-white">All Recorded Interviews</h3>
+            <h3 className="text-2xl font-semibold text-white">Cognitive Evidence Archive</h3>
             <p className="mt-2 text-sm text-slate-400">
-              Candidate recordings sorted by newest capture first.
+              Interview replay evidence, behavioral telemetry, and forensic review entry points.
             </p>
           </div>
 
@@ -65,35 +36,19 @@ function RecordedInterviewsModal({ isOpen, onClose, interviews }) {
         </div>
 
         <div className="max-h-[75vh] overflow-auto px-8 py-6">
-          <div className="grid grid-cols-[1.1fr_1fr_1.5fr_0.85fr_0.85fr_0.85fr] gap-4 border-b border-white/10 pb-3 text-xs uppercase tracking-[0.24em] text-slate-500">
-            <div>Candidate</div>
-            <div>Job</div>
-            <div>Transcript Preview</div>
-            <div>Recorded</div>
-            <div>Retention</div>
-            <div>Action</div>
-          </div>
-
-          <div className="mt-4 space-y-3">
+          <div className="grid gap-4 lg:grid-cols-2">
             {interviews.length === 0 ? (
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-6 text-center text-slate-400">
+              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-6 text-center text-slate-400 lg:col-span-2">
                 No interview recordings available
               </div>
             ) : (
               interviews.map((item) => (
-                <div
+                <RecordedInterviewCard
                   key={item.recordingId}
-                  className="grid grid-cols-[1.1fr_1fr_1.5fr_0.85fr_0.85fr_0.85fr] gap-4 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-4 text-sm text-slate-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
-                >
-                  <div className="font-medium text-white">{item.candidateName}</div>
-                  <div className="text-slate-300">{item.jobTitle}</div>
-                  <div className="text-slate-400">{item.transcriptPreview}</div>
-                  <div className="whitespace-nowrap text-slate-400">{formatDateTime(item.createdAt)}</div>
-                  <div className="text-fuchsia-200">{getRetentionLabel(item.retentionDays)}</div>
-                  <div>
-                    <ViewRecordingLink item={item} compact />
-                  </div>
-                </div>
+                  item={item}
+                  compact
+                  onOpenWarRoom={() => openWarRoom(organizationId)}
+                />
               ))
             )}
           </div>
@@ -153,9 +108,10 @@ export default function RecordedInterviews({ initialRecordedInterviews, organiza
     <>
       <div className="mt-10">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold">
-            Recorded Interviews
-          </h2>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-300/70">Cognitive Evidence Review</p>
+            <h2 className="mt-1 text-xl font-semibold text-white">Recorded Interviews</h2>
+          </div>
 
           <button
             type="button"
@@ -169,49 +125,19 @@ export default function RecordedInterviews({ initialRecordedInterviews, organiza
         {isLoading ? (
           <CardSkeleton count={3} className="grid-cols-1 md:grid-cols-3" />
         ) : (
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
             {previewInterviews.length === 0 ? (
-            <div className="col-span-3 rounded-lg bg-[#111a2e] p-5 text-center text-gray-400 shadow-md">
+            <div className="rounded-[24px] border border-slate-800 bg-[#111a2e] p-5 text-center text-gray-400 shadow-md xl:col-span-3">
               No interview recordings available
             </div>
           ) : (
             previewInterviews.map((item) => (
-              <div
+              <RecordedInterviewCard
                 key={item.recordingId}
-                className="bg-[#111a2e] p-5 rounded-lg shadow-md"
-              >
-                <div className="text-lg font-semibold">
-                  {item.candidateName}
-                </div>
-
-                <div className="text-gray-400 text-sm mb-3">
-                  {item.jobTitle}
-                </div>
-
-                <div className="text-sm text-gray-300 mb-2">
-                  Recorded: <span className="whitespace-nowrap text-blue-400">{formatDateTime(item.createdAt)}</span>
-                </div>
-
-                <div className="text-sm text-gray-300 mb-4">
-                  Retention: <span className="text-fuchsia-300">{getRetentionLabel(item.retentionDays)}</span>
-                </div>
-
-                <div className="text-sm text-slate-400 mb-4 min-h-[48px]">
-                  {item.transcriptPreview}
-                </div>
-
-                <div className="flex gap-2">
-                  <ViewRecordingLink item={item} compact />
-
-                  <button
-                    type="button"
-                    className="cursor-pointer border border-blue-400 px-3 py-1 rounded text-sm text-blue-400 transition hover:bg-blue-500/10"
-                    onClick={() => openWarRoom(organizationId)}
-                  >
-                    War Room
-                  </button>
-                </div>
-              </div>
+                item={item}
+                organizationId={organizationId}
+                onOpenWarRoom={() => openWarRoom(organizationId)}
+              />
             ))
           )}
           </div>
@@ -222,6 +148,7 @@ export default function RecordedInterviews({ initialRecordedInterviews, organiza
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         interviews={sortedInterviews}
+        organizationId={organizationId}
       />
     </>
   )

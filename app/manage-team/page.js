@@ -33,6 +33,22 @@ function getOrgRoleTone(code) {
   return "bg-emerald-500/10 text-emerald-200 border-emerald-400/20";
 }
 
+function getRoleDisplayName(role) {
+  return role?.code || "Organization Role";
+}
+
+function getInviteStatusTone(status) {
+  if (status === "Accepted") {
+    return "border-emerald-400/20 bg-emerald-500/10 text-emerald-200";
+  }
+
+  if (status === "Expired") {
+    return "border-rose-400/20 bg-rose-500/10 text-rose-200";
+  }
+
+  return "border-amber-400/20 bg-amber-500/10 text-amber-200";
+}
+
 function AddUserModal({ isOpen, onClose, onSubmit, availableRoles, submitting, error }) {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -56,8 +72,9 @@ function AddUserModal({ isOpen, onClose, onSubmit, availableRoles, submitting, e
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 px-4 backdrop-blur-sm">
-      <div className="w-full max-w-2xl rounded-[28px] border border-slate-800 bg-[linear-gradient(180deg,#0f172a,#0a1222)] p-6 shadow-[0_24px_80px_rgba(2,6,23,0.45)]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-slate-950/75 px-3 py-4 backdrop-blur-sm sm:px-4">
+      <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-slate-800 bg-[linear-gradient(180deg,#0f172a,#0a1222)] shadow-[0_24px_80px_rgba(2,6,23,0.45)]">
+        <div className="shrink-0 px-5 pt-5 sm:px-6 sm:pt-6">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xs uppercase tracking-[0.32em] text-blue-300/80">Team Provisioning</p>
@@ -74,8 +91,10 @@ function AddUserModal({ isOpen, onClose, onSubmit, availableRoles, submitting, e
             Close
           </button>
         </div>
+        </div>
 
-        <div className="mt-6 grid gap-4 md:grid-cols-2">
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4 sm:px-6">
+        <div className="mt-6 grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2">
           <div>
             <label className="mb-2 block text-sm text-slate-400">Full Name</label>
             <input
@@ -108,13 +127,13 @@ function AddUserModal({ isOpen, onClose, onSubmit, availableRoles, submitting, e
             <option value="">Select role</option>
             {availableRoles.map((role) => (
               <option key={role.recruiterRoleId} value={role.recruiterRoleId}>
-                {role.code || `Role ${role.recruiterRoleId}`}
+                {getRoleDisplayName(role)}
               </option>
             ))}
           </select>
         </div>
 
-        <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/35 p-4">
+        <div className="mt-5 max-h-[320px] overflow-y-auto rounded-2xl border border-slate-800 bg-slate-950/35 p-3 sm:p-4">
           <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Permissions Preview</p>
           {!selectedRole ? (
             <p className="mt-3 text-sm text-slate-400">Select a role to preview the permission set.</p>
@@ -122,24 +141,24 @@ function AddUserModal({ isOpen, onClose, onSubmit, availableRoles, submitting, e
             <>
               <div className="mt-3 flex flex-wrap gap-2">
                 <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] ${getOrgRoleTone(selectedRole.code)}`}>
-                  {selectedRole.code || `Role ${selectedRole.recruiterRoleId}`}
+                  {getRoleDisplayName(selectedRole)}
                 </span>
               </div>
               {selectedRole.description ? (
                 <p className="mt-3 text-sm text-slate-400">{selectedRole.description}</p>
               ) : null}
-              <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="mt-3 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                 {selectedRole.permissions.length === 0 ? (
                   <span className="text-sm text-slate-500">No permissions mapped</span>
                 ) : (
                   selectedRole.permissions.map((permission) => (
                     <div
                       key={`${selectedRole.recruiterRoleId}-${permission.code}`}
-                      className="rounded-2xl border border-slate-700 bg-slate-900/75 px-3 py-2"
+                      className="rounded-xl border border-slate-700 bg-slate-900/75 px-2.5 py-2"
                     >
                       <p className="truncate text-xs font-medium text-slate-100">{permission.code}</p>
                       {permission.description ? (
-                        <p className="mt-1 text-[11px] text-slate-400">{permission.description}</p>
+                        <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-slate-400">{permission.description}</p>
                       ) : null}
                     </div>
                   ))
@@ -154,8 +173,9 @@ function AddUserModal({ isOpen, onClose, onSubmit, availableRoles, submitting, e
             {error}
           </div>
         ) : null}
+        </div>
 
-        <div className="mt-6 flex justify-end gap-3">
+        <div className="sticky bottom-0 z-10 flex shrink-0 justify-end gap-3 border-t border-slate-800/80 bg-slate-950/70 px-5 py-4 backdrop-blur-xl sm:px-6">
           <button
             type="button"
             onClick={onClose}
@@ -198,8 +218,9 @@ function EditUserModal({ isOpen, member, availableRoles, saving, error, onClose,
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 px-4 backdrop-blur-sm">
-      <div className="w-full max-w-2xl rounded-[28px] border border-slate-800 bg-[linear-gradient(180deg,#0f172a,#0a1222)] p-6 shadow-[0_24px_80px_rgba(2,6,23,0.45)]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-slate-950/75 px-3 py-4 backdrop-blur-sm sm:px-4">
+      <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-slate-800 bg-[linear-gradient(180deg,#0f172a,#0a1222)] shadow-[0_24px_80px_rgba(2,6,23,0.45)]">
+        <div className="shrink-0 px-5 pt-5 sm:px-6 sm:pt-6">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xs uppercase tracking-[0.32em] text-blue-300/80">Team Access</p>
@@ -216,7 +237,9 @@ function EditUserModal({ isOpen, member, availableRoles, saving, error, onClose,
             Close
           </button>
         </div>
+        </div>
 
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4 sm:px-6">
         <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-950/35 p-4">
           <p className="text-lg font-semibold text-white">{member.name}</p>
           <p className="mt-1 text-sm text-slate-400">{member.email}</p>
@@ -232,7 +255,7 @@ function EditUserModal({ isOpen, member, availableRoles, saving, error, onClose,
             <option value="">Select role</option>
             {availableRoles.map((role) => (
               <option key={role.recruiterRoleId} value={role.recruiterRoleId}>
-                {role.code || `Role ${role.recruiterRoleId}`}
+                {getRoleDisplayName(role)}
               </option>
             ))}
           </select>
@@ -260,7 +283,7 @@ function EditUserModal({ isOpen, member, availableRoles, saving, error, onClose,
           </div>
         </div>
 
-        <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/35 p-4">
+        <div className="mt-5 max-h-[320px] overflow-y-auto rounded-2xl border border-slate-800 bg-slate-950/35 p-3 sm:p-4">
           <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Permissions Preview</p>
           {!selectedRole ? (
             <p className="mt-3 text-sm text-slate-400">Select a role to preview the permission set.</p>
@@ -268,24 +291,24 @@ function EditUserModal({ isOpen, member, availableRoles, saving, error, onClose,
             <>
               <div className="mt-3 flex flex-wrap gap-2">
                 <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] ${getOrgRoleTone(selectedRole.code)}`}>
-                  {selectedRole.code || `Role ${selectedRole.recruiterRoleId}`}
+                  {getRoleDisplayName(selectedRole)}
                 </span>
               </div>
               {selectedRole.description ? (
                 <p className="mt-3 text-sm text-slate-400">{selectedRole.description}</p>
               ) : null}
-              <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="mt-3 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                 {selectedRole.permissions.length === 0 ? (
                   <span className="text-sm text-slate-500">No permissions mapped</span>
                 ) : (
                   selectedRole.permissions.map((permission) => (
                     <div
                       key={`${selectedRole.recruiterRoleId}-${permission.code}`}
-                      className="rounded-2xl border border-slate-700 bg-slate-900/75 px-3 py-2"
+                      className="rounded-xl border border-slate-700 bg-slate-900/75 px-2.5 py-2"
                     >
                       <p className="truncate text-xs font-medium text-slate-100">{permission.code}</p>
                       {permission.description ? (
-                        <p className="mt-1 text-[11px] text-slate-400">{permission.description}</p>
+                        <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-slate-400">{permission.description}</p>
                       ) : null}
                     </div>
                   ))
@@ -300,8 +323,9 @@ function EditUserModal({ isOpen, member, availableRoles, saving, error, onClose,
             {error}
           </div>
         ) : null}
+        </div>
 
-        <div className="mt-6 flex justify-end gap-3">
+        <div className="sticky bottom-0 z-10 flex shrink-0 justify-end gap-3 border-t border-slate-800/80 bg-slate-950/70 px-5 py-4 backdrop-blur-xl sm:px-6">
           <button
             type="button"
             onClick={onClose}
@@ -413,7 +437,7 @@ export default function ManageTeamPage() {
       }
 
       setData(payload.data);
-      setNotice(payload.createdUser?.createdNew ? "User created successfully." : "Existing user updated successfully.");
+      setNotice(payload.message || "Invitation sent successfully");
       setIsModalOpen(false);
     } catch (submitErr) {
       setSubmitError(submitErr.message || "Failed to add team member");
@@ -486,7 +510,7 @@ export default function ManageTeamPage() {
         throw new Error(payload.error?.message || payload.message || "Failed to resend access email");
       }
 
-      setNotice(`Access email sent to ${member.email}.`);
+      setNotice("Invitation sent successfully");
     } catch (resendErr) {
       setError(resendErr.message || "Failed to resend access email");
     } finally {
@@ -579,7 +603,7 @@ export default function ManageTeamPage() {
           ) : null}
 
           <div className="mt-8 overflow-hidden rounded-[24px] border border-slate-800 bg-slate-950/30">
-            <div className="grid grid-cols-[1.05fr_0.9fr_0.55fr_0.7fr_1.7fr_0.9fr] gap-4 border-b border-slate-800 px-6 py-4 text-xs uppercase tracking-[0.28em] text-slate-500">
+            <div className="hidden grid-cols-[1.05fr_0.9fr_0.55fr_0.7fr_1.7fr_0.9fr] gap-4 border-b border-slate-800 px-6 py-4 text-xs uppercase tracking-[0.28em] text-slate-500 xl:grid">
               <div>Team Member</div>
               <div>Organization Role</div>
               <div>Status</div>
@@ -596,7 +620,7 @@ export default function ManageTeamPage() {
               team.map((member) => (
                 <div
                   key={member.userId}
-                  className="grid grid-cols-[1.05fr_0.9fr_0.55fr_0.7fr_1.7fr_0.9fr] gap-4 border-b border-slate-900 px-6 py-5 last:border-b-0"
+                  className="grid min-w-0 grid-cols-1 gap-4 border-b border-slate-900 px-4 py-5 last:border-b-0 sm:px-6 lg:grid-cols-2 xl:grid-cols-[1.05fr_0.9fr_0.55fr_0.7fr_1.7fr_0.9fr]"
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
@@ -612,11 +636,6 @@ export default function ManageTeamPage() {
                       <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.16em] ${getPlatformRoleTone(member.platformRole)}`}>
                         Platform: {member.platformRole}
                       </span>
-                      {member.recruiterRoleId ? (
-                        <span className="inline-flex rounded-full border border-slate-700 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-300">
-                          Role ID: {member.recruiterRoleId}
-                        </span>
-                      ) : null}
                     </div>
                   </div>
 
@@ -632,21 +651,26 @@ export default function ManageTeamPage() {
                   </div>
 
                   <div>
-                    <span className={member.isActive ? "text-emerald-300" : "text-slate-500"}>
-                      {member.isActive ? "Active" : "Inactive"}
-                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      <span className={member.isActive ? "text-emerald-300" : "text-slate-500"}>
+                        {member.isActive ? "Active" : "Inactive"}
+                      </span>
+                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.14em] ${getInviteStatusTone(member.inviteStatus)}`}>
+                        {member.inviteStatus || "Accepted"}
+                      </span>
+                    </div>
                   </div>
 
                   <div className="text-slate-300">{formatDate(member.joinedAt)}</div>
 
-                  <div className="grid grid-cols-3 gap-2 content-start">
+                  <div className="grid content-start grid-cols-1 gap-1.5 sm:grid-cols-2 xl:grid-cols-2">
                     {member.permissions.length === 0 ? (
                       <span className="text-sm text-slate-500">No permissions mapped</span>
                     ) : (
                       member.permissions.map((permission) => (
                         <div
                           key={`${member.userId}-${permission.code}`}
-                          className="rounded-2xl border border-slate-700 bg-slate-900/75 px-3 py-2"
+                          className="rounded-xl border border-slate-700 bg-slate-900/75 px-2.5 py-2"
                         >
                           <p className="truncate text-xs font-medium text-slate-100">{permission.code}</p>
                           {permission.description ? (
@@ -657,7 +681,7 @@ export default function ManageTeamPage() {
                     )}
                   </div>
 
-                  <div className="flex flex-col gap-2">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap xl:flex-col">
                     {canManageUsers && !member.isCurrentUser ? (
                       <>
                         <button
