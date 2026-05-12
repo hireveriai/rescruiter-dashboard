@@ -9,6 +9,7 @@ import { formatDateTime } from "@/lib/client/date-format"
 
 import Navbar from "../../components/Navbar"
 import SendInterviewModal from "../../components/SendInterviewModal"
+import { MetricSkeleton, TableSkeleton } from "../../components/system/skeletons"
 
 function getStatusBadge(status) {
   const normalized = String(status ?? "PENDING").toUpperCase()
@@ -251,11 +252,14 @@ function CompletedCandidateModal({ candidate, onClose }) {
 export default function CandidatesPage() {
   const searchParams = useAuthSearchParams()
   const [candidates, setCandidates] = useState([])
+  const [loading, setLoading] = useState(true)
   const [selectedCandidate, setSelectedCandidate] = useState(null)
   const [openSendInterview, setOpenSendInterview] = useState(false)
 
   useEffect(() => {
     let isMounted = true
+
+    setLoading(true)
 
     fetch(buildAuthUrl("/api/dashboard/candidates?limit=all", searchParams))
       .then((res) => res.json())
@@ -266,6 +270,11 @@ export default function CandidatesPage() {
       })
       .catch((error) => {
         console.error("Failed to fetch candidates page data", error)
+      })
+      .finally(() => {
+        if (isMounted) {
+          setLoading(false)
+        }
       })
 
     return () => {
@@ -297,6 +306,9 @@ export default function CandidatesPage() {
                 </p>
               </div>
 
+              {loading ? (
+                <MetricSkeleton count={3} className="sm:grid-cols-3 xl:min-w-[520px]" />
+              ) : (
               <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[520px]">
                 <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-4">
                   <p className="text-sm text-slate-500">Total Candidates</p>
@@ -311,6 +323,7 @@ export default function CandidatesPage() {
                   <p className="mt-3 text-3xl font-semibold text-white">{stats.pending}</p>
                 </div>
               </div>
+              )}
             </div>
           </section>
 
@@ -340,8 +353,11 @@ export default function CandidatesPage() {
                   </tr>
                 </thead>
 
-                <tbody>
-                  {candidates.length === 0 ? (
+                {loading ? (
+                  <TableSkeleton rows={8} columns={7} showAvatar showStatusChip />
+                ) : (
+                  <tbody>
+                    {candidates.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="p-10 text-center text-slate-400">
                         No candidates available
@@ -385,7 +401,8 @@ export default function CandidatesPage() {
                       </tr>
                     ))
                   )}
-                </tbody>
+                  </tbody>
+                )}
               </table>
             </div>
           </section>

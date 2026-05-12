@@ -8,6 +8,7 @@ import SendInterviewModal from "@/components/SendInterviewModal"
 import { InsightTooltip } from "@/components/ui/InsightTooltip"
 import { ProcessingTimeline, type TimelineStep } from "@/components/ui/ProcessingTimeline"
 import { StepProgress } from "@/components/ui/StepProgress"
+import { CardSkeleton, MetricSkeleton, TableSkeleton, TimelineSkeleton } from "@/components/system/skeletons"
 import { buildAuthUrl } from "@/lib/client/auth-query"
 import {
   convertOrgTimeToUtc,
@@ -678,6 +679,8 @@ export default function AiScreeningPage() {
   const [screeningRuns, setScreeningRuns] = useState<ScreeningRun[]>([])
   const [selectedRunId, setSelectedRunId] = useState("")
   const [loadingRunId, setLoadingRunId] = useState("")
+  const [runLoadDiagnostics, setRunLoadDiagnostics] = useState("")
+  const loadedInitialRunRef = useRef("")
 
   useEffect(() => {
     const storedFlowState = readStoredFlowState()
@@ -779,6 +782,10 @@ export default function AiScreeningPage() {
       return
     }
 
+    if (selectedRunId || loadingRunId) {
+      return
+    }
+
     if (!includeAllCandidates && !currentBatchId && uploadedCandidateIds.length === 0) {
       setMatches([])
       setSelectedCandidateIds([])
@@ -840,7 +847,7 @@ export default function AiScreeningPage() {
     return () => {
       active = false
     }
-  }, [activeJob?.id, currentBatchId, flowStep, includeAllCandidates, searchParams, uploadRows, uploadedCandidateIds])
+  }, [activeJob?.id, currentBatchId, flowStep, includeAllCandidates, loadingRunId, searchParams, selectedRunId, uploadRows, uploadedCandidateIds])
 
   useEffect(() => {
     if (!activeJob?.id) {
@@ -861,7 +868,12 @@ export default function AiScreeningPage() {
         const payload = await response.json()
 
         if (active && payload.success) {
-          setScreeningRuns(payload.data?.runs ?? [])
+          const runs = payload.data?.runs ?? []
+          setScreeningRuns(runs)
+          if (!selectedRunId && loadedInitialRunRef.current !== jobId && runs.length > 0) {
+            loadedInitialRunRef.current = jobId
+            void loadScreeningRun(runs[0], { silent: true })
+          }
         }
       } catch (runsError) {
         console.error("Failed to load screening runs", runsError)
@@ -873,7 +885,7 @@ export default function AiScreeningPage() {
     return () => {
       active = false
     }
-  }, [activeJob?.id])
+  }, [activeJob?.id, selectedRunId])
 
   const filteredMatches = useMemo(() => {
     const filtered = matches.filter((match) => {
@@ -1033,7 +1045,12 @@ export default function AiScreeningPage() {
   const resolvedActiveJob = activeJobMatchesSelection ? activeJob : selectedScreeningJob ?? activeJob
   const hasUploadedResumes = Boolean(currentBatchId)
   const hasSelectedJob = Boolean(selectedExistingJobId)
-  const isBusy = uploading || isProcessingJD || isMatching || savingNewJob || sending || cleanupBusy
+  const isSwitchingRuns = Boolean(loadingRunId)
+  const selectedRun = useMemo(
+    () => screeningRuns.find((run) => run.id === selectedRunId) ?? null,
+    [screeningRuns, selectedRunId]
+  )
+  const isBusy = uploading || isProcessingJD || isMatching || savingNewJob || sending || cleanupBusy || isSwitchingRuns
   const canShowCleanupActions = matches.length > 0 || Boolean(currentBatchId) || uploadedCandidateIds.length > 0
   const canAnalyzeJob = hasUploadedResumes && hasSelectedJob && flowStep !== "JD_PROCESSED" && flowStep !== "MATCHED" && !isBusy
   const canRunMatching = Boolean(
@@ -1051,11 +1068,11 @@ export default function AiScreeningPage() {
         : "Job is already analyzed. Run matching next."
   const matchHelpText = canRunMatching ? "" : "Analyze job description to enable matching"
   const processingStatusText = isMatching
-    ? "Matching candidates..."
+    ? "Building forensic timeline..."
     : isProcessingJD
-      ? "Analyzing job..."
+      ? "Preparing cognitive analysis..."
       : uploading
-        ? "Uploading and parsing resumes..."
+        ? "Loading behavioral telemetry..."
         : savingNewJob
           ? "Saving job description..."
           : sending
@@ -1108,6 +1125,7 @@ export default function AiScreeningPage() {
     setCompareModalOpen(false)
     setSelectedInsight(null)
     setSelectedRunId("")
+    setRunLoadDiagnostics("")
     setPipelineErrorStep(null)
     setError("")
   }
@@ -1442,6 +1460,7 @@ export default function AiScreeningPage() {
       )
       setMatches(rankedMatches)
       setSelectedRunId(payload.data?.runId ?? "")
+      setRunLoadDiagnostics("")
       if (jobForMatching.id) {
         const runsResponse = await fetch(authUrl(`/api/screening/runs?jobId=${encodeURIComponent(jobForMatching.id)}`), {
           credentials: "include",
@@ -1484,15 +1503,17 @@ export default function AiScreeningPage() {
     await runMatching(jobForMatching)
   }
 
-  async function loadScreeningRun(run: ScreeningRun) {
+  async function loadScreeningRun(run: ScreeningRun, options?: { silent?: boolean }) {
     if (!activeJob) {
       return
     }
 
     try {
+      setSelectedRunId(run.id)
       setLoadingRunId(run.id)
       setError("")
-      const response = await fetch(authUrl(`/api/screening/runs?jobId=${encodeURIComponent(activeJob.id)}&runId=${encodeURIComponent(run.id)}`), {
+      setRunLoadDiagnostics("")
+      const response = await fetch(authUrl(`/api/veris-screening/run/${encodeURIComponent(run.id)}`), {
         credentials: "include",
         cache: "no-store",
       })
@@ -1502,10 +1523,13 @@ export default function AiScreeningPage() {
       setMatches(loadedMatches)
       setSelectedCandidateIds(getDefaultSelectedCandidateIds(loadedMatches))
       setCompareCandidateIds([])
-      setSelectedRunId(run.id)
       setFlowStep("MATCHED")
-      setNotice("Loaded historical screening run.")
+      setRunLoadDiagnostics(payload.data?.diagnostics ?? "")
+      if (!options?.silent) {
+        setNotice("Loaded historical screening run.")
+      }
     } catch (runError) {
+      setSelectedRunId("")
       setError(runError instanceof Error ? runError.message : "Could not load screening run")
     } finally {
       setLoadingRunId("")
@@ -1545,6 +1569,7 @@ export default function AiScreeningPage() {
           batchId: currentBatchId || undefined,
           matchScope: getMatchScope(includeAllCandidates),
           includeAllCandidates,
+          runId: selectedRunId || undefined,
           confirmDuplicateInvites: options?.confirmedDuplicateInvites === true,
         }),
       })
@@ -1905,6 +1930,9 @@ export default function AiScreeningPage() {
               </p>
             </div>
 
+            {isBusy && matches.length === 0 ? (
+              <MetricSkeleton count={4} className="sm:grid-cols-4 xl:min-w-[680px]" />
+            ) : (
             <div className="grid gap-3 sm:grid-cols-4 xl:min-w-[680px]">
               <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-4">
                 <p className="text-sm text-slate-500">Matched</p>
@@ -1923,6 +1951,7 @@ export default function AiScreeningPage() {
                 <p className="mt-3 text-3xl font-semibold text-amber-100">{stats.noEmail}</p>
               </div>
             </div>
+            )}
           </div>
         </section>
 
@@ -1948,6 +1977,19 @@ export default function AiScreeningPage() {
               ) : null}
             </div>
           </section>
+        ) : null}
+
+        {isBusy ? (
+          <div className="mt-6 grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
+            <TimelineSkeleton
+              messages={[
+                "Loading behavioral telemetry...",
+                "Preparing cognitive analysis...",
+                "Building forensic timeline...",
+              ]}
+            />
+            <CardSkeleton count={2} className="grid-cols-1 md:grid-cols-2" />
+          </div>
         ) : null}
 
         <div className="mt-8 grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
@@ -2274,7 +2316,12 @@ export default function AiScreeningPage() {
                       type="button"
                       onClick={() => loadScreeningRun(run)}
                       disabled={Boolean(loadingRunId)}
-                      className={`rounded-xl border px-3 py-2 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${selectedRunId === run.id ? "border-cyan-400/40 bg-cyan-400/10" : "border-slate-700 bg-slate-950/35 hover:border-slate-500"}`}
+                      aria-pressed={selectedRunId === run.id}
+                      className={`rounded-xl border px-3 py-2 text-left transition duration-200 focus:outline-none focus:ring-2 focus:ring-cyan-300/40 disabled:cursor-wait disabled:opacity-70 ${
+                        selectedRunId === run.id
+                          ? "border-cyan-300/70 bg-cyan-400/10 shadow-[0_0_26px_rgba(34,211,238,0.18)]"
+                          : "cursor-pointer border-slate-700 bg-slate-950/35 hover:border-cyan-400/35 hover:bg-slate-900/60 hover:shadow-[0_0_18px_rgba(15,23,42,0.45)]"
+                      }`}
                     >
                       <p className="truncate text-xs font-semibold text-slate-200">
                         {formatDateTime(run.createdAt)}
@@ -2285,6 +2332,17 @@ export default function AiScreeningPage() {
                     </button>
                   ))}
                 </div>
+              </div>
+            ) : null}
+
+            {selectedRun ? (
+              <div className="mt-5 rounded-xl border border-cyan-400/20 bg-cyan-400/[0.06] px-4 py-3">
+                <p className="text-sm font-semibold text-cyan-50">
+                  Viewing Screening Run: {formatDateTime(selectedRun.createdAt)}
+                </p>
+                <p className="mt-1 text-xs text-cyan-100/65">
+                  Snapshot restored from immutable run data. Candidate profile changes and future scoring updates are not recomputed into this view.
+                </p>
               </div>
             ) : null}
 
@@ -2385,24 +2443,45 @@ export default function AiScreeningPage() {
                   <th className="px-3 py-2.5 text-right text-[12px] font-medium leading-[1.4]">Actions</th>
                 </tr>
               </thead>
+              {isSwitchingRuns ? (
+                <TableSkeleton rows={7} columns={9} showAvatar showStatusChip />
+              ) : isMatching && filteredMatches.length === 0 ? (
+                <TableSkeleton rows={7} columns={9} showAvatar showStatusChip />
+              ) : (
               <tbody>
                 {filteredMatches.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="p-10 text-center text-slate-400">
                       {isMatching ? (
-                        "Matching candidates..."
+                        <TimelineSkeleton
+                          messages={[
+                            "Loading behavioral telemetry...",
+                            "Preparing cognitive analysis...",
+                            "Building forensic timeline...",
+                          ]}
+                        />
                       ) : (
                         <div>
-                          <p className="font-medium text-slate-300">No matching candidates found</p>
-                          <p className="mt-2 text-sm text-slate-500">Try adjusting filters or uploading more resumes</p>
+                          <p className="font-medium text-slate-300">{selectedRun ? "No stored results for this screening run" : "No matching candidates found"}</p>
+                          <p className="mt-2 text-sm text-slate-500">{runLoadDiagnostics || (selectedRun ? "The run metadata was found, but no candidate snapshots were stored for it." : "Try adjusting filters or uploading more resumes")}</p>
                           <div className="mx-auto mt-4 max-w-xl rounded-2xl border border-slate-800 bg-slate-950/35 p-4 text-left">
-                            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Possible reasons</p>
+                            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{selectedRun ? "Diagnostics" : "Possible reasons"}</p>
                             <ul className="mt-3 space-y-2 text-sm text-slate-400">
-                              <li>Required skills are missing from the uploaded resumes.</li>
-                              <li>Experience alignment may be below the selected role threshold.</li>
-                              <li>Current filters may be hiding medium-fit candidates.</li>
+                              {selectedRun ? (
+                                <>
+                                  <li>Stored result rows were not found in screening_run_matches for this run.</li>
+                                  <li>The run may have been created before snapshot persistence was enabled.</li>
+                                  <li>Run ID: {selectedRun.id}</li>
+                                </>
+                              ) : (
+                                <>
+                                  <li>Required skills are missing from the uploaded resumes.</li>
+                                  <li>Experience alignment may be below the selected role threshold.</li>
+                                  <li>Current filters may be hiding medium-fit candidates.</li>
+                                </>
+                              )}
                             </ul>
-                            <p className="mt-3 text-sm text-slate-400">Suggestions: adjust filters, upload more resumes, or switch to Search All Candidates.</p>
+                            <p className="mt-3 text-sm text-slate-400">{selectedRun ? "Historical results are never recomputed from live candidate data; rerun matching to create a new snapshot." : "Suggestions: adjust filters, upload more resumes, or switch to Search All Candidates."}</p>
                           </div>
                         </div>
                       )}
@@ -2576,6 +2655,7 @@ export default function AiScreeningPage() {
                   })
                 )}
               </tbody>
+              )}
             </table>
           </div>
         </section>

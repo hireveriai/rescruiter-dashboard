@@ -64,6 +64,16 @@ function isProtectedApi(pathname: string) {
   return PROTECTED_API_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
 }
 
+function getRecruiterAccessUrl() {
+  const loginUrl = new URL(LOGIN_URL)
+
+  if (loginUrl.pathname === "/" || loginUrl.pathname === "") {
+    loginUrl.pathname = "/recruiter-access"
+  }
+
+  return loginUrl
+}
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
@@ -88,7 +98,7 @@ export function middleware(request: NextRequest) {
     )
   }
 
-  const loginUrl = new URL(LOGIN_URL)
+  const loginUrl = getRecruiterAccessUrl()
   loginUrl.searchParams.set("next", request.nextUrl.href)
   return NextResponse.redirect(loginUrl)
 }

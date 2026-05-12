@@ -147,6 +147,8 @@ export async function POST(request: Request) {
       batch_id?: string
       matchScope?: string
       match_scope?: string
+      runId?: string
+      run_id?: string
       includeAllCandidates?: boolean
       include_all_candidates?: boolean
       confirmDuplicateInvites?: boolean
@@ -159,6 +161,7 @@ export async function POST(request: Request) {
     const legacyIncludeAllCandidates = body.includeAllCandidates === true || body.include_all_candidates === true
     const matchScope = resolveMatchScope(body.matchScope ?? body.match_scope, legacyIncludeAllCandidates)
     const includeAllCandidates = matchScope === "GLOBAL"
+    const runId = String(body.runId ?? body.run_id ?? "").trim()
     const confirmDuplicateInvites = body.confirmDuplicateInvites === true || body.confirm_duplicate_invites === true
     const candidateSchedules = parseCandidateSchedules(body.candidates)
     const candidateIds = Array.isArray(body.candidateIds)
@@ -197,6 +200,7 @@ export async function POST(request: Request) {
       candidateIds,
       uploadBatchId: batchId || null,
       includeAllCandidates,
+      runId: runId || null,
     })
 
     if (selected.length === 0) {

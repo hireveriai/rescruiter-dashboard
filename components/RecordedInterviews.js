@@ -6,6 +6,7 @@ import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 import { buildAuthUrl, hasAuthQuery } from "@/lib/client/auth-query"
 import { formatDateTime } from "@/lib/client/date-format"
 import { openWarRoom } from "@/lib/client/war-room"
+import { CardSkeleton } from "@/components/system/skeletons"
 
 function getRetentionLabel(days) {
   return `${days ?? 30} days retention`
@@ -102,7 +103,7 @@ function RecordedInterviewsModal({ isOpen, onClose, interviews }) {
   )
 }
 
-export default function RecordedInterviews({ initialRecordedInterviews, organizationId = "" }) {
+export default function RecordedInterviews({ initialRecordedInterviews, organizationId = "", isLoading = false }) {
   const searchParams = useAuthSearchParams()
   const [interviews, setInterviews] = useState([])
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -165,8 +166,11 @@ export default function RecordedInterviews({ initialRecordedInterviews, organiza
           </button>
         </div>
 
-        <div className="grid grid-cols-3 gap-4">
-          {previewInterviews.length === 0 ? (
+        {isLoading ? (
+          <CardSkeleton count={3} className="grid-cols-1 md:grid-cols-3" />
+        ) : (
+          <div className="grid grid-cols-3 gap-4">
+            {previewInterviews.length === 0 ? (
             <div className="col-span-3 rounded-lg bg-[#111a2e] p-5 text-center text-gray-400 shadow-md">
               No interview recordings available
             </div>
@@ -210,7 +214,8 @@ export default function RecordedInterviews({ initialRecordedInterviews, organiza
               </div>
             ))
           )}
-        </div>
+          </div>
+        )}
       </div>
 
       <RecordedInterviewsModal

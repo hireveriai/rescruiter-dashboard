@@ -316,6 +316,13 @@ function getStepSignal(step, status) {
   return "Pending"
 }
 
+function getCollapsedMeta(step, status) {
+  if (status === "completed") return "Completed"
+  if (status === "skipped") return "Skipped"
+  if (step.optional) return "Optional"
+  return ""
+}
+
 function WorkflowAction({ step, searchParams, onAction, highlighted = false }) {
   const baseClass = [
     "inline-flex items-center justify-center rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition duration-200",
@@ -346,22 +353,24 @@ function WorkflowStepCard({ step, status, searchParams, onAction }) {
   const isSkipped = status === "skipped"
   const isPending = status === "pending"
   const shouldExpand = isActive
+  const collapsedMeta = getCollapsedMeta(step, status)
   const cardClass = [
-    "group relative overflow-hidden rounded-xl border text-left transition duration-200",
-    shouldExpand ? "p-3" : "px-3 py-2",
+    "group relative overflow-hidden text-left transition duration-200",
+    shouldExpand ? "rounded-xl border p-3" : "rounded-lg border border-transparent px-2.5 py-1.5",
     isActive ? `${theme.border} bg-gradient-to-br ${theme.background} ${theme.glow} hiring-workflow-active scale-[1.01]` : "",
-    isCompleted ? "border-emerald-400/20 bg-emerald-500/[0.045] text-slate-300" : "",
-    isSkipped ? "border-violet-400/12 bg-slate-950/30 text-slate-500 opacity-70" : "",
-    isPending ? "border-slate-800 bg-slate-950/35 text-slate-400 opacity-80" : "",
+    !shouldExpand && isCompleted ? "bg-emerald-500/[0.025] text-slate-300 hover:border-emerald-400/10 hover:bg-emerald-500/[0.045]" : "",
+    !shouldExpand && isSkipped ? "bg-violet-500/[0.025] text-slate-500 hover:border-violet-400/10 hover:bg-violet-500/[0.045]" : "",
+    !shouldExpand && isPending ? "bg-slate-950/10 text-slate-500 hover:border-slate-800/70 hover:bg-slate-950/25" : "",
   ].join(" ")
 
   return (
     <div className={cardClass}>
-      <div className={`absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-current to-transparent opacity-30 ${theme.text}`} />
+      {shouldExpand ? <div className={`absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-current to-transparent opacity-30 ${theme.text}`} /> : null}
       <div className="flex w-full items-start gap-2.5 text-left">
         <div className="relative shrink-0">
           <div className={[
-            "flex h-7 w-7 items-center justify-center rounded-lg border text-[11px] font-semibold transition",
+            "flex items-center justify-center rounded-lg border font-semibold transition",
+            shouldExpand ? "h-7 w-7 text-[11px]" : "mt-0.5 h-6 w-6 text-[10px]",
             isActive ? `${theme.border} ${theme.text} bg-white/10 shadow-[0_0_18px_currentColor]` : "",
             isCompleted ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200" : "",
             isSkipped ? "border-violet-400/20 bg-violet-500/5 text-violet-300" : "",
@@ -373,25 +382,35 @@ function WorkflowStepCard({ step, status, searchParams, onAction }) {
         </div>
 
         <div className="min-w-0 flex-1">
-          <div className="flex w-full items-start justify-between gap-2 text-left">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <p className="truncate text-[13px] font-semibold leading-tight text-white">{step.title}</p>
-              {step.optional ? (
+          <div className={shouldExpand ? "flex w-full items-start justify-between gap-2 text-left" : "grid min-w-0 gap-0.5"}>
+            <div className={shouldExpand ? "flex min-w-0 flex-wrap items-center gap-2" : "min-w-0"}>
+              <p className={shouldExpand ? "text-[13px] font-semibold leading-tight text-white" : "whitespace-normal break-words text-[13px] font-medium leading-[1.2] tracking-[0.02em] text-slate-200"}>
+                {step.title}
+              </p>
+              {step.optional && shouldExpand ? (
                 <span className="rounded-full border border-violet-300/25 bg-violet-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-violet-200">
                   Optional - AI Enhanced
                 </span>
               ) : null}
-              {isSkipped ? (
+              {isSkipped && shouldExpand ? (
                 <span className="rounded-full border border-slate-600 bg-slate-900 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                   Skipped
                 </span>
               ) : null}
             </div>
-            <div className="flex shrink-0 items-center gap-2 pt-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+            {shouldExpand ? <div className="flex shrink-0 items-center gap-2 pt-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500">
               <span className={isActive ? theme.text : isCompleted ? "text-emerald-300" : isSkipped ? "text-violet-300" : ""}>
                 {getStepSignal(step, status)}
               </span>
-            </div>
+            </div> : null}
+            {!shouldExpand && collapsedMeta ? (
+              <p className={[
+                "text-[9px] font-semibold uppercase leading-none tracking-[0.16em]",
+                isCompleted ? "text-emerald-300/75" : isSkipped ? "text-violet-300/70" : "text-slate-500",
+              ].join(" ")}>
+                {collapsedMeta}
+              </p>
+            ) : null}
           </div>
 
           {shouldExpand ? (
@@ -402,7 +421,7 @@ function WorkflowStepCard({ step, status, searchParams, onAction }) {
                 {step.secondaryCta && isActive ? (
                   <button
                     type="button"
-                    className="inline-flex items-center justify-center rounded-xl border border-violet-300/15 px-3 py-2 text-xs font-semibold text-violet-200 transition duration-200 hover:border-violet-300/35 hover:bg-violet-500/10"
+                    className="inline-flex items-center justify-center rounded-lg border border-violet-300/15 px-2.5 py-1.5 text-[11px] font-semibold text-violet-200 transition duration-200 hover:border-violet-300/35 hover:bg-violet-500/10"
                     onClick={() => onAction("skip-screening")}
                   >
                     {step.secondaryCta}
@@ -445,15 +464,15 @@ export default function HiringWorkflow({ overview, searchParams, onAction }) {
         </div>
       </div>
 
-      <div className="relative mt-4 space-y-2 pl-2">
-        <div className="absolute bottom-5 left-[22px] top-5 w-px overflow-hidden bg-slate-800">
+      <div className="relative mt-3.5 space-y-1.5 pl-2">
+        <div className="absolute bottom-4 left-[21px] top-4 w-px overflow-hidden bg-slate-800/90">
           <div className="h-1/2 w-full bg-gradient-to-b from-blue-400 via-violet-400 to-cyan-300 hiring-workflow-flow" />
         </div>
         {workflowSteps.map((step) => {
           const status = getStepStatus(step, state)
 
           return (
-            <div key={step.id} className="relative pl-7">
+            <div key={step.id} className="relative pl-6">
               <WorkflowStepCard
                 step={step}
                 status={status}
@@ -463,12 +482,6 @@ export default function HiringWorkflow({ overview, searchParams, onAction }) {
             </div>
           )
         })}
-      </div>
-
-      <div className="mt-3 grid grid-cols-3 gap-2 text-center text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-        <span>Start</span>
-        <span>Progress</span>
-        <span>Decision</span>
       </div>
     </div>
   )

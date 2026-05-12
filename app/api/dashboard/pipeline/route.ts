@@ -8,10 +8,12 @@ import { getDashboardRecordings } from "@/lib/server/services/dashboard-recordin
 export async function GET(request: Request) {
   try {
     const auth = await getRecruiterRequestContext(request)
-    const pipelineData = await getDashboardPipelineData({
-      organizationId: auth.organizationId,
-    })
-    const recordedInterviews = await getDashboardRecordings(auth.organizationId)
+    const [pipelineData, recordedInterviews] = await Promise.all([
+      getDashboardPipelineData({
+        organizationId: auth.organizationId,
+      }),
+      getDashboardRecordings(auth.organizationId),
+    ])
 
     return NextResponse.json({
       success: true,

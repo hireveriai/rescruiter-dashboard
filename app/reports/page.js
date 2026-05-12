@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react"
 
 import Navbar from "@/components/Navbar"
 import SendInterviewModal from "@/components/SendInterviewModal"
+import { ChartSkeleton, MetricSkeleton, TableSkeleton, TimelineSkeleton } from "@/components/system/skeletons"
 import { buildAuthUrl } from "@/lib/client/auth-query"
 import { formatDateTime } from "@/lib/client/date-format"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
@@ -82,12 +83,30 @@ function ExpandableSection({ title, subtitle, defaultOpen = true, children }) {
 function LoadingState() {
   return (
     <div className="grid gap-6">
-      {Array.from({ length: 4 }).map((_, index) => (
-        <div
-          key={index}
-          className="h-48 animate-pulse rounded-[28px] border border-slate-800 bg-slate-900/55"
-        />
-      ))}
+      <MetricSkeleton count={5} className="md:grid-cols-2 xl:grid-cols-5" />
+      <ChartSkeleton title="Streaming funnel analytics" />
+      <TimelineSkeleton
+        messages={[
+          "Loading behavioral telemetry...",
+          "Preparing cognitive analysis...",
+          "Building forensic timeline...",
+          "Finalizing AI insight packets...",
+        ]}
+      />
+      <div className="overflow-hidden rounded-[28px] border border-slate-800 bg-[#0f172a]">
+        <table className="w-full min-w-[960px] text-sm">
+          <thead className="bg-slate-950/20 text-slate-400">
+            <tr>
+              <th className="p-5 text-left font-medium">Candidate</th>
+              <th className="p-5 text-left font-medium">Role</th>
+              <th className="p-5 text-left font-medium">Score</th>
+              <th className="p-5 text-left font-medium">Risk</th>
+              <th className="p-5 text-left font-medium">Recommendation</th>
+            </tr>
+          </thead>
+          <TableSkeleton rows={5} columns={5} showAvatar showStatusChip />
+        </table>
+      </div>
     </div>
   )
 }

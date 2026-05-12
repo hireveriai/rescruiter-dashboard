@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl, hasAuthQuery } from "@/lib/client/auth-query"
+import { MetricSkeleton } from "@/components/system/skeletons"
 
 const FALLBACK_PIPELINE = {
   pending: 0,
@@ -12,7 +13,7 @@ const FALLBACK_PIPELINE = {
   flagged: 0,
 }
 
-export default function Pipeline({ initialPipeline }) {
+export default function Pipeline({ initialPipeline, isLoading = false }) {
   const searchParams = useAuthSearchParams()
   const [pipeline, setPipeline] = useState(FALLBACK_PIPELINE)
   const displayPipeline = initialPipeline ?? pipeline
@@ -60,8 +61,11 @@ export default function Pipeline({ initialPipeline }) {
         Interview Pipeline
       </h2>
 
-      <div className="grid grid-cols-4 gap-4">
-        {cards.map((item) => (
+      {isLoading ? (
+        <MetricSkeleton className="grid-cols-2 lg:grid-cols-4" />
+      ) : (
+        <div className="grid grid-cols-4 gap-4">
+          {cards.map((item) => (
           <div
             key={item.title}
             className="bg-[#111a2e] rounded-lg p-5 shadow-md"
@@ -78,8 +82,9 @@ export default function Pipeline({ initialPipeline }) {
               {item.count}
             </div>
           </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

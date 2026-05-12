@@ -11,6 +11,7 @@ import {
   toOrgDateTimeInputValue,
 } from "@/lib/client/date-format"
 import { useOrgTimezone } from "@/components/OrgTimezoneProvider"
+import { TableSkeleton } from "@/components/system/skeletons"
 
 function getExpiryLabel(expiresAt, nowTick) {
   if (!expiresAt) {
@@ -394,7 +395,7 @@ function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, onEdit, o
   )
 }
 
-export default function PendingInterviews({ initialPendingInterviews }) {
+export default function PendingInterviews({ initialPendingInterviews, isLoading = false }) {
   const searchParams = useAuthSearchParams()
   const { timezone } = useOrgTimezone()
   const [interviews, setInterviews] = useState(() => initialPendingInterviews ?? [])
@@ -752,8 +753,11 @@ export default function PendingInterviews({ initialPendingInterviews }) {
               </tr>
             </thead>
 
-            <tbody>
-              {previewInterviews.length === 0 ? (
+            {isLoading ? (
+              <TableSkeleton rows={3} columns={6} showAvatar />
+            ) : (
+              <tbody>
+                {previewInterviews.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="p-4">
                     <GuidedInterviewEmptyState compact />
@@ -808,7 +812,8 @@ export default function PendingInterviews({ initialPendingInterviews }) {
                   </tr>
                 ))
               )}
-            </tbody>
+              </tbody>
+            )}
           </table>
         </div>
       </div>

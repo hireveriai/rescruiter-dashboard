@@ -5,6 +5,7 @@ import { useEffect, useState } from "react"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl, hasAuthQuery } from "@/lib/client/auth-query"
+import { TableSkeleton } from "@/components/system/skeletons"
 
 import CandidateInsightModal from "./CandidateInsightModal"
 
@@ -46,7 +47,7 @@ function formatScore(score) {
   return `${Math.round(score)}%`
 }
 
-export default function CandidateList({ initialCandidates }) {
+export default function CandidateList({ initialCandidates, isLoading = false }) {
   const searchParams = useAuthSearchParams()
   const [candidates, setCandidates] = useState([])
   const [selectedCandidate, setSelectedCandidate] = useState(null)
@@ -107,8 +108,11 @@ export default function CandidateList({ initialCandidates }) {
               </tr>
             </thead>
 
-            <tbody>
-              {displayCandidates.length === 0 ? (
+            {isLoading ? (
+              <TableSkeleton rows={5} columns={5} showAvatar />
+            ) : (
+              <tbody>
+                {displayCandidates.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="p-4 text-gray-400 text-center">
                     No candidates available
@@ -137,7 +141,8 @@ export default function CandidateList({ initialCandidates }) {
                   </tr>
                 ))
               )}
-            </tbody>
+              </tbody>
+            )}
           </table>
         </div>
       </div>

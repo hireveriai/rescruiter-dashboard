@@ -127,11 +127,17 @@ export default function RecruiterDashboardBootstrap({ children }) {
       }
 
       try {
-        const profileResponse = await fetch(buildAuthUrl("/api/me", searchParams), {
+        const profilePromise = fetch(buildAuthUrl("/api/me", searchParams), {
           credentials: "include",
           cache: "no-store",
         })
 
+        const overviewPromise = fetch(buildAuthUrl("/api/dashboard/overview", searchParams), {
+          credentials: "include",
+          cache: "no-store",
+        })
+
+        const profileResponse = await profilePromise
         const profileData = await profileResponse.json().catch(() => null)
 
         if (!active) {
@@ -182,11 +188,7 @@ export default function RecruiterDashboardBootstrap({ children }) {
         }))
         profileReady = true
 
-        const overviewResponse = await fetch(buildAuthUrl("/api/dashboard/overview", searchParams), {
-          credentials: "include",
-          cache: "no-store",
-        })
-
+        const overviewResponse = await overviewPromise
         const overviewData = await overviewResponse.json().catch(() => null)
 
         if (!active) {

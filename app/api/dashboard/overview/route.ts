@@ -118,7 +118,7 @@ async function getReportAndDecisionMetrics(organizationId: string) {
 async function buildOverview(
   auth: Awaited<ReturnType<typeof getRecruiterRequestContext>>
 ): Promise<OverviewPayload> {
-  const [profile, veris, candidates, recordedInterviews] = await Promise.all([
+  const [profile, veris, candidates, recordedInterviews, pipelineData] = await Promise.all([
     getRecruiterProfile(auth),
     getVerisSummaryCards(auth.organizationId, 6),
     getCandidatesDashboard({
@@ -126,10 +126,10 @@ async function buildOverview(
       limit: 5,
     }),
     getDashboardRecordings(auth.organizationId),
+    getDashboardPipelineData({
+      organizationId: auth.organizationId,
+    }),
   ])
-  const pipelineData = await getDashboardPipelineData({
-    organizationId: auth.organizationId,
-  })
 
   const [jobs, invites, screeningMetrics, reportMetrics] = await Promise.all([
     prisma.jobPosition.count({

@@ -114,6 +114,15 @@ type ScreeningRunMatchRow = {
   match_snapshot: MatchResultRow
 }
 
+type ScreeningRunInviteRow = {
+  match_id: string
+  candidate_id: string
+  candidate_name: string
+  email: string | null
+  match_score: number
+  recommendation: "STRONG_FIT" | "POTENTIAL" | "WEAK" | "REJECT"
+}
+
 export type ScreeningRun = {
   id: string
   jobId: string
@@ -1125,6 +1134,53 @@ export async function getScreeningRunMatches(input: {
   return rows.map((row) => row.match_snapshot)
 }
 
+export async function getScreeningRunSnapshot(input: {
+  organizationId: string
+  runId: string
+}) {
+  await ensureScreeningRunTables()
+
+  const runId = normalizeUuid(input.runId)
+
+  if (!runId) {
+    throw new ApiError(400, "SCREENING_RUN_REQUIRED", "Screening run is required")
+  }
+
+  const runRows = await prisma.$queryRaw<ScreeningRunRow[]>(Prisma.sql`
+    select
+      id::text,
+      job_id::text,
+      batch_id::text,
+      created_at,
+      total_candidates,
+      strong_fit_count,
+      avg_score
+    from public.screening_runs
+    where organization_id = ${input.organizationId}::uuid
+      and id = ${runId}::uuid
+    limit 1
+  `)
+
+  const run = runRows[0]
+
+  if (!run) {
+    throw new ApiError(404, "SCREENING_RUN_NOT_FOUND", "Screening run not found")
+  }
+
+  const matches = await getScreeningRunMatches({
+    organizationId: input.organizationId,
+    runId,
+  })
+
+  return {
+    run: normalizeScreeningRun(run),
+    matches,
+    diagnostics: matches.length === 0
+      ? "This screening run exists, but it has no stored candidate snapshots."
+      : null,
+  }
+}
+
 export async function clearScreeningResultsForUpload(input: {
   organizationId: string
   jobId: string
@@ -1289,12 +1345,47 @@ export async function getMatchesForInviteSelection(input: {
   candidateIds?: string[]
   uploadBatchId?: string | null
   includeAllCandidates?: boolean
+  runId?: string | null
 }) {
   const topN = Math.min(100, Math.max(1, input.topN ?? 10))
   const candidateIds = (input.candidateIds ?? []).map(normalizeUuid).filter((id): id is string => Boolean(id))
   const hasCandidateIds = candidateIds.length > 0
   const batchId = normalizeUuid(input.uploadBatchId)
   const includeAllCandidates = input.includeAllCandidates === true
+  const runId = normalizeUuid(input.runId ?? null)
+
+  if (runId) {
+    const rows = await prisma.$queryRaw<ScreeningRunInviteRow[]>(Prisma.sql`
+      select
+        coalesce(rm.match_snapshot->>'id', rm.id::text) as match_id,
+        coalesce(rm.match_snapshot->>'candidateId', rm.candidate_id::text) as candidate_id,
+        coalesce(rm.match_snapshot->>'candidateName', 'Candidate') as candidate_name,
+        nullif(rm.match_snapshot->>'email', '') as email,
+        coalesce(nullif(rm.match_snapshot->>'matchScore', '')::int, 0) as match_score,
+        coalesce(rm.match_snapshot->>'recommendation', 'POTENTIAL')::text as recommendation
+      from public.screening_run_matches rm
+      inner join public.screening_runs r
+        on r.id = rm.run_id
+        and r.organization_id = rm.organization_id
+      where rm.organization_id = ${input.organizationId}::uuid
+        and rm.run_id = ${runId}::uuid
+        and r.job_id = ${input.jobId}::uuid
+        ${
+          input.mode === "STRONG_FIT"
+            ? Prisma.sql`and rm.match_snapshot->>'recommendation' = 'STRONG_FIT'`
+            : Prisma.empty
+        }
+        ${
+          hasCandidateIds
+            ? Prisma.sql`and coalesce(rm.match_snapshot->>'candidateId', rm.candidate_id::text) in (${Prisma.join(candidateIds)})`
+            : Prisma.empty
+        }
+      order by coalesce(nullif(rm.match_snapshot->>'matchScore', '')::int, 0) desc, rm.match_snapshot->>'createdAt' desc
+      ${input.mode === "TOP_N" ? Prisma.sql`limit ${topN}` : Prisma.empty}
+    `)
+
+    return rows
+  }
 
   const rows = await prisma.$queryRaw<
     Array<{

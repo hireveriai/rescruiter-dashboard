@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl, hasAuthQuery } from "@/lib/client/auth-query"
+import { CardSkeleton, TimelineSkeleton } from "@/components/system/skeletons"
 
 function getRecommendationColor(value) {
   const normalized = String(value ?? "").toUpperCase()
@@ -33,7 +34,7 @@ function getRiskColor(value) {
   return "text-red-400"
 }
 
-export default function VerisSummary({ initialSummaries }) {
+export default function VerisSummary({ initialSummaries, isLoading = false }) {
   const searchParams = useAuthSearchParams()
   const [summaries, setSummaries] = useState([])
   const displaySummaries = initialSummaries !== undefined ? initialSummaries : summaries
@@ -74,8 +75,20 @@ export default function VerisSummary({ initialSummaries }) {
         VERIS AI Summaries
       </h2>
 
-      <div className="grid grid-cols-2 gap-4">
-        {displaySummaries.length === 0 ? (
+      {isLoading ? (
+        <div className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
+          <TimelineSkeleton
+            messages={[
+              "Loading behavioral telemetry...",
+              "Preparing cognitive analysis...",
+              "Building forensic timeline...",
+            ]}
+          />
+          <CardSkeleton count={2} className="grid-cols-1" />
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-4">
+          {displaySummaries.length === 0 ? (
           <div className="col-span-2 rounded-lg bg-[#111a2e] p-5 text-center text-gray-400">
             No VERIS summaries available
           </div>
@@ -126,7 +139,8 @@ export default function VerisSummary({ initialSummaries }) {
             </div>
           ))
         )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }

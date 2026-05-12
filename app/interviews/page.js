@@ -10,6 +10,7 @@ import { formatDateTime } from "@/lib/client/date-format"
 
 import Navbar from "../../components/Navbar"
 import SendInterviewModal from "../../components/SendInterviewModal"
+import { MetricSkeleton, TableSkeleton, TimelineSkeleton } from "../../components/system/skeletons"
 
 function getStatusBadge(status) {
   const normalized = String(status ?? "PENDING").toUpperCase()
@@ -249,6 +250,7 @@ function CompletedInterviewModal({ interview, onClose }) {
 export default function InterviewsPage() {
   const searchParams = useAuthSearchParams()
   const [interviews, setInterviews] = useState([])
+  const [loading, setLoading] = useState(true)
   const [selectedInterview, setSelectedInterview] = useState(null)
   const [openSendInterview, setOpenSendInterview] = useState(false)
   const [actionBusyId, setActionBusyId] = useState("")
@@ -263,10 +265,13 @@ export default function InterviewsPage() {
     if (data.success) {
       setInterviews(data.data ?? [])
     }
+    setLoading(false)
   }
 
   useEffect(() => {
     let isMounted = true
+
+    setLoading(true)
 
     fetch(buildAuthUrl("/api/dashboard/interviews", searchParams), {
       credentials: "include",
@@ -280,6 +285,11 @@ export default function InterviewsPage() {
       })
       .catch((error) => {
         console.error("Failed to fetch interviews page data", error)
+      })
+      .finally(() => {
+        if (isMounted) {
+          setLoading(false)
+        }
       })
 
     return () => {
@@ -378,6 +388,9 @@ export default function InterviewsPage() {
               </p>
             </div>
 
+            {loading ? (
+              <MetricSkeleton count={3} className="sm:grid-cols-3 xl:min-w-[520px]" />
+            ) : (
             <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[520px]">
               <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-4">
                 <p className="text-sm text-slate-500">Total Interviews</p>
@@ -392,8 +405,15 @@ export default function InterviewsPage() {
                 <p className="mt-3 text-3xl font-semibold text-white">{stats.completed}</p>
               </div>
             </div>
+            )}
           </div>
         </section>
+
+        {loading ? (
+          <div className="mt-6">
+            <TimelineSkeleton count={3} messages={["Preparing interview queue...", "Loading scorecard signals...", "Checking forensic recovery status..."]} />
+          </div>
+        ) : null}
 
         <section className="mt-8 overflow-hidden rounded-[28px] border border-slate-800 bg-[#0f172a] shadow-[0_16px_60px_rgba(2,6,23,0.3)]">
           <div className="flex items-center justify-between border-b border-slate-800 px-6 py-5">
@@ -421,8 +441,11 @@ export default function InterviewsPage() {
                   <th className="p-5 text-right font-medium">Action</th>
                 </tr>
               </thead>
-              <tbody>
-                {interviews.length === 0 ? (
+              {loading ? (
+                <TableSkeleton rows={8} columns={8} showAvatar showStatusChip />
+              ) : (
+                <tbody>
+                  {interviews.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="p-10 text-center text-slate-400">No interviews available</td>
                   </tr>
@@ -494,7 +517,8 @@ export default function InterviewsPage() {
                     </tr>
                   ))
                 )}
-              </tbody>
+                </tbody>
+              )}
             </table>
           </div>
         </section>
