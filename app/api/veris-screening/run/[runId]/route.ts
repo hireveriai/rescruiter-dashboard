@@ -8,7 +8,7 @@ export const runtime = "nodejs"
 
 export async function GET(
   request: Request,
-  context: { params: Promise<{ runId: string }> | { runId: string } }
+  context: { params: Promise<{ runId: string }> }
 ) {
   try {
     const auth = await getRecruiterRequestContext(request)
