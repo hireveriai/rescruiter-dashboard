@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { buildAuthUrl, hasAuthQuery } from "@/lib/client/auth-query";
 import { logoutRecruiter } from "@/lib/client/logout";
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params";
+import { useAmbientLoading } from "@/components/system/loading";
 
 import CreateJobModal from "./CreateJobModal";
 
@@ -19,6 +20,18 @@ const navItems = [
   { href: "/reports", label: "Reports", disabled: false },
   { href: "#", label: "Alerts", disabled: true },
 ];
+
+const navLoadingMessages = {
+  "/": "Syncing recruiter dashboard...",
+  "/ai-screening": "Preparing cognitive insights...",
+  "/jobs": "Loading job intelligence...",
+  "/candidates": "Loading candidate pipeline...",
+  "/interviews": "Syncing interview telemetry...",
+  "/reports": "Updating forensic analytics...",
+  "/manage-team": "Syncing team workspace...",
+  "/settings": "Loading workspace settings...",
+  "/contact-us": "Preparing contact workspace...",
+};
 
 function isActivePath(pathname, href) {
   if (href === "/") {
@@ -70,6 +83,7 @@ function LogoutIcon() {
 export default function Navbar({ onSendInterviewClick, initialProfile = null }) {
   const pathname = usePathname();
   const searchParams = useAuthSearchParams();
+  const { startLoading } = useAmbientLoading();
   const menuRef = useRef(null);
   const [openCreateJob, setOpenCreateJob] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -148,20 +162,18 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null }) 
     logoutRecruiter();
   };
 
-  const handleDashboardClick = (event) => {
-    event.preventDefault();
-
+  const handleNavigationClick = (href) => {
     if (typeof window !== "undefined") {
-      window.sessionStorage.removeItem("hireveri-overview");
-      const dashboardUrl = buildAuthUrl("/", searchParams);
-
-      if (window.location.pathname === "/") {
-        window.location.reload();
-        return;
+      if (href === "/") {
+        window.sessionStorage.removeItem("hireveri-overview");
       }
-
-      window.location.assign(dashboardUrl);
     }
+
+    if (href === pathname) {
+      return;
+    }
+
+    startLoading({ message: navLoadingMessages[href] || "Preparing recruiter insights...", reason: "navigation" });
   };
 
   return (
@@ -171,6 +183,7 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null }) 
           <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-3 xl:gap-4">
             <Link
               href={buildAuthUrl("/", searchParams)}
+              onClick={() => handleNavigationClick("/")}
               className="flex w-[210px] shrink-0 flex-col justify-center leading-none xl:w-[240px]"
               aria-label="HireVeri home"
             >
@@ -196,7 +209,7 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null }) 
                   <Link
                     key={item.label}
                     href={buildAuthUrl(item.href, searchParams)}
-                    onClick={item.href === "/" ? handleDashboardClick : undefined}
+                    onClick={() => handleNavigationClick(item.href)}
                     className={[
                       "whitespace-nowrap rounded-xl px-2 py-2 text-[13px] font-medium transition xl:px-2.5 xl:text-sm",
                       active
@@ -246,17 +259,17 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null }) 
                   </div>
 
                   <div className="mt-2 grid gap-1">
-                    <Link href={buildAuthUrl("/manage-team", searchParams)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-200 transition hover:bg-slate-800/70 hover:text-white" onClick={() => setProfileOpen(false)}>
+                    <Link href={buildAuthUrl("/manage-team", searchParams)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-200 transition hover:bg-slate-800/70 hover:text-white" onClick={() => { setProfileOpen(false); handleNavigationClick("/manage-team"); }}>
                       <TeamIcon />
                       <span>Manage Team</span>
                     </Link>
 
-                    <Link href={buildAuthUrl("/settings", searchParams)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-200 transition hover:bg-slate-800/70 hover:text-white" onClick={() => setProfileOpen(false)}>
+                    <Link href={buildAuthUrl("/settings", searchParams)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-200 transition hover:bg-slate-800/70 hover:text-white" onClick={() => { setProfileOpen(false); handleNavigationClick("/settings"); }}>
                       <CogIcon />
                       <span>Settings</span>
                     </Link>
 
-                    <Link href={buildAuthUrl("/contact-us", searchParams)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-200 transition hover:bg-slate-800/70 hover:text-white" onClick={() => setProfileOpen(false)}>
+                    <Link href={buildAuthUrl("/contact-us", searchParams)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-200 transition hover:bg-slate-800/70 hover:text-white" onClick={() => { setProfileOpen(false); handleNavigationClick("/contact-us"); }}>
                       <MailIcon />
                       <span>Contact Us</span>
                     </Link>

@@ -411,7 +411,7 @@ export default function InterviewsPage() {
 
         {loading ? (
           <div className="mt-6">
-            <TimelineSkeleton count={3} messages={["Preparing interview queue...", "Loading scorecard signals...", "Checking forensic recovery status..."]} />
+            <TimelineSkeleton count={3} messages={["Preparing interview queue...", "Loading scorecard signals...", "Checking forensic telemetry status..."]} />
           </div>
         ) : null}
 

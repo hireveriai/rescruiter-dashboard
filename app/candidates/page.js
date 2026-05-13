@@ -253,6 +253,7 @@ export default function CandidatesPage() {
   const searchParams = useAuthSearchParams()
   const [candidates, setCandidates] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState("")
   const [selectedCandidate, setSelectedCandidate] = useState(null)
   const [openSendInterview, setOpenSendInterview] = useState(false)
 
@@ -261,15 +262,31 @@ export default function CandidatesPage() {
 
     setLoading(true)
 
-    fetch(buildAuthUrl("/api/dashboard/candidates?limit=all", searchParams))
+    setLoadError("")
+
+    fetch(buildAuthUrl("/api/dashboard/candidates?limit=all", searchParams), {
+      credentials: "include",
+      cache: "no-store",
+    })
       .then((res) => res.json())
       .then((data) => {
         if (isMounted && data.success) {
-          setCandidates(data.data ?? [])
+          const rows = Array.isArray(data.data) ? data.data : data.data?.candidates
+          setCandidates(Array.isArray(rows) ? rows : [])
+          return
+        }
+
+        if (isMounted) {
+          setCandidates([])
+          setLoadError(data?.error?.message || data?.message || "Candidate data could not be loaded.")
         }
       })
       .catch((error) => {
         console.error("Failed to fetch candidates page data", error)
+        if (isMounted) {
+          setCandidates([])
+          setLoadError("Candidate data could not be loaded.")
+        }
       })
       .finally(() => {
         if (isMounted) {
@@ -357,7 +374,13 @@ export default function CandidatesPage() {
                   <TableSkeleton rows={8} columns={7} showAvatar showStatusChip />
                 ) : (
                   <tbody>
-                    {candidates.length === 0 ? (
+                    {loadError ? (
+                    <tr>
+                      <td colSpan={7} className="p-10 text-center text-amber-200">
+                        {loadError}
+                      </td>
+                    </tr>
+                  ) : candidates.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="p-10 text-center text-slate-400">
                         No candidates available

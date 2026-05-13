@@ -13,15 +13,15 @@ type OverlayLoaderProps = {
 
 const DEFAULT_MESSAGES = [
   "Reconnecting to secure session...",
-  "Loading recruiter context...",
-  "Syncing dashboard modules...",
+  "Validating recovery state...",
+  "Rebuilding secure workspace context...",
 ]
 
 export default function OverlayLoader({
   visible,
   title = "Restoring your workspace...",
   messages = DEFAULT_MESSAGES,
-  note = "This usually takes a second",
+  note = "Critical recovery is in progress",
   progress = null,
   intervalMs = 1100,
 }: OverlayLoaderProps) {
@@ -79,7 +79,7 @@ export default function OverlayLoader({
 
           <div className="min-w-0 flex-1">
             <p className="text-[11px] uppercase tracking-[0.34em] text-cyan-200/70">
-              Session Restore
+              Critical Recovery
             </p>
             <h2 className="mt-2 text-lg font-semibold tracking-tight text-white sm:text-xl">
               {title}

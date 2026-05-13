@@ -41,7 +41,7 @@ export default function AIIntelligenceLoader({
             {variantCopy[variant]}
           </h1>
           <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-300">
-            Activating secure recruiter context, telemetry signals, and cognitive analysis layers.
+            Preparing recruiter telemetry, workflow signals, and cognitive analysis layers.
           </p>
           <div className="mt-6 flex max-w-xl items-center gap-2">
             {[0, 1, 2, 3].map((bar) => (

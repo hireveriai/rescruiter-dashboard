@@ -81,6 +81,41 @@ a {
   }
 }
 
+@keyframes hv-intelligence-bar-flow {
+  0% {
+    transform: translateX(-120%);
+  }
+
+  100% {
+    transform: translateX(220%);
+  }
+}
+
+.hv-intelligence-bar {
+  animation: hv-intelligence-bar-flow 1.25s ease-in-out infinite;
+}
+
+.hv-route-continuity {
+  animation: overlay-panel-in 180ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .hv-intelligence-bar {
+    animation: none;
+    transform: none;
+    width: 100%;
+  }
+}
+
 .hireveri-skeleton {
   animation: hireveri-skeleton-pulse 2.4s ease-in-out infinite;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035), 0 0 28px rgba(14, 165, 233, 0.035);

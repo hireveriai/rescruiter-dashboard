@@ -19,7 +19,7 @@ const defaultStepsByMode = {
   ],
   table: [
     "Loading candidate registry",
-    "Synchronizing workspace permissions",
+    "Syncing recruiter permissions",
     "Building cognition matrix",
     "Preparing recruiter view",
   ],

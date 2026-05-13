@@ -91,7 +91,6 @@ export default function RecruiterDashboardBootstrap({ children }) {
     overview: null,
     message: "",
   })
-  const [showRestoreOverlay, setShowRestoreOverlay] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -226,7 +225,7 @@ export default function RecruiterDashboardBootstrap({ children }) {
         }
 
         if (profileReady) {
-          console.warn("Dashboard overview refresh failed after workspace restore", error)
+          console.warn("Dashboard overview refresh failed after profile load", error)
           return
         }
 
@@ -246,30 +245,6 @@ export default function RecruiterDashboardBootstrap({ children }) {
     }
   }, [searchParams])
 
-  useEffect(() => {
-    if (state.status !== "loading") {
-      const frame = window.requestAnimationFrame(() => {
-        setShowRestoreOverlay(false)
-      })
-
-      return () => {
-        window.cancelAnimationFrame(frame)
-      }
-    }
-
-    if (showRestoreOverlay) {
-      return
-    }
-
-    const timer = window.setTimeout(() => {
-      setShowRestoreOverlay(true)
-    }, 800)
-
-    return () => {
-      window.clearTimeout(timer)
-    }
-  }, [showRestoreOverlay, state.status])
-
   if (state.status === "error") {
     return (
       <WorkspaceShell
@@ -286,7 +261,7 @@ export default function RecruiterDashboardBootstrap({ children }) {
     profile: state.profile,
     overview: state.overview,
     restoreStatus: state.status,
-    showRestoreOverlay: showRestoreOverlay && state.status === "loading",
+    showRestoreOverlay: false,
   })
 }
 

@@ -123,11 +123,11 @@ export default function RecordedInterviews({ initialRecordedInterviews, organiza
         </div>
 
         {isLoading ? (
-          <CardSkeleton count={3} className="grid-cols-1 md:grid-cols-3" />
+          <CardSkeleton count={3} className="grid-cols-1 lg:grid-cols-2 xl:grid-cols-3" />
         ) : (
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 xl:grid-cols-[repeat(3,minmax(320px,1fr))]">
             {previewInterviews.length === 0 ? (
-            <div className="rounded-[24px] border border-slate-800 bg-[#111a2e] p-5 text-center text-gray-400 shadow-md xl:col-span-3">
+            <div className="rounded-[24px] border border-slate-800 bg-[#111a2e] p-5 text-center text-gray-400 shadow-md lg:col-span-2 xl:col-span-3">
               No interview recordings available
             </div>
           ) : (

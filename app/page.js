@@ -3,7 +3,6 @@
 import { Suspense, useState } from "react";
 
 import Navbar from "../components/Navbar";
-import OverlayLoader from "../components/OverlayLoader";
 import Pipeline from "../components/Pipeline";
 import PendingInterviews from "../components/PendingInterviews";
 import RecordedInterviews from "../components/RecordedInterviews";
@@ -16,14 +15,14 @@ import SendInterviewModal from "../components/SendInterviewModal";
 import RecruiterDashboardBootstrap from "../components/RecruiterDashboardBootstrap";
 import { CardSkeleton, MetricSkeleton, TableSkeleton, TimelineSkeleton } from "../components/system/skeletons";
 
-function DashboardContent({ profile, showRestoreOverlay, overview, isLoading }) {
+function DashboardContent({ profile, overview, isLoading }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   return (
     <div className="hv-page-enter relative min-h-screen bg-[#0b1220] text-white">
       <Navbar onSendInterviewClick={() => setIsModalOpen(true)} initialProfile={profile} />
 
-      <div className="grid grid-cols-1 gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1fr)_minmax(320px,350px)] lg:p-8 xl:grid-cols-[minmax(0,1fr)_minmax(340px,372px)]">
+      <div className="grid grid-cols-1 gap-6 p-4 sm:p-6 lg:p-8 2xl:grid-cols-[minmax(0,1fr)_minmax(320px,360px)]">
         <div className="min-w-0">
           <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -40,7 +39,7 @@ function DashboardContent({ profile, showRestoreOverlay, overview, isLoading }) 
           <Suspense fallback={<div className="mt-10 overflow-hidden rounded-lg bg-[#111a2e]"><table className="w-full text-sm"><TableSkeleton rows={3} columns={6} showAvatar /></table></div>}>
             <PendingInterviews initialPendingInterviews={overview?.pendingInterviews} isLoading={isLoading} />
           </Suspense>
-          <Suspense fallback={<CardSkeleton count={3} className="mt-10 grid-cols-1 md:grid-cols-3" />}>
+          <Suspense fallback={<CardSkeleton count={3} className="mt-10 grid-cols-1 lg:grid-cols-2 xl:grid-cols-3" />}>
             <RecordedInterviews
               initialRecordedInterviews={overview?.recordedInterviews}
               organizationId={profile?.organizationId}
@@ -63,7 +62,6 @@ function DashboardContent({ profile, showRestoreOverlay, overview, isLoading }) 
       </div>
 
       <SendInterviewModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
-      <OverlayLoader key={showRestoreOverlay ? "restore-active" : "restore-idle"} visible={showRestoreOverlay} />
     </div>
   );
 }
@@ -71,10 +69,9 @@ function DashboardContent({ profile, showRestoreOverlay, overview, isLoading }) 
 export default function Home() {
   return (
     <RecruiterDashboardBootstrap>
-      {({ profile, showRestoreOverlay, overview, restoreStatus }) => (
+      {({ profile, overview, restoreStatus }) => (
         <DashboardContent
           profile={profile}
-          showRestoreOverlay={showRestoreOverlay}
           overview={overview}
           isLoading={restoreStatus === "loading" && !overview}
         />

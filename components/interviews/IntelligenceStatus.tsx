@@ -9,7 +9,7 @@ function hasTranscript(transcriptPreview?: string | null) {
   return Boolean(value && !/^transcript not available yet$/i.test(value))
 }
 
-export default function IntelligenceStatus({ transcriptPreview, hasRecording = true, compact = false }: IntelligenceStatusProps) {
+export default function IntelligenceStatus({ transcriptPreview, hasRecording = true }: IntelligenceStatusProps) {
   const transcriptReady = hasTranscript(transcriptPreview)
   const statuses = [
     {
@@ -23,12 +23,12 @@ export default function IntelligenceStatus({ transcriptPreview, hasRecording = t
       pendingText: "Timeline waits for replay evidence",
     },
     {
-      label: "Behavioral Signals Ready",
+      label: "Behavioral Analysis Complete",
       ready: true,
       pendingText: "",
     },
     {
-      label: transcriptReady ? "AI Insight Readiness" : "Cognitive analysis pending",
+      label: transcriptReady ? "AI Insight Readiness" : "Cognitive Analysis Pending",
       ready: transcriptReady,
       pendingText: "Insights unlock after transcript processing",
     },
@@ -36,23 +36,23 @@ export default function IntelligenceStatus({ transcriptPreview, hasRecording = t
 
   return (
     <div className="rounded-2xl border border-slate-800/90 bg-slate-950/35 p-3">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Intelligence State</p>
+      <div className="mb-2.5 flex items-center justify-between gap-3">
+        <p className="min-w-0 break-words text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">Intelligence State</p>
         <span className="hv-ai-node h-1.5 w-1.5 rounded-full bg-cyan-300/80" />
       </div>
-      <div className={`grid gap-2 ${compact ? "grid-cols-1" : "sm:grid-cols-2"}`}>
+      <div className="grid gap-1.5">
         {statuses.map((status) => (
-          <div key={status.label} className="flex min-w-0 items-start gap-2">
-            <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[10px] ${
+          <div key={status.label} className="flex min-w-0 items-start gap-2 rounded-xl border border-white/[0.04] bg-slate-950/20 px-2.5 py-2">
+            <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[9px] ${
               status.ready
                 ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-200"
                 : "hv-ai-node border-amber-400/25 bg-amber-500/10 text-amber-200"
             }`}>
-              {status.ready ? "✓" : "●"}
+              {status.ready ? "OK" : "..."}
             </span>
             <span className="min-w-0">
-              <span className={`block truncate text-xs ${status.ready ? "text-slate-200" : "text-amber-100"}`}>{status.label}</span>
-              {!status.ready && status.pendingText ? <span className="mt-0.5 block truncate text-[11px] text-slate-500">{status.pendingText}</span> : null}
+              <span className={`block line-clamp-2 min-w-0 break-words text-xs leading-4 ${status.ready ? "text-slate-200" : "text-amber-100"}`}>{status.label}</span>
+              {!status.ready && status.pendingText ? <span className="mt-0.5 block line-clamp-2 min-w-0 break-words text-[11px] leading-4 text-slate-500">{status.pendingText}</span> : null}
             </span>
           </div>
         ))}

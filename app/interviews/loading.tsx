@@ -1,17 +1,5 @@
-import RouteLoadingShell from "@/components/system/skeletons/RouteLoadingShell"
+import NavigationProgress from "@/components/system/loading/NavigationProgress"
 
 export default function Loading() {
-  return (
-    <RouteLoadingShell
-      title="Interview Registry"
-      tableColumns={8}
-      intelligenceVariant="interviews"
-      intelligenceSteps={[
-        "Loading interview registry",
-        "Synchronizing interview telemetry",
-        "Building behavioral timeline",
-        "Preparing session intelligence",
-      ]}
-    />
-  )
+  return <NavigationProgress message="Syncing interview telemetry..." />
 }

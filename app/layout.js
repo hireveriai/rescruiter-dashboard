@@ -2,6 +2,7 @@ import "./globals.css";
 
 import { OrgTimezoneProvider } from "@/components/OrgTimezoneProvider";
 import SessionInactivityGuard from "@/components/SessionInactivityGuard";
+import AmbientLoadingProvider from "@/components/system/loading/AmbientLoadingProvider";
 
 export const metadata = {
   title: "HireVeri Recruiter Workspace",
@@ -19,8 +20,10 @@ export default function RootLayout({ children }) {
     <html lang="en">
       <body className="antialiased">
         <OrgTimezoneProvider>
-          <SessionInactivityGuard />
-          {children}
+          <AmbientLoadingProvider>
+            <SessionInactivityGuard />
+            {children}
+          </AmbientLoadingProvider>
         </OrgTimezoneProvider>
       </body>
     </html>
