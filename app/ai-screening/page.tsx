@@ -872,10 +872,7 @@ export default function AiScreeningPage() {
         if (active && payload.success) {
           const runs = payload.data?.runs ?? []
           setScreeningRuns(runs)
-          if (!selectedRunId && loadedInitialRunRef.current !== jobId && runs.length > 0) {
-            loadedInitialRunRef.current = jobId
-            void loadScreeningRun(runs[0], { silent: true })
-          }
+          loadedInitialRunRef.current = jobId
         }
       } catch (runsError) {
         console.error("Failed to load screening runs", runsError)
@@ -1052,6 +1049,20 @@ export default function AiScreeningPage() {
     () => screeningRuns.find((run) => run.id === selectedRunId) ?? null,
     [screeningRuns, selectedRunId]
   )
+
+  useEffect(() => {
+    if (!selectedInsight || typeof document === "undefined") {
+      return
+    }
+
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+
+    return () => {
+      document.body.style.overflow = originalOverflow
+    }
+  }, [selectedInsight])
+
   const isBusy = uploading || isProcessingJD || isMatching || savingNewJob || sending || cleanupBusy || isSwitchingRuns
   const canShowCleanupActions = matches.length > 0 || Boolean(currentBatchId) || uploadedCandidateIds.length > 0
   const canAnalyzeJob = hasUploadedResumes && hasSelectedJob && flowStep !== "JD_PROCESSED" && flowStep !== "MATCHED" && !isBusy
@@ -1452,7 +1463,7 @@ export default function AiScreeningPage() {
       )
       const rankedMatches = scopedMatches.length > 0 || apiMatches.length === 0 ? scopedMatches : apiMatches
       setMatches(rankedMatches)
-      setSelectedRunId(payload.data?.runId ?? "")
+      setSelectedRunId("")
       setRunLoadDiagnostics("")
       if (jobForMatching.id) {
         const runsResponse = await fetch(authUrl(`/api/screening/runs?jobId=${encodeURIComponent(jobForMatching.id)}`), {
@@ -3008,8 +3019,8 @@ export default function AiScreeningPage() {
       ) : null}
 
       {selectedInsight ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="candidate-insight-title">
-          <div className="flex max-h-[88vh] w-full max-w-[600px] flex-col rounded-2xl border border-slate-800 bg-[#0B1220] shadow-[0_24px_90px_rgba(2,6,23,0.7)]">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-hidden bg-slate-950/80 px-4 py-5 backdrop-blur-sm sm:py-8" role="dialog" aria-modal="true" aria-labelledby="candidate-insight-title">
+          <div className="flex h-[calc(100vh-40px)] w-full max-w-[680px] flex-col rounded-2xl border border-slate-800 bg-[#0B1220] shadow-[0_24px_90px_rgba(2,6,23,0.7)] sm:h-[calc(100vh-64px)]">
             <div className="flex items-start justify-between gap-4 border-b border-slate-800 px-6 py-5">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-200/70">VERIS Insight</p>
@@ -3024,7 +3035,7 @@ export default function AiScreeningPage() {
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+            <div className="min-h-0 flex-1 overscroll-contain overflow-y-auto px-6 py-5">
               <div className="space-y-5">
                 <section>
                   <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300/80">Strengths</h3>

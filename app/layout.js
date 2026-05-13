@@ -2,6 +2,7 @@ import "./globals.css";
 
 import { OrgTimezoneProvider } from "@/components/OrgTimezoneProvider";
 import SessionInactivityGuard from "@/components/SessionInactivityGuard";
+import ModalScrollLock from "@/components/system/ModalScrollLock";
 import AmbientLoadingProvider from "@/components/system/loading/AmbientLoadingProvider";
 
 export const metadata = {
@@ -21,6 +22,7 @@ export default function RootLayout({ children }) {
       <body className="antialiased">
         <OrgTimezoneProvider>
           <AmbientLoadingProvider>
+            <ModalScrollLock />
             <SessionInactivityGuard />
             {children}
           </AmbientLoadingProvider>

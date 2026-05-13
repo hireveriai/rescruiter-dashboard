@@ -10,7 +10,6 @@ import {
 
 type CandidatesDashboardOptions = {
   organizationId: string
-  userId?: string
   limit?: number | "all"
 }
 
@@ -48,39 +47,14 @@ function getShortSummary(text: string | null): string {
   return `${words.slice(0, 20).join(" ")}...`
 }
 
-async function getRecruiterCreatedCandidateIds(userId?: string): Promise<string[]> {
-  if (!userId) {
-    return []
-  }
-
-  try {
-    const rows = await prisma.$queryRaw<Array<{ candidate_id: string }>>`
-      select c.candidate_id::text as candidate_id
-      from public.candidates c
-      where c.created_by::text = ${userId}
-    `
-
-    return rows.map((row) => row.candidate_id).filter(Boolean)
-  } catch (error) {
-    console.warn("Recruiter-created candidate fallback lookup skipped", error)
-    return []
-  }
-}
-
 export async function getCandidatesDashboard(
   options: CandidatesDashboardOptions
 ): Promise<CandidatesDashboardItem[]> {
   const take = options.limit === "all" || options.limit === undefined ? undefined : options.limit
-  const recruiterCreatedCandidateIds = await getRecruiterCreatedCandidateIds(options.userId)
 
   const candidates = await prisma.candidate.findMany({
     where: {
-      OR: [
-        { organizationId: options.organizationId },
-        ...(recruiterCreatedCandidateIds.length > 0
-          ? [{ candidateId: { in: recruiterCreatedCandidateIds } }]
-          : []),
-      ],
+      organizationId: options.organizationId,
     },
     orderBy: {
       createdAt: "desc",

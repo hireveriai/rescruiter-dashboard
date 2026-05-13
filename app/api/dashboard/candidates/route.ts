@@ -17,7 +17,6 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const data = await getCandidatesDashboard({
       organizationId: auth.organizationId,
-      userId: auth.userId,
       limit: parseLimit(searchParams.get("limit")),
     })
 
