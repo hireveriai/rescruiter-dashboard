@@ -23,7 +23,6 @@ const navItems = [
 
 const navLoadingMessages = {
   "/": "Syncing recruiter dashboard...",
-  "/ai-screening": "Preparing cognitive insights...",
   "/jobs": "Loading job intelligence...",
   "/candidates": "Loading candidate pipeline...",
   "/interviews": "Syncing interview telemetry...",
@@ -170,6 +169,10 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null }) 
     }
 
     if (href === pathname) {
+      return;
+    }
+
+    if (href === "/ai-screening") {
       return;
     }
 

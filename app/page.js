@@ -22,7 +22,7 @@ function DashboardContent({ profile, overview, isLoading }) {
     <div className="hv-page-enter relative min-h-screen bg-[#0b1220] text-white">
       <Navbar onSendInterviewClick={() => setIsModalOpen(true)} initialProfile={profile} />
 
-      <div className="grid grid-cols-1 gap-6 p-4 sm:p-6 lg:p-8 2xl:grid-cols-[minmax(0,1fr)_minmax(320px,360px)]">
+      <div className="grid grid-cols-1 gap-6 p-4 sm:p-6 lg:p-8 xl:grid-cols-[minmax(0,1fr)_minmax(280px,320px)] 2xl:grid-cols-[minmax(0,1fr)_minmax(320px,360px)]">
         <div className="min-w-0">
           <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -39,7 +39,7 @@ function DashboardContent({ profile, overview, isLoading }) {
           <Suspense fallback={<div className="mt-10 overflow-hidden rounded-lg bg-[#111a2e]"><table className="w-full text-sm"><TableSkeleton rows={3} columns={6} showAvatar /></table></div>}>
             <PendingInterviews initialPendingInterviews={overview?.pendingInterviews} isLoading={isLoading} />
           </Suspense>
-          <Suspense fallback={<CardSkeleton count={3} className="mt-10 grid-cols-1 lg:grid-cols-2 xl:grid-cols-3" />}>
+          <Suspense fallback={<CardSkeleton count={3} className="mt-10 grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3" />}>
             <RecordedInterviews
               initialRecordedInterviews={overview?.recordedInterviews}
               organizationId={profile?.organizationId}

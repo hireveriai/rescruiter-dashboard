@@ -95,10 +95,10 @@ export default function Sidebar({ initialProfile = null, overview = null }) {
 
   return (
     <>
-      <aside className="mt-10 rounded-[24px] border border-slate-800 bg-[#0f172a] p-5 shadow-[0_18px_60px_rgba(2,6,23,0.28)] xl:p-4">
+      <aside className="mt-10 rounded-[24px] border border-slate-800 bg-[#0f172a] p-5 shadow-[0_18px_60px_rgba(2,6,23,0.28)] xl:p-3.5 2xl:p-4">
         <h2 className="text-[1.9rem] font-semibold leading-none text-white xl:text-[1.7rem]">Recruiter</h2>
 
-        <div className="mt-5 flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-950/30 p-4 xl:p-3.5">
+        <div className="mt-5 flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-950/30 p-4 xl:p-3 2xl:p-3.5">
           <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-blue-500/15 text-xl font-semibold text-blue-300 xl:h-12 xl:w-12 xl:text-lg">
             {initials}
           </div>

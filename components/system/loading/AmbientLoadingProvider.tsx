@@ -24,7 +24,6 @@ const routeMessages: Array<[RegExp, string]> = [
   [/^\/candidates/, "Loading candidate pipeline..."],
   [/^\/interviews/, "Syncing interview telemetry..."],
   [/^\/reports/, "Updating forensic analytics..."],
-  [/^\/ai-screening/, "Preparing cognitive insights..."],
   [/^\/jobs/, "Loading job intelligence..."],
   [/^\/manage-team/, "Syncing team workspace..."],
   [/^\/settings/, "Loading workspace settings..."],
@@ -126,6 +125,10 @@ export default function AmbientLoadingProvider({ children }: { children: ReactNo
       }
 
       if (nextUrl.pathname === currentUrl.pathname && nextUrl.search === currentUrl.search) {
+        return
+      }
+
+      if (nextUrl.pathname.startsWith("/ai-screening")) {
         return
       }
 
