@@ -8,7 +8,7 @@ import SendInterviewModal from "@/components/SendInterviewModal"
 import { InsightTooltip } from "@/components/ui/InsightTooltip"
 import { ProcessingTimeline, type TimelineStep } from "@/components/ui/ProcessingTimeline"
 import { StepProgress } from "@/components/ui/StepProgress"
-import { CardSkeleton, MetricSkeleton, TableSkeleton, TimelineSkeleton } from "@/components/system/skeletons"
+import { TableSkeleton } from "@/components/system/skeletons"
 import { buildAuthUrl } from "@/lib/client/auth-query"
 import {
   convertOrgTimeToUtc,
@@ -831,7 +831,9 @@ export default function AiScreeningPage() {
             .filter((row) => isResumeReady(row) && row.candidateId)
             .map((row) => row.candidateId as string)
           const scopeCandidateIds = includeAllCandidates || currentBatchId ? [] : [...new Set([...uploadedCandidateIds, ...rowCandidateIds])]
-          const loadedMatches = filterMatchesToCandidateScope(payload.data?.matches ?? [], scopeCandidateIds)
+          const apiMatches = (payload.data?.matches ?? []) as MatchRow[]
+          const scopedMatches = filterMatchesToCandidateScope(apiMatches, scopeCandidateIds)
+          const loadedMatches = scopedMatches.length > 0 || apiMatches.length === 0 ? scopedMatches : apiMatches
           setMatches((currentMatches) => loadedMatches.length === 0 && currentMatches.length > 0 ? currentMatches : loadedMatches)
           if (loadedMatches.length > 0) {
             setSelectedCandidateIds(getDefaultSelectedCandidateIds(loadedMatches))
@@ -1067,17 +1069,6 @@ export default function AiScreeningPage() {
         ? "Upload resumes before analyzing the job"
         : "Job is already analyzed. Run matching next."
   const matchHelpText = canRunMatching ? "" : "Analyze job description to enable matching"
-  const processingStatusText = isMatching
-    ? "Building forensic timeline..."
-    : isProcessingJD
-      ? "Preparing cognitive analysis..."
-      : uploading
-        ? "Loading behavioral telemetry..."
-        : savingNewJob
-          ? "Saving job description..."
-          : sending
-            ? "Sending interview invitations..."
-            : "Processing"
   const timelineSteps = useMemo<TimelineStep[]>(() => {
     const uploadComplete = Boolean(currentBatchId)
     const jobComplete = Boolean(activeJob && (flowStep === "JD_PROCESSED" || flowStep === "MATCHED"))
@@ -1454,10 +1445,12 @@ export default function AiScreeningPage() {
         }),
       })
       const payload = await readJsonResponse(response)
-      const rankedMatches = filterMatchesToCandidateScope(
-        payload.data?.matches ?? [],
+      const apiMatches = (payload.data?.matches ?? []) as MatchRow[]
+      const scopedMatches = filterMatchesToCandidateScope(
+        apiMatches,
         includeAll || batchId ? [] : candidateIds
       )
+      const rankedMatches = scopedMatches.length > 0 || apiMatches.length === 0 ? scopedMatches : apiMatches
       setMatches(rankedMatches)
       setSelectedRunId(payload.data?.runId ?? "")
       setRunLoadDiagnostics("")
@@ -1930,9 +1923,6 @@ export default function AiScreeningPage() {
               </p>
             </div>
 
-            {isBusy && matches.length === 0 ? (
-              <MetricSkeleton count={4} className="sm:grid-cols-4 xl:min-w-[680px]" />
-            ) : (
             <div className="grid gap-3 sm:grid-cols-4 xl:min-w-[680px]">
               <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-4">
                 <p className="text-sm text-slate-500">Matched</p>
@@ -1951,7 +1941,6 @@ export default function AiScreeningPage() {
                 <p className="mt-3 text-3xl font-semibold text-amber-100">{stats.noEmail}</p>
               </div>
             </div>
-            )}
           </div>
         </section>
 
@@ -1959,37 +1948,16 @@ export default function AiScreeningPage() {
           <StepProgress currentStep={flowStep} />
         </div>
 
-        {(notice || error || isBusy) ? (
+        {(notice || error) ? (
           <section className="mt-6 rounded-2xl border border-slate-800 bg-[#0f172a] px-5 py-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className={`text-sm font-medium ${error ? "text-rose-200" : "text-slate-200"}`}>
-                  {error || notice || "Processing"}
+                  {error || notice}
                 </p>
-                {isBusy ? (
-                  <p className="mt-1 text-sm text-slate-400">{processingStatusText}</p>
-                ) : null}
               </div>
-              {isBusy ? (
-                <div className="h-2 w-full overflow-hidden rounded-full bg-slate-900 md:w-72">
-                  <div className="h-full w-2/3 animate-pulse rounded-full bg-cyan-300" />
-                </div>
-              ) : null}
             </div>
           </section>
-        ) : null}
-
-        {isBusy ? (
-          <div className="mt-6 grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
-            <TimelineSkeleton
-              messages={[
-                "Loading behavioral telemetry...",
-                "Preparing cognitive analysis...",
-                "Building forensic timeline...",
-              ]}
-            />
-            <CardSkeleton count={2} className="grid-cols-1 md:grid-cols-2" />
-          </div>
         ) : null}
 
         <div className="mt-8 grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
@@ -2445,25 +2413,19 @@ export default function AiScreeningPage() {
               </thead>
               {isSwitchingRuns ? (
                 <TableSkeleton rows={7} columns={9} showAvatar showStatusChip />
-              ) : isMatching && filteredMatches.length === 0 ? (
-                <TableSkeleton rows={7} columns={9} showAvatar showStatusChip />
               ) : (
               <tbody>
                 {filteredMatches.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="p-10 text-center text-slate-400">
-                      {isMatching ? (
-                        <TimelineSkeleton
-                          messages={[
-                            "Loading behavioral telemetry...",
-                            "Preparing cognitive analysis...",
-                            "Building forensic timeline...",
-                          ]}
-                        />
-                      ) : (
-                        <div>
-                          <p className="font-medium text-slate-300">{selectedRun ? "No stored results for this screening run" : "No matching candidates found"}</p>
-                          <p className="mt-2 text-sm text-slate-500">{runLoadDiagnostics || (selectedRun ? "The run metadata was found, but no candidate snapshots were stored for it." : "Try adjusting filters or uploading more resumes")}</p>
+                      <div>
+                        <p className="font-medium text-slate-300">{isMatching ? "Analysis is running..." : selectedRun ? "No stored results for this screening run" : "No matching candidates found"}</p>
+                        <p className="mt-2 text-sm text-slate-500">
+                          {isMatching
+                            ? "Results will appear here as soon as matching completes."
+                            : runLoadDiagnostics || (selectedRun ? "The run metadata was found, but no candidate snapshots were stored for it." : "Try adjusting filters or uploading more resumes")}
+                        </p>
+                        {!isMatching ? (
                           <div className="mx-auto mt-4 max-w-xl rounded-2xl border border-slate-800 bg-slate-950/35 p-4 text-left">
                             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{selectedRun ? "Diagnostics" : "Possible reasons"}</p>
                             <ul className="mt-3 space-y-2 text-sm text-slate-400">
@@ -2483,8 +2445,8 @@ export default function AiScreeningPage() {
                             </ul>
                             <p className="mt-3 text-sm text-slate-400">{selectedRun ? "Historical results are never recomputed from live candidate data; rerun matching to create a new snapshot." : "Suggestions: adjust filters, upload more resumes, or switch to Search All Candidates."}</p>
                           </div>
-                        </div>
-                      )}
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 ) : (
