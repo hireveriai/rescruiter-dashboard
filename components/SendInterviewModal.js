@@ -367,9 +367,9 @@ export default function SendInterviewModal({ isOpen, onClose }) {
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 py-6 backdrop-blur-md">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/80 px-4 py-4 backdrop-blur-md sm:py-6" role="dialog" aria-modal="true">
       {duplicateWarning ? (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/80 px-4 backdrop-blur-sm" role="dialog" aria-modal="true">
+        <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-slate-950/80 px-4 py-4 backdrop-blur-sm sm:py-6" role="dialog" aria-modal="true">
           <div className="w-full max-w-md rounded-2xl border border-amber-400/25 bg-[#0b1220] p-6 shadow-[0_24px_80px_rgba(2,6,23,0.55)]">
             <h3 className="text-lg font-semibold text-white">Duplicate invite detected</h3>
             <p className="mt-3 text-sm leading-6 text-slate-300">
@@ -399,7 +399,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
       ) : null}
       <div className="relative w-full max-w-2xl overflow-hidden rounded-[28px] border border-cyan-500/20 bg-[#06101f]/95 text-white shadow-[0_0_60px_rgba(37,99,235,0.18)]">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.14),transparent_30%)]" />
-        <div className="relative max-h-[88vh] overflow-y-auto p-5 sm:p-6 md:p-8">
+        <div className="relative max-h-[calc(100dvh-2rem)] overflow-y-auto p-5 sm:max-h-[calc(100dvh-3rem)] sm:p-6 md:p-8">
           <div className="mb-6 flex items-start justify-between gap-4">
             <div>
               <p className="text-xs uppercase tracking-[0.35em] text-cyan-300/80">Interview Access</p>

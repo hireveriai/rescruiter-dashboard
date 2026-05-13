@@ -24,6 +24,11 @@ function getTranscriptPreview(item: Record<string, any>) {
   const preview = String(item?.transcriptPreview ?? "").trim()
 
   if (!preview || /^transcript not available yet$/i.test(preview)) {
+    const summary = String(item?.aiSummaryPreview ?? "").trim()
+    if (summary) {
+      return summary
+    }
+
     return "AI transcription in progress. Cognitive analysis pending."
   }
 
@@ -65,7 +70,13 @@ export default function RecordedInterviewCard({ item, onOpenWarRoom, compact = f
             <p className="mt-1.5 line-clamp-2 min-h-[38px] min-w-0 break-words text-[13px] leading-[19px] text-slate-300">{getTranscriptPreview(item)}</p>
           </div>
 
-          <IntelligenceStatus transcriptPreview={item.transcriptPreview} hasRecording={hasRecording} compact={compact} />
+          <IntelligenceStatus
+            transcriptPreview={item.transcriptPreview}
+            transcriptReady={item.transcriptReady}
+            cognitiveAnalysisReady={item.cognitiveAnalysisReady}
+            hasRecording={hasRecording}
+            compact={compact}
+          />
 
           <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-800/80 bg-slate-950/25 p-3 text-xs">
             <div>

@@ -60,7 +60,7 @@ function getWorkflowStatusClass(item) {
 
 function BaseModalShell({ title, subtitle, children, onClose, width = "max-w-2xl" }) {
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/80 px-4 backdrop-blur-md">
+    <div className="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto bg-slate-950/80 px-4 py-4 backdrop-blur-md sm:py-6" role="dialog" aria-modal="true">
       <div className={`w-full ${width} rounded-[28px] border border-cyan-400/20 bg-[linear-gradient(180deg,rgba(15,23,42,0.98),rgba(9,14,28,0.98))] p-6 shadow-[0_0_80px_rgba(34,211,238,0.12)]`}>
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -302,7 +302,7 @@ function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, onEdit, o
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#020817]/80 px-4 backdrop-blur-md">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#020817]/80 px-4 py-4 backdrop-blur-md sm:py-6" role="dialog" aria-modal="true">
       <div className="relative w-full max-w-6xl overflow-hidden rounded-[28px] border border-cyan-400/20 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.14),_transparent_34%),linear-gradient(180deg,rgba(15,23,42,0.98),rgba(9,14,28,0.98))] shadow-[0_0_80px_rgba(34,211,238,0.12)]">
         <div className="absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/70 to-transparent" />
 

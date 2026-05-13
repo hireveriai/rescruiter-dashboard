@@ -281,6 +281,27 @@ a {
   animation: hv-page-content-in var(--hv-loader-transition-duration) ease-out both;
 }
 
+[aria-modal="true"],
+[data-modal-root="true"] {
+  align-items: flex-start !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  padding-top: max(1rem, env(safe-area-inset-top)) !important;
+  padding-bottom: max(1rem, env(safe-area-inset-bottom)) !important;
+}
+
+[aria-modal="true"] > *,
+[data-modal-root="true"] > * {
+  max-height: calc(100dvh - 2rem);
+}
+
+@supports not (height: 100dvh) {
+  [aria-modal="true"] > *,
+  [data-modal-root="true"] > * {
+    max-height: calc(100vh - 2rem);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .hireveri-skeleton,
   .hireveri-skeleton::after,

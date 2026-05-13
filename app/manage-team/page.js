@@ -72,7 +72,7 @@ function AddUserModal({ isOpen, onClose, onSubmit, availableRoles, submitting, e
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-slate-950/75 px-3 py-4 backdrop-blur-sm sm:px-4">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/75 px-3 py-4 backdrop-blur-sm sm:px-4" role="dialog" aria-modal="true">
       <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-slate-800 bg-[linear-gradient(180deg,#0f172a,#0a1222)] shadow-[0_24px_80px_rgba(2,6,23,0.45)]">
         <div className="shrink-0 px-5 pt-5 sm:px-6 sm:pt-6">
         <div className="flex items-start justify-between gap-4">
@@ -218,7 +218,7 @@ function EditUserModal({ isOpen, member, availableRoles, saving, error, onClose,
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-slate-950/75 px-3 py-4 backdrop-blur-sm sm:px-4">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/75 px-3 py-4 backdrop-blur-sm sm:px-4" role="dialog" aria-modal="true">
       <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-slate-800 bg-[linear-gradient(180deg,#0f172a,#0a1222)] shadow-[0_24px_80px_rgba(2,6,23,0.45)]">
         <div className="shrink-0 px-5 pt-5 sm:px-6 sm:pt-6">
         <div className="flex items-start justify-between gap-4">

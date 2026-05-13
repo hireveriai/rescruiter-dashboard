@@ -1,5 +1,7 @@
 type IntelligenceStatusProps = {
   transcriptPreview?: string | null
+  transcriptReady?: boolean | null
+  cognitiveAnalysisReady?: boolean | null
   hasRecording?: boolean
   compact?: boolean
 }
@@ -9,8 +11,14 @@ function hasTranscript(transcriptPreview?: string | null) {
   return Boolean(value && !/^transcript not available yet$/i.test(value))
 }
 
-export default function IntelligenceStatus({ transcriptPreview, hasRecording = true }: IntelligenceStatusProps) {
-  const transcriptReady = hasTranscript(transcriptPreview)
+export default function IntelligenceStatus({
+  transcriptPreview,
+  transcriptReady: transcriptReadyOverride,
+  cognitiveAnalysisReady: cognitiveAnalysisReadyOverride,
+  hasRecording = true,
+}: IntelligenceStatusProps) {
+  const transcriptReady = transcriptReadyOverride ?? hasTranscript(transcriptPreview)
+  const cognitiveAnalysisReady = cognitiveAnalysisReadyOverride ?? transcriptReady
   const statuses = [
     {
       label: transcriptReady ? "Transcript Ready" : "Transcript Processing",
@@ -28,8 +36,8 @@ export default function IntelligenceStatus({ transcriptPreview, hasRecording = t
       pendingText: "",
     },
     {
-      label: transcriptReady ? "AI Insight Readiness" : "Cognitive Analysis Pending",
-      ready: transcriptReady,
+      label: cognitiveAnalysisReady ? "Cognitive Analysis Complete" : "Cognitive Analysis Pending",
+      ready: cognitiveAnalysisReady,
       pendingText: "Insights unlock after transcript processing",
     },
   ]
