@@ -67,6 +67,35 @@ function getStatusTone(isActive) {
     : "border-amber-500/20 bg-amber-500/10 text-amber-300"
 }
 
+function normalizeSearch(value) {
+  return String(value ?? "").trim().toLowerCase()
+}
+
+function uniqueSorted(values) {
+  return Array.from(new Set(values.filter((value) => value !== null && value !== undefined && String(value).trim() !== "")))
+    .map(String)
+    .sort((a, b) => a.localeCompare(b))
+}
+
+function FilterSelect({ label, value, onChange, options }) {
+  return (
+    <label className="grid gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+      {label}
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-11 min-w-0 rounded-xl border border-slate-700 bg-slate-950/70 px-3 text-sm font-medium normal-case tracking-normal text-slate-200 outline-none transition focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/10"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
 function JobDescriptionCell({ description }) {
   const value = String(description || "").trim()
   const fallback = "No job description provided"
@@ -126,6 +155,11 @@ export default function JobsPage() {
   const [selectedJob, setSelectedJob] = useState(null)
   const [pendingJobId, setPendingJobId] = useState("")
   const [openActionMenuJobId, setOpenActionMenuJobId] = useState("")
+  const [searchTerm, setSearchTerm] = useState("")
+  const [statusFilter, setStatusFilter] = useState("ALL")
+  const [difficultyFilter, setDifficultyFilter] = useState("ALL")
+  const [experienceFilter, setExperienceFilter] = useState("ALL")
+  const [activityFilter, setActivityFilter] = useState("ALL")
   const actionMenuRef = useRef(null)
 
   useEffect(() => {
@@ -187,6 +221,58 @@ export default function JobsPage() {
 
     return { total, totalInterviews, seniorRoles, activeJobs }
   }, [jobs])
+
+  const filterOptions = useMemo(() => {
+    return {
+      difficulties: uniqueSorted(jobs.map((job) => job.difficultyProfile ?? "MID")),
+      experienceLevels: uniqueSorted(jobs.map((job) => job.experienceLevelId)),
+    }
+  }, [jobs])
+
+  const filteredJobs = useMemo(() => {
+    const query = normalizeSearch(searchTerm)
+
+    return jobs.filter((job) => {
+      const isActive = job.isActive !== false
+      const difficulty = String(job.difficultyProfile ?? "MID").toUpperCase()
+      const experience = String(job.experienceLevelId ?? "")
+      const interviewCount = job._count?.interviews ?? 0
+      const searchable = [
+        job.jobTitle,
+        job.jobDescription,
+        difficulty,
+        experience,
+        ...(Array.isArray(job.coreSkills) ? job.coreSkills : []),
+      ]
+        .map((value) => String(value ?? "").toLowerCase())
+        .join(" ")
+
+      const matchesSearch = !query || searchable.includes(query)
+      const matchesStatus =
+        statusFilter === "ALL" ||
+        (statusFilter === "ACTIVE" && isActive) ||
+        (statusFilter === "INACTIVE" && !isActive)
+      const matchesDifficulty = difficultyFilter === "ALL" || difficulty === difficultyFilter
+      const matchesExperience = experienceFilter === "ALL" || experience === experienceFilter
+      const matchesActivity =
+        activityFilter === "ALL" ||
+        (activityFilter === "WITH_INTERVIEWS" && interviewCount > 0) ||
+        (activityFilter === "NO_INTERVIEWS" && interviewCount === 0)
+
+      return matchesSearch && matchesStatus && matchesDifficulty && matchesExperience && matchesActivity
+    })
+  }, [jobs, searchTerm, statusFilter, difficultyFilter, experienceFilter, activityFilter])
+
+  const hasActiveFilters =
+    searchTerm || statusFilter !== "ALL" || difficultyFilter !== "ALL" || experienceFilter !== "ALL" || activityFilter !== "ALL"
+
+  function clearFilters() {
+    setSearchTerm("")
+    setStatusFilter("ALL")
+    setDifficultyFilter("ALL")
+    setExperienceFilter("ALL")
+    setActivityFilter("ALL")
+  }
 
   const handleEdit = (job) => {
     setOpenActionMenuJobId("")
@@ -273,15 +359,69 @@ export default function JobsPage() {
         </section>
 
         <section className="mt-8 rounded-[28px] border border-slate-800 bg-[#0f172a] shadow-[0_16px_60px_rgba(2,6,23,0.3)]">
-          <div className="flex items-center justify-between border-b border-slate-800 px-6 py-5">
+          <div className="flex flex-col gap-4 border-b border-slate-800 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h2 className="text-lg font-semibold text-white">Created Job Roles</h2>
-              <p className="mt-1 text-sm text-slate-400">All jobs created under the current recruiter organization.</p>
+              <p className="mt-1 text-sm text-slate-400">
+                Showing {filteredJobs.length} of {jobs.length} jobs created under the current recruiter organization.
+              </p>
             </div>
 
             <Link href={buildAuthUrl("/", searchParams)} className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white">
-              Back to Dashboard
+              Go Back to Dashboard
             </Link>
+          </div>
+
+          <div className="grid gap-4 border-b border-slate-800 bg-slate-950/20 px-6 py-5 xl:grid-cols-[minmax(220px,1.2fr)_repeat(4,minmax(150px,0.7fr))_auto]">
+            <label className="grid gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Search
+              <input
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Search title, skills, description"
+                className="h-11 min-w-0 rounded-xl border border-slate-700 bg-slate-950/70 px-3 text-sm font-medium normal-case tracking-normal text-slate-200 outline-none transition placeholder:text-slate-600 focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/10"
+              />
+            </label>
+            <FilterSelect
+              label="Status"
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={[
+                { value: "ALL", label: "All Statuses" },
+                { value: "ACTIVE", label: "Active" },
+                { value: "INACTIVE", label: "Inactive" },
+              ]}
+            />
+            <FilterSelect
+              label="Difficulty"
+              value={difficultyFilter}
+              onChange={setDifficultyFilter}
+              options={[{ value: "ALL", label: "All Difficulties" }, ...filterOptions.difficulties.map((value) => ({ value: value.toUpperCase(), label: value }))]}
+            />
+            <FilterSelect
+              label="Experience"
+              value={experienceFilter}
+              onChange={setExperienceFilter}
+              options={[{ value: "ALL", label: "All Levels" }, ...filterOptions.experienceLevels.map((value) => ({ value, label: `Level ${value}` }))]}
+            />
+            <FilterSelect
+              label="Activity"
+              value={activityFilter}
+              onChange={setActivityFilter}
+              options={[
+                { value: "ALL", label: "All Activity" },
+                { value: "WITH_INTERVIEWS", label: "With Interviews" },
+                { value: "NO_INTERVIEWS", label: "No Interviews" },
+              ]}
+            />
+            <button
+              type="button"
+              onClick={clearFilters}
+              disabled={!hasActiveFilters}
+              className="h-11 self-end rounded-xl border border-slate-700 px-4 text-sm font-semibold text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              Clear
+            </button>
           </div>
 
           <div className="overflow-x-auto">
@@ -317,8 +457,12 @@ export default function JobsPage() {
                   <tr>
                     <td colSpan={10} className="p-10 text-center text-slate-400">No jobs available</td>
                   </tr>
+                ) : filteredJobs.length === 0 ? (
+                  <tr>
+                    <td colSpan={10} className="p-10 text-center text-slate-400">No jobs match the current filters</td>
+                  </tr>
                 ) : (
-                  jobs.map((job) => (
+                  filteredJobs.map((job) => (
                     <tr key={job.jobId} className="border-t border-slate-800/80 align-top text-slate-200">
                       <td className="px-4 py-4">
                         <button

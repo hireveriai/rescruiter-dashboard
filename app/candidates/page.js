@@ -49,6 +49,53 @@ function formatScore(score) {
   return `${Math.round(score)}%`
 }
 
+function normalizeSearch(value) {
+  return String(value ?? "").trim().toLowerCase()
+}
+
+function uniqueSorted(values) {
+  return Array.from(new Set(values.filter((value) => value !== null && value !== undefined && String(value).trim() !== "")))
+    .map(String)
+    .sort((a, b) => a.localeCompare(b))
+}
+
+function getScoreBand(score) {
+  const numeric = Number(score)
+
+  if (!Number.isFinite(numeric)) {
+    return "UNSCORED"
+  }
+
+  if (numeric >= 80) {
+    return "HIGH"
+  }
+
+  if (numeric >= 60) {
+    return "MEDIUM"
+  }
+
+  return "LOW"
+}
+
+function FilterSelect({ label, value, onChange, options }) {
+  return (
+    <label className="grid gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+      {label}
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-11 min-w-0 rounded-xl border border-slate-700 bg-slate-950/70 px-3 text-sm font-medium normal-case tracking-normal text-slate-200 outline-none transition focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/10"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
 function formatAnswerScore(score) {
   if (score === null || score === undefined) {
     return "-"
@@ -256,6 +303,11 @@ export default function CandidatesPage() {
   const [loadError, setLoadError] = useState("")
   const [selectedCandidate, setSelectedCandidate] = useState(null)
   const [openSendInterview, setOpenSendInterview] = useState(false)
+  const [searchTerm, setSearchTerm] = useState("")
+  const [statusFilter, setStatusFilter] = useState("ALL")
+  const [jobFilter, setJobFilter] = useState("ALL")
+  const [decisionFilter, setDecisionFilter] = useState("ALL")
+  const [scoreFilter, setScoreFilter] = useState("ALL")
 
   useEffect(() => {
     let isMounted = true
@@ -307,6 +359,54 @@ export default function CandidatesPage() {
     return { total, completed, pending }
   }, [candidates])
 
+  const filterOptions = useMemo(() => {
+    return {
+      statuses: uniqueSorted(candidates.map((candidate) => candidate.status)),
+      jobs: uniqueSorted(candidates.map((candidate) => candidate.jobTitle)),
+      decisions: uniqueSorted(candidates.map((candidate) => candidate.decision)),
+    }
+  }, [candidates])
+
+  const filteredCandidates = useMemo(() => {
+    const query = normalizeSearch(searchTerm)
+
+    return candidates.filter((candidate) => {
+      const status = String(candidate.status ?? "").toUpperCase()
+      const jobTitle = String(candidate.jobTitle ?? "")
+      const decision = String(candidate.decision ?? "")
+      const scoreBand = getScoreBand(candidate.score)
+      const searchable = [
+        candidate.candidateName,
+        candidate.jobTitle,
+        candidate.status,
+        candidate.decision,
+        candidate.aiSummaryShort,
+        candidate.aiSummaryFull,
+      ]
+        .map((value) => String(value ?? "").toLowerCase())
+        .join(" ")
+
+      const matchesSearch = !query || searchable.includes(query)
+      const matchesStatus = statusFilter === "ALL" || status === statusFilter
+      const matchesJob = jobFilter === "ALL" || jobTitle === jobFilter
+      const matchesDecision = decisionFilter === "ALL" || decision === decisionFilter
+      const matchesScore = scoreFilter === "ALL" || scoreBand === scoreFilter
+
+      return matchesSearch && matchesStatus && matchesJob && matchesDecision && matchesScore
+    })
+  }, [candidates, searchTerm, statusFilter, jobFilter, decisionFilter, scoreFilter])
+
+  const hasActiveFilters =
+    searchTerm || statusFilter !== "ALL" || jobFilter !== "ALL" || decisionFilter !== "ALL" || scoreFilter !== "ALL"
+
+  function clearFilters() {
+    setSearchTerm("")
+    setStatusFilter("ALL")
+    setJobFilter("ALL")
+    setDecisionFilter("ALL")
+    setScoreFilter("ALL")
+  }
+
   return (
     <>
       <div className="hv-page-enter min-h-screen bg-[#08111f] text-white">
@@ -345,15 +445,67 @@ export default function CandidatesPage() {
           </section>
 
           <section className="mt-8 overflow-hidden rounded-[28px] border border-slate-800 bg-[#0f172a] shadow-[0_16px_60px_rgba(2,6,23,0.3)]">
-            <div className="flex items-center justify-between border-b border-slate-800 px-6 py-5">
+            <div className="flex flex-col gap-4 border-b border-slate-800 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-white">Candidate Pipeline View</h2>
-                <p className="mt-1 text-sm text-slate-400">All candidates visible to the current recruiter organization.</p>
+                <p className="mt-1 text-sm text-slate-400">
+                  Showing {filteredCandidates.length} of {candidates.length} candidates visible to the current recruiter organization.
+                </p>
               </div>
 
               <Link href={buildAuthUrl("/", searchParams)} className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white">
-                Back to Dashboard
+                Go Back to Dashboard
               </Link>
+            </div>
+
+            <div className="grid gap-4 border-b border-slate-800 bg-slate-950/20 px-6 py-5 xl:grid-cols-[minmax(220px,1.2fr)_repeat(4,minmax(150px,0.7fr))_auto]">
+              <label className="grid gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Search
+                <input
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  placeholder="Search candidate, job, decision"
+                  className="h-11 min-w-0 rounded-xl border border-slate-700 bg-slate-950/70 px-3 text-sm font-medium normal-case tracking-normal text-slate-200 outline-none transition placeholder:text-slate-600 focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/10"
+                />
+              </label>
+              <FilterSelect
+                label="Status"
+                value={statusFilter}
+                onChange={setStatusFilter}
+                options={[{ value: "ALL", label: "All Statuses" }, ...filterOptions.statuses.map((value) => ({ value: value.toUpperCase(), label: value.replace(/_/g, " ") }))]}
+              />
+              <FilterSelect
+                label="Job"
+                value={jobFilter}
+                onChange={setJobFilter}
+                options={[{ value: "ALL", label: "All Jobs" }, ...filterOptions.jobs.map((value) => ({ value, label: value }))]}
+              />
+              <FilterSelect
+                label="Decision"
+                value={decisionFilter}
+                onChange={setDecisionFilter}
+                options={[{ value: "ALL", label: "All Decisions" }, ...filterOptions.decisions.map((value) => ({ value, label: value }))]}
+              />
+              <FilterSelect
+                label="Score"
+                value={scoreFilter}
+                onChange={setScoreFilter}
+                options={[
+                  { value: "ALL", label: "All Scores" },
+                  { value: "HIGH", label: "80%+" },
+                  { value: "MEDIUM", label: "60-79%" },
+                  { value: "LOW", label: "Below 60%" },
+                  { value: "UNSCORED", label: "Unscored" },
+                ]}
+              />
+              <button
+                type="button"
+                onClick={clearFilters}
+                disabled={!hasActiveFilters}
+                className="h-11 self-end rounded-xl border border-slate-700 px-4 text-sm font-semibold text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                Clear
+              </button>
             </div>
 
             <div className="overflow-x-auto">
@@ -386,8 +538,14 @@ export default function CandidatesPage() {
                         No candidates available
                       </td>
                     </tr>
+                  ) : filteredCandidates.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="p-10 text-center text-slate-400">
+                        No candidates match the current filters
+                      </td>
+                    </tr>
                   ) : (
-                    candidates.map((candidate, index) => (
+                    filteredCandidates.map((candidate, index) => (
                       <tr key={candidate.interviewId || candidate.candidateId || `${candidate.candidateName}-${index}`} className="border-t border-slate-800/80 align-top">
                         <td className="p-5 font-medium text-white">{candidate.candidateName}</td>
                         <td className="p-5 text-slate-300">{candidate.jobTitle}</td>

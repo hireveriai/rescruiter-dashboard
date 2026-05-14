@@ -39,6 +39,47 @@ function formatScore(score) {
   return score === null || score === undefined ? "-" : `${Math.round(score)}%`
 }
 
+function normalizeSearch(value) {
+  return String(value ?? "").trim().toLowerCase()
+}
+
+function uniqueSorted(values) {
+  return Array.from(new Set(values.filter((value) => value !== null && value !== undefined && String(value).trim() !== "")))
+    .map(String)
+    .sort((a, b) => a.localeCompare(b))
+}
+
+function getEvaluationState(interview) {
+  if (isCompletedInterview(interview)) {
+    return "COMPLETED"
+  }
+
+  if (interview.score !== null && interview.score !== undefined) {
+    return "SCORED"
+  }
+
+  return "PENDING"
+}
+
+function FilterSelect({ label, value, onChange, options }) {
+  return (
+    <label className="grid gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+      {label}
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-11 min-w-0 rounded-xl border border-slate-700 bg-slate-950/70 px-3 text-sm font-medium normal-case tracking-normal text-slate-200 outline-none transition focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/10"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
 function formatAnswerScore(score) {
   if (score === null || score === undefined) {
     return "-"
@@ -255,6 +296,11 @@ export default function InterviewsPage() {
   const [openSendInterview, setOpenSendInterview] = useState(false)
   const [actionBusyId, setActionBusyId] = useState("")
   const [copiedInterviewId, setCopiedInterviewId] = useState("")
+  const [searchTerm, setSearchTerm] = useState("")
+  const [statusFilter, setStatusFilter] = useState("ALL")
+  const [jobFilter, setJobFilter] = useState("ALL")
+  const [accessFilter, setAccessFilter] = useState("ALL")
+  const [evaluationFilter, setEvaluationFilter] = useState("ALL")
 
   async function loadInterviews() {
     const response = await fetch(buildAuthUrl("/api/dashboard/interviews", searchParams), {
@@ -322,6 +368,53 @@ export default function InterviewsPage() {
 
     return { total, active, completed }
   }, [interviews])
+
+  const filterOptions = useMemo(() => {
+    return {
+      statuses: uniqueSorted(interviews.map((interview) => interview.status)),
+      jobs: uniqueSorted(interviews.map((interview) => interview.jobTitle)),
+    }
+  }, [interviews])
+
+  const filteredInterviews = useMemo(() => {
+    const query = normalizeSearch(searchTerm)
+
+    return interviews.filter((interview) => {
+      const status = String(interview.status ?? "").toUpperCase()
+      const jobTitle = String(interview.jobTitle ?? "")
+      const accessType = String(interview.accessType ?? "FLEXIBLE").toUpperCase()
+      const evaluationState = getEvaluationState(interview)
+      const searchable = [
+        interview.candidateName,
+        interview.jobTitle,
+        interview.status,
+        interview.decision,
+        interview.interviewType,
+        getAccessLabel(interview),
+      ]
+        .map((value) => String(value ?? "").toLowerCase())
+        .join(" ")
+
+      const matchesSearch = !query || searchable.includes(query)
+      const matchesStatus = statusFilter === "ALL" || status === statusFilter
+      const matchesJob = jobFilter === "ALL" || jobTitle === jobFilter
+      const matchesAccess = accessFilter === "ALL" || accessType === accessFilter
+      const matchesEvaluation = evaluationFilter === "ALL" || evaluationState === evaluationFilter
+
+      return matchesSearch && matchesStatus && matchesJob && matchesAccess && matchesEvaluation
+    })
+  }, [interviews, searchTerm, statusFilter, jobFilter, accessFilter, evaluationFilter])
+
+  const hasActiveFilters =
+    searchTerm || statusFilter !== "ALL" || jobFilter !== "ALL" || accessFilter !== "ALL" || evaluationFilter !== "ALL"
+
+  function clearFilters() {
+    setSearchTerm("")
+    setStatusFilter("ALL")
+    setJobFilter("ALL")
+    setAccessFilter("ALL")
+    setEvaluationFilter("ALL")
+  }
 
   async function retryPreparation(interview) {
     try {
@@ -416,15 +509,70 @@ export default function InterviewsPage() {
         ) : null}
 
         <section className="mt-8 overflow-hidden rounded-[28px] border border-slate-800 bg-[#0f172a] shadow-[0_16px_60px_rgba(2,6,23,0.3)]">
-          <div className="flex items-center justify-between border-b border-slate-800 px-6 py-5">
+          <div className="flex flex-col gap-4 border-b border-slate-800 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h2 className="text-lg font-semibold text-white">Interview Register</h2>
-              <p className="mt-1 text-sm text-slate-400">All interviews under the current recruiter organization.</p>
+              <p className="mt-1 text-sm text-slate-400">
+                Showing {filteredInterviews.length} of {interviews.length} interviews under the current recruiter organization.
+              </p>
             </div>
 
             <Link href={buildAuthUrl("/", searchParams)} className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white">
-              Back to Dashboard
+              Go Back to Dashboard
             </Link>
+          </div>
+
+          <div className="grid gap-4 border-b border-slate-800 bg-slate-950/20 px-6 py-5 xl:grid-cols-[minmax(220px,1.2fr)_repeat(4,minmax(150px,0.7fr))_auto]">
+            <label className="grid gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Search
+              <input
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Search candidate, job, status"
+                className="h-11 min-w-0 rounded-xl border border-slate-700 bg-slate-950/70 px-3 text-sm font-medium normal-case tracking-normal text-slate-200 outline-none transition placeholder:text-slate-600 focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/10"
+              />
+            </label>
+            <FilterSelect
+              label="Status"
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={[{ value: "ALL", label: "All Statuses" }, ...filterOptions.statuses.map((value) => ({ value: value.toUpperCase(), label: formatStatusText(value) }))]}
+            />
+            <FilterSelect
+              label="Job"
+              value={jobFilter}
+              onChange={setJobFilter}
+              options={[{ value: "ALL", label: "All Jobs" }, ...filterOptions.jobs.map((value) => ({ value, label: value }))]}
+            />
+            <FilterSelect
+              label="Access"
+              value={accessFilter}
+              onChange={setAccessFilter}
+              options={[
+                { value: "ALL", label: "All Access" },
+                { value: "FLEXIBLE", label: "Flexible" },
+                { value: "SCHEDULED", label: "Scheduled" },
+              ]}
+            />
+            <FilterSelect
+              label="Evaluation"
+              value={evaluationFilter}
+              onChange={setEvaluationFilter}
+              options={[
+                { value: "ALL", label: "All Evaluations" },
+                { value: "COMPLETED", label: "Completed" },
+                { value: "SCORED", label: "Scored" },
+                { value: "PENDING", label: "Pending" },
+              ]}
+            />
+            <button
+              type="button"
+              onClick={clearFilters}
+              disabled={!hasActiveFilters}
+              className="h-11 self-end rounded-xl border border-slate-700 px-4 text-sm font-semibold text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              Clear
+            </button>
           </div>
 
           <div className="overflow-x-auto">
@@ -449,8 +597,12 @@ export default function InterviewsPage() {
                   <tr>
                     <td colSpan={8} className="p-10 text-center text-slate-400">No interviews available</td>
                   </tr>
+                ) : filteredInterviews.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="p-10 text-center text-slate-400">No interviews match the current filters</td>
+                  </tr>
                 ) : (
-                  interviews.map((interview) => (
+                  filteredInterviews.map((interview) => (
                     <tr key={interview.interviewId} className="border-t border-slate-800/80 text-slate-200">
                       <td className="p-5 font-medium text-white">{interview.candidateName}</td>
                       <td className="p-5 text-slate-300">{interview.jobTitle}</td>

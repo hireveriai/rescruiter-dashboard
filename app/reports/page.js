@@ -205,7 +205,7 @@ export default function ReportsPage() {
             href={buildAuthUrl("/", searchParams)}
             className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
           >
-            Back to Dashboard
+            Go Back to Dashboard
           </Link>
         </div>
 
