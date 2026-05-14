@@ -102,15 +102,15 @@ export default function RecordedInterviews({ initialRecordedInterviews, organiza
     [displayInterviews]
   )
 
-  const previewInterviews = sortedInterviews.slice(0, 3)
+  const previewInterviews = sortedInterviews.slice(0, 2)
 
   return (
     <>
       <div className="mt-10">
         <div className="flex justify-between items-center mb-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-300/70">Cognitive Evidence Review</p>
-            <h2 className="mt-1 text-xl font-semibold text-white">Recorded Interviews</h2>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-300/70">Recent Evidence Review</p>
+            <h2 className="mt-1 text-xl font-semibold text-white">Recent Recorded Interviews</h2>
           </div>
 
           <button
@@ -123,11 +123,11 @@ export default function RecordedInterviews({ initialRecordedInterviews, organiza
         </div>
 
         {isLoading ? (
-          <CardSkeleton count={3} className="grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3" />
+          <CardSkeleton count={2} className="grid-cols-1 lg:grid-cols-2" />
         ) : (
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 2xl:grid-cols-[repeat(3,minmax(300px,1fr))]">
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
             {previewInterviews.length === 0 ? (
-            <div className="rounded-[24px] border border-slate-800 bg-[#111a2e] p-5 text-center text-gray-400 shadow-md lg:col-span-2 2xl:col-span-3">
+            <div className="rounded-[24px] border border-slate-800 bg-[#111a2e] p-5 text-center text-gray-400 shadow-md lg:col-span-2">
               No interview recordings available
             </div>
           ) : (

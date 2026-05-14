@@ -40,11 +40,16 @@ type CandidateDashboardRow = {
   candidate_id: string
   candidate_name: string | null
   candidate_status: string | null
+  ai_screening_status: string | null
   candidate_created_at: Date
   interview_id: string | null
   interview_status: string | null
   interview_created_at: Date | null
   job_title: string | null
+  screening_job_title: string | null
+  screening_match_score: number | null
+  screening_recommendation: string | null
+  screening_created_at: Date | null
   invite_access_type: string | null
   invite_start_time: Date | null
   invite_end_time: Date | null
@@ -74,6 +79,34 @@ function getShortSummary(text: string | null): string {
   return `${words.slice(0, 20).join(" ")}...`
 }
 
+function deriveScreenedCandidateStatus(row: CandidateDashboardRow) {
+  const screeningStatus = String(row.ai_screening_status ?? "").trim().toUpperCase()
+
+  if (row.screening_created_at || row.screening_match_score !== null || row.screening_recommendation) {
+    return "SCREENED"
+  }
+
+  if (screeningStatus === "READY") {
+    return "SCREENED"
+  }
+
+  if (screeningStatus === "PROCESSING" || screeningStatus === "UPLOADING") {
+    return screeningStatus
+  }
+
+  if (screeningStatus === "FAILED") {
+    return "SCREENING_FAILED"
+  }
+
+  const candidateStatus = String(row.candidate_status ?? "").trim().toUpperCase()
+
+  if (!candidateStatus || candidateStatus === "INVITED") {
+    return "PENDING"
+  }
+
+  return candidateStatus
+}
+
 export async function getCandidatesDashboard(
   options: CandidatesDashboardOptions
 ): Promise<CandidatesDashboardItem[]> {
@@ -84,11 +117,16 @@ export async function getCandidatesDashboard(
       c.candidate_id::text as candidate_id,
       c.full_name as candidate_name,
       to_jsonb(c)->>'status' as candidate_status,
+      to_jsonb(c)->>'ai_screening_status' as ai_screening_status,
       c.created_at as candidate_created_at,
       i.interview_id::text as interview_id,
       i.status as interview_status,
       i.created_at as interview_created_at,
       jp.job_title,
+      sj.title as screening_job_title,
+      sm.match_score as screening_match_score,
+      sm.recommendation as screening_recommendation,
+      sm.created_at as screening_created_at,
       inv.access_type as invite_access_type,
       inv.start_time as invite_start_time,
       inv.end_time as invite_end_time,
@@ -116,6 +154,16 @@ export async function getCandidatesDashboard(
       on jp.job_id = i.job_id
     left join lateral (
       select *
+      from public.candidate_job_matches sm
+      where sm.candidate_id = c.candidate_id
+        and sm.organization_id = c.organization_id
+      order by sm.created_at desc
+      limit 1
+    ) sm on true
+    left join public.jobs sj
+      on sj.id = sm.job_id
+    left join lateral (
+      select *
       from public.interview_invites inv
       where inv.interview_id = i.interview_id
       order by inv.created_at desc
@@ -131,7 +179,7 @@ export async function getCandidatesDashboard(
     left join public.interview_evaluations ev
       on ev.attempt_id = att.attempt_id
     where c.organization_id = ${options.organizationId}::uuid
-    order by coalesce(i.created_at, c.created_at) desc
+    order by coalesce(i.created_at, sm.created_at, c.created_at) desc
     ${take ? Prisma.sql`limit ${take}` : Prisma.empty}
   `)
 
@@ -163,7 +211,10 @@ export async function getCandidatesDashboard(
       : null
     const answerSummaries = row.attempt_id ? answerSummaryMap.get(row.attempt_id) ?? [] : []
     const calculatedResult = deriveResultFromAnswerSummaries(answerSummaries)
-    const finalScore = row.final_score === null || row.final_score === undefined ? calculatedResult.score : Number(row.final_score)
+    const finalScore =
+      row.final_score === null || row.final_score === undefined
+        ? (row.screening_match_score ?? calculatedResult.score)
+        : Number(row.final_score)
     const aiSummaryFull = row.ai_summary ?? buildAnswerFallbackSummary(answerSummaries)
 
     return {
@@ -171,14 +222,14 @@ export async function getCandidatesDashboard(
       interviewId: row.interview_id,
       attemptId: row.attempt_id,
       candidateName: row.candidate_name || "Candidate",
-      jobTitle: row.job_title ?? "-",
+      jobTitle: row.job_title ?? row.screening_job_title ?? "-",
       status: hasInterview
         ? deriveInterviewStatus({
             interviewStatus: row.interview_status,
             latestAttempt,
             latestInvite,
           })
-        : row.candidate_status ?? "PENDING",
+        : deriveScreenedCandidateStatus(row),
       score: Number.isFinite(finalScore) ? finalScore : calculatedResult.score,
       aiSummaryShort: getShortSummary(aiSummaryFull),
       aiSummaryFull,

@@ -20,6 +20,14 @@ function getStatusColor(status) {
     return "text-blue-400"
   }
 
+  if (normalized === "SCREENED" || normalized === "READY") {
+    return "text-cyan-300"
+  }
+
+  if (normalized === "SCREENING_FAILED") {
+    return "text-red-400"
+  }
+
   return "text-yellow-400"
 }
 

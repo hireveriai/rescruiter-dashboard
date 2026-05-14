@@ -1,0 +1,13 @@
+
+> hireveri-recruiter@0.1.0 dev
+> next dev --port 3005
+
+▲ Next.js 16.1.6 (Turbopack)
+- Local:         http://localhost:3005
+- Network:       http://192.168.0.126:3005
+- Environments: .env.local
+
+✓ Starting...
+⨯ Unable to acquire lock at D:\Jatin\New Folder\hireveri-recruiter\.next\dev\lock, is another instance of next dev running?
+  Suggestion: If you intended to restart next dev, terminate the other process, and then try again.
+[?25h

@@ -37,6 +37,18 @@ type SendRecruiterOrganizationAddedEmailParams = SendRecruiterAccessEmailParams 
   inviterName: string;
 };
 
+type SupportRequestEmailParams = {
+  referenceId: string;
+  fullName: string;
+  workEmail: string;
+  organization: string;
+  priority: string;
+  category: string;
+  message: string;
+  attachmentName?: string | null;
+  attachmentContent?: string | null;
+};
+
 function escapeHtml(value: string) {
   return value
     .replace(/&/g, "&amp;")
@@ -322,5 +334,105 @@ export async function sendRecruiterOrganizationAddedEmail({
       </div>
       ${actionButtonHtml(link, "Open Recruiter Workspace")}
     `),
+  });
+}
+
+function supportRequestDetailsHtml(input: SupportRequestEmailParams) {
+  const rows = [
+    ["Reference ID", input.referenceId],
+    ["Requester", input.fullName],
+    ["Work Email", input.workEmail],
+    ["Organization", input.organization],
+    ["Priority", input.priority],
+    ["Category", input.category],
+    ["Attachment", input.attachmentName || "None"],
+  ];
+
+  return `
+    <div style="margin:18px 0;border:1px solid rgba(51,65,85,0.16);border-radius:14px;overflow:hidden;">
+      ${rows
+        .map(
+          ([label, value]) => `
+            <div style="display:flex;gap:16px;padding:11px 14px;border-bottom:1px solid rgba(51,65,85,0.12);">
+              <div style="min-width:130px;color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:0.08em;">${escapeHtml(label)}</div>
+              <div style="color:#0f172a;font-size:14px;font-weight:600;">${escapeHtml(value)}</div>
+            </div>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+export async function sendSupportNotificationEmail(input: SupportRequestEmailParams) {
+  const supportTo = process.env.SUPPORT_EMAIL_TO?.trim() || "support@hireveri.com";
+
+  return sendWithRetry({
+    from: getEmailFrom(),
+    to: supportTo,
+    replyTo: input.workEmail,
+    subject: `[${input.priority}] HireVeri support request ${input.referenceId}`,
+    attachments: input.attachmentName && input.attachmentContent
+      ? [
+          {
+            filename: input.attachmentName,
+            content: input.attachmentContent,
+          },
+        ]
+      : undefined,
+    text: [
+      `Reference ID: ${input.referenceId}`,
+      `Requester: ${input.fullName} <${input.workEmail}>`,
+      `Organization: ${input.organization}`,
+      `Priority: ${input.priority}`,
+      `Category: ${input.category}`,
+      `Attachment: ${input.attachmentName || "None"}`,
+      "",
+      input.message,
+    ].join("\n"),
+    html: `
+      <div style="font-family:Arial,Helvetica,sans-serif;line-height:1.6;color:#0f172a;">
+        <h2 style="margin:0 0 8px;">New HireVeri support request</h2>
+        <p style="margin:0;color:#475569;">A requester submitted a support center ticket.</p>
+        ${supportRequestDetailsHtml(input)}
+        <div style="margin-top:18px;padding:16px;border-radius:14px;background:#f8fafc;border:1px solid #e2e8f0;">
+          <div style="margin-bottom:8px;color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:0.08em;">Message</div>
+          <div style="white-space:pre-wrap;color:#0f172a;">${escapeHtml(input.message)}</div>
+        </div>
+      </div>
+    `,
+  });
+}
+
+export async function sendSupportConfirmationEmail(input: SupportRequestEmailParams) {
+  return sendWithRetry({
+    from: getEmailFrom(),
+    to: input.workEmail,
+    subject: `HireVeri support request received: ${input.referenceId}`,
+    text: [
+      `Hi ${input.fullName},`,
+      "",
+      `We received your HireVeri support request ${input.referenceId}.`,
+      `Category: ${input.category}`,
+      `Priority: ${input.priority}`,
+      "",
+      "Our operations team will review it against the applicable support routing and SLA.",
+      "",
+      "Regards,",
+      "HireVeri Support",
+    ].join("\n"),
+    html: `
+      <div style="font-family:Arial,Helvetica,sans-serif;line-height:1.6;color:#0f172a;">
+        <h2 style="margin:0 0 8px;">Support request received</h2>
+        <p>Hi ${escapeHtml(input.fullName)},</p>
+        <p>We received your HireVeri support request. Keep this reference ID for follow-up:</p>
+        <div style="display:inline-block;margin:8px 0 18px;padding:12px 16px;border-radius:12px;background:#0f172a;color:#ffffff;font-weight:700;letter-spacing:0.08em;">
+          ${escapeHtml(input.referenceId)}
+        </div>
+        ${supportRequestDetailsHtml(input)}
+        <p style="color:#475569;">Our operations team will review it against the applicable support routing and SLA.</p>
+        <p style="margin-top:24px;">Regards,<br />HireVeri Support</p>
+      </div>
+    `,
   });
 }
