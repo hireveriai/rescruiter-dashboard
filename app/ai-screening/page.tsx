@@ -1928,7 +1928,7 @@ export default function AiScreeningPage() {
           <div className="flex flex-col gap-8 xl:flex-row xl:items-end xl:justify-between">
             <div className="max-w-3xl">
               <Link
-                href={buildAuthUrl("/", searchParams)}
+                href={authUrl("/")}
                 className="inline-flex items-center rounded-xl border border-slate-700 bg-slate-950/50 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-cyan-400/40 hover:bg-slate-900 hover:text-white"
               >
                 Go Back to Dashboard
