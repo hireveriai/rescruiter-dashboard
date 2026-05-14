@@ -7,6 +7,7 @@ import Pipeline from "../components/Pipeline";
 import PendingInterviews from "../components/PendingInterviews";
 import RecordedInterviews from "../components/RecordedInterviews";
 import CandidateList from "../components/CandidateList";
+import DashboardIntelligenceBanner from "../components/DashboardIntelligenceBanner";
 import Sidebar from "../components/Sidebar";
 import VerisSummary from "../components/VerisSummary";
 import AlertsPanel from "../components/AlertsPanel";
@@ -33,6 +34,12 @@ function DashboardContent({ profile, overview, isLoading }) {
             </div>
           </div>
 
+          <DashboardIntelligenceBanner
+            overview={overview}
+            onCreateJob={() => window.dispatchEvent(new CustomEvent("hireveri:open-create-job"))}
+            onSendInterview={() => setIsModalOpen(true)}
+          />
+
           <Suspense fallback={<MetricSkeleton className="mt-8 grid-cols-2 lg:grid-cols-4" />}>
             <Pipeline initialPipeline={overview?.pipeline} isLoading={isLoading} />
           </Suspense>
@@ -57,7 +64,7 @@ function DashboardContent({ profile, overview, isLoading }) {
 
         <div className="min-w-0">
           <Sidebar initialProfile={profile} overview={overview} />
-          <AlertsPanel isLoading={isLoading} />
+          <AlertsPanel initialAlerts={overview?.alerts} isLoading={isLoading} />
         </div>
       </div>
 

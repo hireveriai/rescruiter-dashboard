@@ -475,7 +475,7 @@ export default function PendingInterviews({ initialPendingInterviews, isLoading 
     [interviews]
   )
 
-  const previewInterviews = sortedInterviews.slice(0, 3)
+  const previewInterviews = sortedInterviews.slice(0, 5)
 
   async function handleCopy(link) {
     const copied = await copyText(link)
@@ -727,17 +727,22 @@ export default function PendingInterviews({ initialPendingInterviews, isLoading 
     <>
       <div className="mt-10">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xl font-semibold">
+          <h2 className="flex flex-wrap items-center gap-2 text-xl font-semibold">
             Invited Interviews
+            <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-200">
+              Recent
+            </span>
           </h2>
 
-          <button
-            type="button"
-            className="text-sm text-blue-400"
-            onClick={() => setIsModalOpen(true)}
-          >
-            View All
-          </button>
+          {sortedInterviews.length > previewInterviews.length ? (
+            <button
+              type="button"
+              className="text-sm text-blue-400"
+              onClick={() => setIsModalOpen(true)}
+            >
+              View More
+            </button>
+          ) : null}
         </div>
 
         <div className="overflow-hidden rounded-lg bg-[#111a2e]">
@@ -754,7 +759,7 @@ export default function PendingInterviews({ initialPendingInterviews, isLoading 
             </thead>
 
             {isLoading ? (
-              <TableSkeleton rows={3} columns={6} showAvatar />
+              <TableSkeleton rows={5} columns={6} showAvatar />
             ) : (
               <tbody>
                 {previewInterviews.length === 0 ? (

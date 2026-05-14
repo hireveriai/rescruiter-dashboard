@@ -89,7 +89,13 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null }) 
   const [profile, setProfile] = useState(initialProfile);
 
   useEffect(() => {
-    if (initialProfile || !hasAuthQuery(searchParams)) {
+    if (initialProfile?.name) {
+      setProfile((current) => current?.name ? current : initialProfile);
+    }
+  }, [initialProfile]);
+
+  useEffect(() => {
+    if (!hasAuthQuery(searchParams)) {
       return;
     }
 
@@ -105,7 +111,7 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null }) 
           return;
         }
 
-        if (data.success) {
+        if (data.success && data.data?.name) {
           setProfile(data.data);
         }
       })
@@ -114,7 +120,9 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null }) 
     return () => {
       active = false;
     };
-  }, [initialProfile, searchParams]);
+  }, [searchParams]);
+
+  const displayProfile = initialProfile?.name ? initialProfile : profile;
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -146,7 +154,7 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null }) 
 
   const initials = useMemo(() => {
     return (
-      profile?.name
+      displayProfile?.name
         ?.split(" ")
         .filter(Boolean)
         .slice(0, 2)
@@ -154,7 +162,7 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null }) 
         .join("")
         .toUpperCase() || "HR"
     );
-  }, [profile]);
+  }, [displayProfile]);
 
   const handleLogout = () => {
     setProfileOpen(false);
@@ -249,16 +257,16 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null }) 
                   {initials}
                 </div>
                 <div className="hidden min-w-0 text-left 2xl:block">
-                  <div className="max-w-[120px] truncate text-sm font-semibold text-white">{profile?.name || "Recruiter"}</div>
-                  <div className="max-w-[140px] truncate text-xs text-slate-400">{profile?.organization || "Workspace"}</div>
+                  <div className="max-w-[120px] truncate text-sm font-semibold text-white">{displayProfile?.name || "Recruiter"}</div>
+                  <div className="max-w-[140px] truncate text-xs text-slate-400">{displayProfile?.organization || "Workspace"}</div>
                 </div>
               </button>
 
               {profileOpen ? (
                 <div className="absolute right-0 top-[calc(100%+12px)] w-[260px] overflow-hidden rounded-2xl border border-slate-800 bg-[#10192c]/98 p-2 shadow-[0_20px_60px_rgba(2,6,23,0.45)]">
                   <div className="rounded-2xl border border-slate-800 bg-slate-950/35 px-4 py-3">
-                    <div className="text-sm font-semibold text-white">{profile?.name || "Recruiter"}</div>
-                    <div className="mt-1 text-xs text-slate-400">{profile?.organization || "Authenticated workspace"}</div>
+                    <div className="text-sm font-semibold text-white">{displayProfile?.name || "Recruiter"}</div>
+                    <div className="mt-1 text-xs text-slate-400">{displayProfile?.organization || "Authenticated workspace"}</div>
                   </div>
 
                   <div className="mt-2 grid gap-1">

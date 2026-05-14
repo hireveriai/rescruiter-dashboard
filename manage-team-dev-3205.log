@@ -10,3 +10,9 @@
 ✓ Starting...
 ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
 ✓ Ready in 898ms
+✓ Finished writing to filesystem cache in 10.9s
+✓ Finished writing to filesystem cache in 45s
+✓ Finished writing to filesystem cache in 15.2s
+✓ Finished writing to filesystem cache in 35.2s
+✓ Finished writing to filesystem cache in 20.0s
+✓ Finished writing to filesystem cache in 24.8s

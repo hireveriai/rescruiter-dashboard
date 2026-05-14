@@ -1526,13 +1526,14 @@ export async function getReportsOverview(organizationId: string) {
   return payload
 }
 
-export async function getVerisSummaryCards(organizationId: string, limit = 6) {
+export async function getVerisSummaryCards(organizationId: string, limit: number | null = 6) {
   const rows = await getNormalizedReportRows(organizationId)
 
-  return rows
+  const cards = rows
     .filter((row) => row.attemptId)
     .sort((left, right) => new Date(right.endedAt ?? right.startedAt ?? 0).getTime() - new Date(left.endedAt ?? left.startedAt ?? 0).getTime())
     .map((row) => buildVerisSummaryCard(row))
     .filter((card): card is VerisSummaryCard => Boolean(card))
-    .slice(0, limit)
+
+  return limit === null ? cards : cards.slice(0, limit)
 }

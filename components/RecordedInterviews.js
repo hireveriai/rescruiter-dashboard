@@ -109,17 +109,24 @@ export default function RecordedInterviews({ initialRecordedInterviews, organiza
       <div className="mt-10">
         <div className="flex justify-between items-center mb-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-300/70">Recent Evidence Review</p>
-            <h2 className="mt-1 text-xl font-semibold text-white">Recent Recorded Interviews</h2>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-300/70">Evidence Review</p>
+            <h2 className="mt-1 flex flex-wrap items-center gap-2 text-xl font-semibold text-white">
+              Recorded Interviews
+              <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-200">
+                Recent
+              </span>
+            </h2>
           </div>
 
-          <button
-            type="button"
-            className="text-blue-400 text-sm"
-            onClick={() => setIsModalOpen(true)}
-          >
-            View All
-          </button>
+          {sortedInterviews.length > previewInterviews.length ? (
+            <button
+              type="button"
+              className="text-blue-400 text-sm"
+              onClick={() => setIsModalOpen(true)}
+            >
+              View All
+            </button>
+          ) : null}
         </div>
 
         {isLoading ? (

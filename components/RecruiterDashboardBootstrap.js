@@ -115,7 +115,7 @@ export default function RecruiterDashboardBootstrap({ children }) {
       }))
     }
 
-    async function bootstrap() {
+    async function bootstrap({ forceRefresh = false } = {}) {
       if (!cachedOverview) {
         setState((current) => ({
           status: "loading",
@@ -131,7 +131,8 @@ export default function RecruiterDashboardBootstrap({ children }) {
           cache: "no-store",
         })
 
-        const overviewPromise = fetch(buildAuthUrl("/api/dashboard/overview", searchParams), {
+        const overviewPath = `/api/dashboard/overview?refresh=${Date.now()}`
+        const overviewPromise = fetch(buildAuthUrl(overviewPath, searchParams), {
           credentials: "include",
           cache: "no-store",
         })
@@ -203,6 +204,9 @@ export default function RecruiterDashboardBootstrap({ children }) {
 
         if (typeof window !== "undefined" && overview) {
           try {
+            if (forceRefresh) {
+              window.sessionStorage.removeItem("hireveri-overview")
+            }
             window.sessionStorage.setItem("hireveri-overview", JSON.stringify(overview))
           } catch (error) {
             console.warn("Failed to cache recruiter overview", error)
@@ -240,8 +244,26 @@ export default function RecruiterDashboardBootstrap({ children }) {
 
     bootstrap()
 
+    function handlePageShow(event) {
+      if (!event.persisted) {
+        return
+      }
+
+      if (typeof window !== "undefined") {
+        window.sessionStorage.removeItem("hireveri-overview")
+      }
+      bootstrap({ forceRefresh: true })
+    }
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("pageshow", handlePageShow)
+    }
+
     return () => {
       active = false
+      if (typeof window !== "undefined") {
+        window.removeEventListener("pageshow", handlePageShow)
+      }
     }
   }, [searchParams])
 

@@ -60,6 +60,7 @@ export default function CandidateList({ initialCandidates, isLoading = false }) 
   const [candidates, setCandidates] = useState([])
   const [selectedCandidate, setSelectedCandidate] = useState(null)
   const displayCandidates = initialCandidates !== undefined ? initialCandidates : candidates
+  const previewCandidates = displayCandidates.slice(0, 5)
 
   useEffect(() => {
     if (initialCandidates !== undefined) {
@@ -95,13 +96,18 @@ export default function CandidateList({ initialCandidates, isLoading = false }) 
     <>
       <div className="mt-10">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold">
+          <h2 className="flex flex-wrap items-center gap-2 text-xl font-semibold">
             Candidates
+            <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-200">
+              Recent
+            </span>
           </h2>
 
+          {displayCandidates.length > previewCandidates.length ? (
           <Link href={buildAuthUrl("/candidates", searchParams)} className="text-blue-400 text-sm">
             View More
           </Link>
+          ) : null}
         </div>
 
         <div className="bg-[#111a2e] rounded-lg overflow-hidden">
@@ -127,7 +133,7 @@ export default function CandidateList({ initialCandidates, isLoading = false }) 
                   </td>
                 </tr>
               ) : (
-                displayCandidates.map((candidate, index) => (
+                previewCandidates.map((candidate, index) => (
                   <tr key={`${candidate.candidateName}-${index}`} className="border-b border-gray-800">
                     <td className="p-4">{candidate.candidateName}</td>
                     <td className="p-4 text-gray-300">{candidate.jobTitle}</td>

@@ -6,8 +6,10 @@ import { prisma } from "@/lib/server/prisma"
 import { getCandidatesDashboard } from "@/lib/server/services/dashboard.service"
 import { getDashboardPipelineData } from "@/lib/server/services/dashboard-pipeline"
 import { getDashboardRecordings } from "@/lib/server/services/dashboard-recordings"
+import { deriveDashboardState } from "@/lib/dashboard/dashboard-state-engine"
 import { getRecruiterProfile } from "@/lib/server/services/recruiter-profile"
 import { getVerisSummaryCards, type VerisSummaryCard } from "@/lib/server/services/reports.service"
+import { getDashboardAlerts, type DashboardAlert } from "@/lib/server/services/dashboard-alerts"
 
 type OverviewPayload = {
   profile: Awaited<ReturnType<typeof getRecruiterProfile>>
@@ -30,10 +32,12 @@ type OverviewPayload = {
     reviewedReports: number
     decisionsPending: number
   }
+  dashboardState: ReturnType<typeof deriveDashboardState>
   pendingInterviews: Array<Record<string, unknown>>
   recordedInterviews: Array<Record<string, unknown>>
   candidates: Awaited<ReturnType<typeof getCandidatesDashboard>>
   veris: VerisSummaryCard[]
+  alerts: DashboardAlert[]
 }
 
 type CacheEntry = {
@@ -148,6 +152,8 @@ async function buildOverview(
     getReportAndDecisionMetrics(auth.organizationId),
   ])
 
+  const alerts = await getDashboardAlerts(auth.organizationId, 8)
+
   return {
     profile,
     pipeline: pipelineData.pipeline,
@@ -164,10 +170,18 @@ async function buildOverview(
       reviewedReports: reportMetrics.reviewedReports,
       decisionsPending: reportMetrics.decisionsPending,
     },
+    dashboardState: deriveDashboardState({
+      jobs_count: jobs,
+      veris_screening_count: screeningMetrics.screeningRuns,
+      interview_links_count: invites,
+      interviews_count: reportMetrics.completedInterviews + pipelineData.pipeline.inProgress,
+      pending_reviews_count: reportMetrics.pendingReports + reportMetrics.decisionsPending,
+    }),
     pendingInterviews: pipelineData.pendingInterviews,
     recordedInterviews,
     candidates: candidates ?? [],
     veris,
+    alerts,
   }
 }
 
@@ -205,8 +219,10 @@ export async function GET(request: Request) {
   try {
     const auth = await getRecruiterRequestContext(request)
     const cacheKey = `overview:${auth.organizationId}`
+    const { searchParams } = new URL(request.url)
+    const forceRefresh = searchParams.has("refresh") || searchParams.get("cache") === "bust"
 
-    const cached = getCachedOverview(cacheKey)
+    const cached = forceRefresh ? null : getCachedOverview(cacheKey)
     if (cached) {
       const response = NextResponse.json({ success: true, data: cached })
       response.headers.set("Cache-Control", "private, max-age=5, stale-while-revalidate=30")
@@ -214,7 +230,7 @@ export async function GET(request: Request) {
       return response
     }
 
-    let overviewPromise = inFlight.get(cacheKey)
+    let overviewPromise = forceRefresh ? null : inFlight.get(cacheKey)
     if (!overviewPromise) {
       overviewPromise = buildOverview(auth)
       inFlight.set(cacheKey, overviewPromise)
@@ -228,8 +244,8 @@ export async function GET(request: Request) {
 
     const response = NextResponse.json({ success: true, data: overview })
 
-    response.headers.set("Cache-Control", "private, max-age=5, stale-while-revalidate=30")
-    response.headers.set("X-HireVeri-Cache", "miss")
+    response.headers.set("Cache-Control", forceRefresh ? "no-store" : "private, max-age=5, stale-while-revalidate=30")
+    response.headers.set("X-HireVeri-Cache", forceRefresh ? "refresh" : "miss")
     return response
   } catch (error) {
     return errorResponse(error)

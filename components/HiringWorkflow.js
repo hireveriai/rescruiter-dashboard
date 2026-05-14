@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useMemo } from "react"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
+import { deriveDashboardState } from "@/lib/dashboard/dashboard-state-engine"
 
 const stepThemes = {
   blue: {
@@ -136,6 +137,7 @@ function AiIcon() {
 function getWorkflowFacts(overview) {
   const metrics = overview?.workflowMetrics ?? {}
   const pipeline = overview?.pipeline ?? {}
+  const dashboardState = deriveDashboardState(overview?.dashboardState ?? {})
   const hasJobs = Number(metrics.jobs ?? 0) > 0
   const invitesSent = Number(metrics.invites ?? overview?.pendingInterviews?.length ?? 0) > 0
   const screeningStarted = Boolean(metrics.screeningStarted) || Number(metrics.screeningRuns ?? 0) > 0 || Number(overview?.veris?.length ?? 0) > 0
@@ -159,6 +161,8 @@ function getWorkflowFacts(overview) {
     completedInterviews,
     reviewedReports,
     shortlistedCandidates: Number(metrics.shortlistedCandidates ?? 0),
+    interviewsCount: dashboardState.interviews_count,
+    pendingReviewsCount: dashboardState.pending_reviews_count,
   }
 }
 
@@ -197,7 +201,7 @@ function getWorkflowState(overview) {
   if (!facts.hasJobs) {
     return {
       activeStepId: "create-job",
-      recommendation: "Start by creating your first job.",
+      recommendation: "Start by creating a job and inviting candidates.",
       statuses: buildStepStatuses("create-job"),
       facts,
     }
@@ -284,7 +288,7 @@ function getWorkflowState(overview) {
 
   return {
     activeStepId: "veris-screening",
-    recommendation: "You created a job successfully. Recommended: Run VERIS Screening before inviting candidates.",
+    recommendation: "VERIS Screening is optional. Use it to enrich resume intelligence before sending interviews.",
     statuses: buildStepStatuses("veris-screening", ["create-job"]),
     facts,
   }
@@ -312,14 +316,14 @@ function getStepSignal(step, status) {
   if (status === "active") return "Now"
   if (status === "completed") return "Done"
   if (status === "skipped") return "Skipped"
-  if (step.optional) return "Optional"
+  if (step.optional) return "Recommended"
   return "Pending"
 }
 
 function getCollapsedMeta(step, status) {
   if (status === "completed") return "Completed"
   if (status === "skipped") return "Skipped"
-  if (step.optional) return "Optional"
+  if (step.optional) return "Recommended"
   return ""
 }
 
@@ -389,7 +393,7 @@ function WorkflowStepCard({ step, status, searchParams, onAction }) {
               </p>
               {step.optional && shouldExpand ? (
                 <span className="rounded-full border border-violet-300/25 bg-violet-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-violet-200">
-                  Optional - AI Enhanced
+                  Optional Intelligence
                 </span>
               ) : null}
               {isSkipped && shouldExpand ? (
