@@ -12,9 +12,47 @@ import SendInterviewModal from "./SendInterviewModal"
 export default function Sidebar({ initialProfile = null, overview = null }) {
   const searchParams = useAuthSearchParams()
   const [user, setUser] = useState(initialProfile)
+  const [workflowOverview, setWorkflowOverview] = useState(overview)
   const [profileError, setProfileError] = useState("")
   const [openCreateJob, setOpenCreateJob] = useState(false)
   const [openSendInterview, setOpenSendInterview] = useState(false)
+
+  useEffect(() => {
+    if (overview) {
+      setWorkflowOverview(overview)
+    }
+  }, [overview])
+
+  useEffect(() => {
+    if (!hasAuthQuery(searchParams)) {
+      return
+    }
+
+    let isMounted = true
+
+    fetch(buildAuthUrl(`/api/dashboard/workflow?refresh=${Date.now()}`, searchParams), {
+      credentials: "include",
+      cache: "no-store",
+    })
+      .then((res) => res.json())
+      .then((payload) => {
+        if (!isMounted || !payload?.success) {
+          return
+        }
+
+        setWorkflowOverview((current) => ({
+          ...(current ?? {}),
+          ...payload.data,
+        }))
+      })
+      .catch((error) => {
+        console.warn("Fast dashboard workflow refresh failed", error)
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [searchParams])
 
   useEffect(() => {
     let isMounted = true
@@ -117,7 +155,7 @@ export default function Sidebar({ initialProfile = null, overview = null }) {
           </div>
         ) : null}
 
-        <HiringWorkflow overview={overview} searchParams={searchParams} onAction={handleAction} />
+        <HiringWorkflow overview={workflowOverview} searchParams={searchParams} onAction={handleAction} />
       </aside>
 
       <CreateJobModal open={openCreateJob} setOpen={setOpenCreateJob} />

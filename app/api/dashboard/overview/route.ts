@@ -10,6 +10,7 @@ import { deriveDashboardState } from "@/lib/dashboard/dashboard-state-engine"
 import { getRecruiterProfile } from "@/lib/server/services/recruiter-profile"
 import { getVerisSummaryCards, type VerisSummaryCard } from "@/lib/server/services/reports.service"
 import { getDashboardAlerts, type DashboardAlert } from "@/lib/server/services/dashboard-alerts"
+import { getDashboardWorkflowSnapshot } from "@/lib/server/services/dashboard-workflow"
 
 type OverviewPayload = {
   profile: Awaited<ReturnType<typeof getRecruiterProfile>>
@@ -122,7 +123,7 @@ async function getReportAndDecisionMetrics(organizationId: string) {
 async function buildOverview(
   auth: Awaited<ReturnType<typeof getRecruiterRequestContext>>
 ): Promise<OverviewPayload> {
-  const [profile, veris, candidates, recordedInterviews, pipelineData] = await Promise.all([
+  const [profile, veris, candidates, recordedInterviews, pipelineData, workflowSnapshot, alerts] = await Promise.all([
     getRecruiterProfile(auth),
     getVerisSummaryCards(auth.organizationId, 6),
     getCandidatesDashboard({
@@ -133,50 +134,18 @@ async function buildOverview(
     getDashboardPipelineData({
       organizationId: auth.organizationId,
     }),
+    getDashboardWorkflowSnapshot(auth.organizationId),
+    getDashboardAlerts(auth.organizationId, 8),
   ])
-
-  const [jobs, invites, screeningMetrics, reportMetrics] = await Promise.all([
-    prisma.jobPosition.count({
-      where: {
-        organizationId: auth.organizationId,
-      },
-    }),
-    prisma.interviewInvite.count({
-      where: {
-        interview: {
-          organizationId: auth.organizationId,
-        },
-      },
-    }),
-    getScreeningWorkflowMetrics(auth.organizationId),
-    getReportAndDecisionMetrics(auth.organizationId),
-  ])
-
-  const alerts = await getDashboardAlerts(auth.organizationId, 8)
 
   return {
     profile,
     pipeline: pipelineData.pipeline,
     workflowMetrics: {
-      jobs,
-      invites,
-      screeningRuns: screeningMetrics.screeningRuns,
-      shortlistedCandidates: screeningMetrics.shortlistedCandidates,
-      screeningStarted: screeningMetrics.screeningRuns > 0,
-      screeningCompleted: screeningMetrics.screeningRuns > 0 && screeningMetrics.shortlistedCandidates > 0,
+      ...workflowSnapshot.workflowMetrics,
       interviewsRunning: pipelineData.pipeline.inProgress,
-      completedInterviews: reportMetrics.completedInterviews,
-      pendingReports: reportMetrics.pendingReports,
-      reviewedReports: reportMetrics.reviewedReports,
-      decisionsPending: reportMetrics.decisionsPending,
     },
-    dashboardState: deriveDashboardState({
-      jobs_count: jobs,
-      veris_screening_count: screeningMetrics.screeningRuns,
-      interview_links_count: invites,
-      interviews_count: reportMetrics.completedInterviews + pipelineData.pipeline.inProgress,
-      pending_reviews_count: reportMetrics.pendingReports + reportMetrics.decisionsPending,
-    }),
+    dashboardState: workflowSnapshot.dashboardState,
     pendingInterviews: pipelineData.pendingInterviews,
     recordedInterviews,
     candidates: candidates ?? [],
