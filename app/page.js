@@ -10,7 +10,6 @@ import CandidateList from "../components/CandidateList";
 import DashboardIntelligenceBanner from "../components/DashboardIntelligenceBanner";
 import Sidebar from "../components/Sidebar";
 import VerisSummary from "../components/VerisSummary";
-import AlertsPanel from "../components/AlertsPanel";
 import WarRoomButton from "../components/WarRoomButton";
 import SendInterviewModal from "../components/SendInterviewModal";
 import RecruiterDashboardBootstrap from "../components/RecruiterDashboardBootstrap";
@@ -21,7 +20,7 @@ function DashboardContent({ profile, overview, isLoading }) {
 
   return (
     <div className="hv-page-enter relative min-h-screen bg-[#0b1220] text-white">
-      <Navbar onSendInterviewClick={() => setIsModalOpen(true)} initialProfile={profile} />
+      <Navbar onSendInterviewClick={() => setIsModalOpen(true)} initialProfile={profile} initialAlerts={overview?.alerts} />
 
       <div className="grid grid-cols-1 gap-6 p-4 sm:p-6 lg:p-8 xl:grid-cols-[minmax(0,1fr)_minmax(280px,320px)] 2xl:grid-cols-[minmax(0,1fr)_minmax(320px,360px)]">
         <div className="min-w-0">
@@ -64,7 +63,6 @@ function DashboardContent({ profile, overview, isLoading }) {
 
         <div className="min-w-0">
           <Sidebar initialProfile={profile} overview={overview} />
-          <AlertsPanel initialAlerts={overview?.alerts} isLoading={isLoading} />
         </div>
       </div>
 

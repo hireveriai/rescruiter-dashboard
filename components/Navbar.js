@@ -18,7 +18,6 @@ const navItems = [
   { href: "/candidates", label: "Candidates", disabled: false },
   { href: "/interviews", label: "Interviews", disabled: false },
   { href: "/reports", label: "Reports", disabled: false },
-  { href: "#", label: "Alerts", disabled: true },
 ];
 
 const navLoadingMessages = {
@@ -79,20 +78,82 @@ function LogoutIcon() {
   );
 }
 
-export default function Navbar({ onSendInterviewClick, initialProfile = null }) {
+function getAlertToneClass(tone) {
+  if (tone === "success") return "border-emerald-400/25 bg-emerald-500/10"
+  if (tone === "warning") return "border-amber-400/25 bg-amber-500/10"
+  if (tone === "danger") return "border-rose-400/25 bg-rose-500/10"
+  return "border-cyan-400/25 bg-cyan-500/10"
+}
+
+function formatAlertTime(value) {
+  if (!value) {
+    return ""
+  }
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return ""
+  }
+
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+}
+
+export default function Navbar({ onSendInterviewClick, initialProfile = null, initialAlerts = undefined }) {
   const pathname = usePathname();
   const searchParams = useAuthSearchParams();
   const { startLoading } = useAmbientLoading();
   const menuRef = useRef(null);
+  const alertsRef = useRef(null);
   const [openCreateJob, setOpenCreateJob] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [alertsOpen, setAlertsOpen] = useState(false);
+  const [alerts, setAlerts] = useState(() => initialAlerts ?? []);
   const [profile, setProfile] = useState(initialProfile);
+
+  useEffect(() => {
+    if (initialAlerts !== undefined) {
+      setAlerts(initialAlerts ?? []);
+    }
+  }, [initialAlerts]);
 
   useEffect(() => {
     if (initialProfile?.name) {
       setProfile((current) => current?.name ? current : initialProfile);
     }
   }, [initialProfile]);
+
+  useEffect(() => {
+    if (!hasAuthQuery(searchParams)) {
+      return;
+    }
+
+    if (initialAlerts !== undefined) {
+      return;
+    }
+
+    let active = true;
+
+    fetch(buildAuthUrl("/api/dashboard/alerts", searchParams), {
+      credentials: "include",
+      cache: "no-store",
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (active && data.success) {
+          setAlerts(data.data ?? []);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [initialAlerts, searchParams]);
 
   useEffect(() => {
     if (!hasAuthQuery(searchParams)) {
@@ -129,11 +190,15 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null }) 
       if (menuRef.current && !menuRef.current.contains(event.target)) {
         setProfileOpen(false);
       }
+      if (alertsRef.current && !alertsRef.current.contains(event.target)) {
+        setAlertsOpen(false);
+      }
     }
 
     function handleEscape(event) {
       if (event.key === "Escape") {
         setProfileOpen(false);
+        setAlertsOpen(false);
       }
     }
 
@@ -206,14 +271,6 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null }) 
 
             <nav className="hidden min-w-0 flex-1 flex-nowrap items-center justify-start gap-1 md:flex xl:gap-2">
               {navItems.map((item) => {
-                if (item.disabled) {
-                  return (
-                    <span key={item.label} className="whitespace-nowrap rounded-xl border border-transparent px-2 py-2 text-[13px] text-slate-500 xl:px-2.5 xl:text-sm" aria-disabled="true" title="Coming soon">
-                      {item.label}
-                    </span>
-                  );
-                }
-
                 const active = isActivePath(pathname, item.href);
 
                 return (
@@ -232,6 +289,62 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null }) 
                   </Link>
                 );
               })}
+
+              <div className="relative" ref={alertsRef}>
+                <button
+                  type="button"
+                  onClick={() => setAlertsOpen((value) => !value)}
+                  className={[
+                    "relative whitespace-nowrap rounded-xl border px-2 py-2 text-[13px] font-medium transition xl:px-2.5 xl:text-sm",
+                    alertsOpen
+                      ? "border-cyan-400/30 bg-cyan-500/10 text-cyan-100"
+                      : "border border-transparent text-slate-300 hover:border-slate-800 hover:bg-slate-900/60 hover:text-white",
+                  ].join(" ")}
+                >
+                  Alerts
+                  {alerts.length > 0 ? (
+                    <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border border-cyan-300/40 bg-cyan-400/20 px-1 text-[10px] font-semibold text-cyan-100">
+                      {alerts.length > 9 ? "9+" : alerts.length}
+                    </span>
+                  ) : null}
+                </button>
+
+                {alertsOpen ? (
+                  <div className="absolute right-0 top-[calc(100%+14px)] z-50 w-[360px] overflow-hidden rounded-2xl border border-slate-800 bg-[#10192c]/98 p-4 shadow-[0_24px_70px_rgba(2,6,23,0.55)]">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h2 className="text-lg font-semibold text-white">Alerts</h2>
+                        <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">Interview Activity</p>
+                      </div>
+                      {alerts.length > 0 ? (
+                        <span className="rounded-full border border-cyan-400/25 bg-cyan-500/10 px-2.5 py-1 text-xs font-semibold text-cyan-100">
+                          {alerts.length}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div className="mt-4 max-h-[420px] space-y-3 overflow-y-auto pr-1">
+                      {alerts.length === 0 ? (
+                        <div className="rounded-2xl border border-slate-800 bg-slate-950/35 px-4 py-5 text-sm text-slate-400">
+                          No interview activity alerts yet.
+                        </div>
+                      ) : (
+                        alerts.slice(0, 8).map((alert) => (
+                          <article key={alert.id} className={`rounded-2xl border px-4 py-3 ${getAlertToneClass(alert.tone)}`}>
+                            <div className="flex items-start justify-between gap-3">
+                              <p className="text-sm font-semibold text-white">{alert.title}</p>
+                              <span className="shrink-0 text-[10px] uppercase tracking-[0.14em] text-slate-300">
+                                {formatAlertTime(alert.occurredAt)}
+                              </span>
+                            </div>
+                            <p className="mt-2 text-sm leading-6 text-slate-200">{alert.message}</p>
+                          </article>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             </nav>
           </div>
 

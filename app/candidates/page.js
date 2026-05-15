@@ -49,6 +49,15 @@ function formatScore(score) {
   return `${Math.round(score)}%`
 }
 
+function formatStatusText(status) {
+  return String(status ?? "PENDING")
+    .toLowerCase()
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ")
+}
+
 function normalizeSearch(value) {
   return String(value ?? "").trim().toLowerCase()
 }
@@ -472,7 +481,7 @@ export default function CandidatesPage() {
                 label="Status"
                 value={statusFilter}
                 onChange={setStatusFilter}
-                options={[{ value: "ALL", label: "All Statuses" }, ...filterOptions.statuses.map((value) => ({ value: value.toUpperCase(), label: value.replace(/_/g, " ") }))]}
+                options={[{ value: "ALL", label: "All Statuses" }, ...filterOptions.statuses.map((value) => ({ value: value.toUpperCase(), label: formatStatusText(value) }))]}
               />
               <FilterSelect
                 label="Job"
@@ -550,8 +559,8 @@ export default function CandidatesPage() {
                         <td className="p-5 font-medium text-white">{candidate.candidateName}</td>
                         <td className="p-5 text-slate-300">{candidate.jobTitle}</td>
                         <td className="p-5">
-                          <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] ${getStatusBadge(candidate.status)}`}>
-                            {candidate.status}
+                          <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium tracking-[0.12em] ${getStatusBadge(candidate.status)}`}>
+                            {formatStatusText(candidate.status)}
                           </span>
                         </td>
                         <td className={`p-5 font-medium ${getScoreColor(candidate.score)}`}>{formatScore(candidate.score)}</td>

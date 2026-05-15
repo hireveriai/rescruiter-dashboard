@@ -55,6 +55,15 @@ function formatScore(score) {
   return `${Math.round(score)}%`
 }
 
+function formatStatusLabel(status) {
+  return String(status ?? "PENDING")
+    .toLowerCase()
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ")
+}
+
 export default function CandidateList({ initialCandidates, isLoading = false }) {
   const searchParams = useAuthSearchParams()
   const [candidates, setCandidates] = useState([])
@@ -137,7 +146,7 @@ export default function CandidateList({ initialCandidates, isLoading = false }) 
                   <tr key={`${candidate.candidateName}-${index}`} className="border-b border-gray-800">
                     <td className="p-4">{candidate.candidateName}</td>
                     <td className="p-4 text-gray-300">{candidate.jobTitle}</td>
-                    <td className={`p-4 ${getStatusColor(candidate.status)}`}>{candidate.status}</td>
+                    <td className={`p-4 ${getStatusColor(candidate.status)}`}>{formatStatusLabel(candidate.status)}</td>
                     <td className={`p-4 ${getScoreColor(candidate.score)}`}>{formatScore(candidate.score)}</td>
                     <td className="p-4">
                       {candidate.aiSummaryFull ? (

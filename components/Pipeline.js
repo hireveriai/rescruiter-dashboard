@@ -15,21 +15,23 @@ const FALLBACK_PIPELINE = {
 
 export default function Pipeline({ initialPipeline, isLoading = false }) {
   const searchParams = useAuthSearchParams()
-  const [pipeline, setPipeline] = useState(FALLBACK_PIPELINE)
-  const displayPipeline = initialPipeline ?? pipeline
+  const [pipeline, setPipeline] = useState(initialPipeline ?? null)
+  const displayPipeline = pipeline ?? initialPipeline ?? FALLBACK_PIPELINE
 
   useEffect(() => {
     if (initialPipeline) {
-      return
+      setPipeline(initialPipeline)
     }
+  }, [initialPipeline])
 
+  useEffect(() => {
     if (!hasAuthQuery(searchParams)) {
       return
     }
 
     let isMounted = true
 
-    fetch(buildAuthUrl("/api/dashboard/pipeline", searchParams), {
+    fetch(buildAuthUrl(`/api/dashboard/workflow?refresh=${Date.now()}`, searchParams), {
       credentials: "include",
       cache: "no-store",
     })
@@ -46,7 +48,7 @@ export default function Pipeline({ initialPipeline, isLoading = false }) {
     return () => {
       isMounted = false
     }
-  }, [initialPipeline, searchParams])
+  }, [searchParams])
 
   const cards = [
     { title: "Invited", count: displayPipeline.pending, color: "bg-blue-500" },
@@ -61,10 +63,10 @@ export default function Pipeline({ initialPipeline, isLoading = false }) {
         Interview Pipeline
       </h2>
 
-      {isLoading ? (
+      {isLoading && !pipeline && !initialPipeline ? (
         <MetricSkeleton className="grid-cols-2 lg:grid-cols-4" />
       ) : (
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           {cards.map((item) => (
           <div
             key={item.title}

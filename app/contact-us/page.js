@@ -237,7 +237,7 @@ export default function ContactUsPage() {
               ) : null}
 
               <div className="flex flex-col gap-3 border-t border-slate-800/90 pt-5 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs leading-5 text-slate-500">Submission creates a database-backed support request and triggers support and requester email notifications.</p>
+                <p className="text-xs leading-5 text-slate-500">Our support team will review your request and respond by email.</p>
                 <button type="submit" disabled={isSubmitting} className="h-12 shrink-0 rounded-2xl bg-cyan-300 px-6 text-sm font-bold text-slate-950 shadow-[0_16px_42px_rgba(34,211,238,0.18)] transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-60">
                   {isSubmitting ? "Routing Request..." : "Submit Support Request"}
                 </button>

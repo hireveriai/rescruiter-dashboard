@@ -26,13 +26,12 @@ function getStatusBadge(status) {
 }
 
 function formatStatusText(status) {
-  const normalized = String(status ?? "PENDING").toUpperCase()
-  if (normalized === "PREPARING_INTERVIEW") return "Preparing Interview"
-  if (normalized === "EMAIL_FAILED") return "Email Failed"
-  if (normalized === "PREPARATION_FAILED") return "Preparation Failed"
-  if (normalized === "SENDING_EMAIL") return "Sending Email"
-  if (normalized === "READY") return "Ready"
-  return String(status ?? "PENDING").replace(/_/g, " ")
+  return String(status ?? "PENDING")
+    .toLowerCase()
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ")
 }
 
 function formatScore(score) {
@@ -607,7 +606,7 @@ export default function InterviewsPage() {
                       <td className="p-5 font-medium text-white">{interview.candidateName}</td>
                       <td className="p-5 text-slate-300">{interview.jobTitle}</td>
                       <td className="p-5">
-                        <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] ${getStatusBadge(interview.status)}`}>
+                        <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium tracking-[0.12em] ${getStatusBadge(interview.status)}`}>
                           {formatStatusText(interview.status)}
                         </span>
                       </td>
