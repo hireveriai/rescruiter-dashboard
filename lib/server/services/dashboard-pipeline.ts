@@ -1,6 +1,6 @@
 import { getInterviewAppUrl } from "@/lib/server/interview-url"
 import { prisma } from "@/lib/server/prisma"
-import { isAttemptCompleted, isInviteUsable } from "@/lib/server/services/interview-status"
+import { deriveInterviewStatus, isInviteUsable } from "@/lib/server/services/interview-status"
 import { ensureInterviewRecoverySchema } from "@/lib/server/services/interview-recovery"
 
 type DashboardPipelineOptions = {
@@ -161,17 +161,20 @@ export async function getDashboardPipelineData(
     const latestInvite = interview.interviewInvites[0] ?? null
     const latestAttempt = interview.attempts[0] ?? null
     const normalizedInterviewStatus = String(interview.status ?? "").toUpperCase()
-    const normalizedQuestionStatus = String(interview.questionStatus ?? "").toUpperCase()
     const normalizedEmailStatus = String(interview.emailStatus ?? "").toUpperCase()
-    const hasStartedAttempt = Boolean(latestAttempt?.attemptId)
-    const completedInterview =
-      normalizedInterviewStatus === "COMPLETED" ||
-      (latestAttempt ? isAttemptCompleted(latestAttempt) : false)
-    const flaggedInterview = normalizedInterviewStatus === "FLAGGED"
+    const displayStatus = deriveInterviewStatus({
+      interviewStatus: interview.status,
+      questionStatus: interview.questionStatus,
+      emailStatus: interview.emailStatus,
+      latestAttempt,
+      latestInvite,
+    })
+    const normalizedDisplayStatus = String(displayStatus).toUpperCase()
     const recovery = recoveryByInterview.get(interview.interviewId) ?? null
 
-    if (flaggedInterview) {
+    if (normalizedDisplayStatus === "FLAGGED") {
       flagged += 1
+      return
     }
 
     if (recovery) {
@@ -197,7 +200,8 @@ export async function getDashboardPipelineData(
       return
     }
 
-    if (normalizedInterviewStatus === "FAILED" || normalizedQuestionStatus === "FAILED") {
+    if (normalizedDisplayStatus === "PREPARATION_FAILED") {
+      flagged += 1
       pendingInterviews.push({
         inviteId: latestInvite?.inviteId ?? interview.interviewId,
         link: latestInvite?.token ? `${appUrl}/interview/${latestInvite.token}` : "",
@@ -218,18 +222,19 @@ export async function getDashboardPipelineData(
       return
     }
 
-    if (completedInterview) {
+    if (normalizedDisplayStatus === "COMPLETED") {
       completed += 1
       return
     }
 
-    if (hasStartedAttempt) {
+    if (normalizedDisplayStatus === "IN_PROGRESS") {
       inProgress += 1
       return
     }
 
+    pending += 1
+
     if (normalizedInterviewStatus === "READY" && latestInvite && isInviteUsable(latestInvite)) {
-      pending += 1
       pendingInterviews.push({
         inviteId: latestInvite.inviteId,
         link: `${appUrl}/interview/${latestInvite.token}`,

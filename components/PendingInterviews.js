@@ -745,8 +745,8 @@ export default function PendingInterviews({ initialPendingInterviews, isLoading 
           ) : null}
         </div>
 
-        <div className="overflow-hidden rounded-lg bg-[#111a2e]">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto rounded-lg bg-[#111a2e]">
+          <table className="w-full min-w-[760px] text-sm">
             <thead className="border-b border-gray-700 text-gray-400">
               <tr>
                 <th className="p-4 text-left">Candidate</th>

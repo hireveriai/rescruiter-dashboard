@@ -425,18 +425,18 @@ export default function JobsPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1240px] table-fixed text-sm">
+            <table className="w-full min-w-[1096px] table-fixed text-sm">
               <colgroup>
-                <col className="w-[56px]" />
-                <col className="w-[160px]" />
-                <col className="w-[170px]" />
-                <col className="w-[108px]" />
-                <col className="w-[108px]" />
-                <col className="w-[88px]" />
-                <col className="w-[88px]" />
-                <col className="w-[150px]" />
-                <col className="w-[100px]" />
-                <col className="w-[188px]" />
+                <col className="w-[52px]" />
+                <col className="w-[148px]" />
+                <col className="w-[152px]" />
+                <col className="w-[104px]" />
+                <col className="w-[104px]" />
+                <col className="w-[84px]" />
+                <col className="w-[82px]" />
+                <col className="w-[132px]" />
+                <col className="w-[92px]" />
+                <col className="w-[146px]" />
               </colgroup>
               <thead className="bg-slate-950/20 text-slate-400">
                 <tr>

@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client"
 
 import { deriveDashboardState } from "@/lib/dashboard/dashboard-state-engine"
 import { prisma } from "@/lib/server/prisma"
+import { getDashboardPipelineData } from "@/lib/server/services/dashboard-pipeline"
 
 export type DashboardWorkflowSnapshot = {
   pipeline: {
@@ -65,10 +66,6 @@ async function getScreeningWorkflowMetrics(organizationId: string) {
 }
 
 type InterviewWorkflowRow = {
-  pending: number
-  in_progress: number
-  completed: number
-  flagged: number
   pending_reports: number
   reviewed_reports: number
   decisions_pending: number
@@ -105,21 +102,6 @@ async function getInterviewWorkflowMetrics(organizationId: string) {
     )
     select
       count(*) filter (
-        where attempt_id is null and upper(coalesce(interview_status, '')) in ('READY', 'PENDING', 'SCHEDULED')
-      )::int as pending,
-      count(*) filter (
-        where started_at is not null
-          and ended_at is null
-          and upper(coalesce(attempt_status, interview_status, '')) not in ('COMPLETED', 'SUBMITTED', 'EVALUATED', 'INTERRUPTED', 'FAILED', 'PREPARATION_FAILED')
-      )::int as in_progress,
-      count(*) filter (
-        where upper(coalesce(interview_status, attempt_status, '')) in ('COMPLETED', 'SUBMITTED', 'EVALUATED')
-          or ended_at is not null
-      )::int as completed,
-      count(*) filter (
-        where upper(coalesce(interview_status, attempt_status, '')) in ('FLAGGED', 'FAILED', 'PREPARATION_FAILED', 'INTERRUPTED', 'RECOVERY_ALLOWED')
-      )::int as flagged,
-      count(*) filter (
         where (upper(coalesce(interview_status, attempt_status, '')) in ('COMPLETED', 'SUBMITTED', 'EVALUATED') or ended_at is not null)
           and (evaluation_id is null or decision is null)
       )::int as pending_reports,
@@ -137,10 +119,6 @@ async function getInterviewWorkflowMetrics(organizationId: string) {
   const row = rows[0]
 
   return {
-    pending: Number(row?.pending ?? 0),
-    inProgress: Number(row?.in_progress ?? 0),
-    completed: Number(row?.completed ?? 0),
-    flagged: Number(row?.flagged ?? 0),
     pendingReports: Number(row?.pending_reports ?? 0),
     reviewedReports: Number(row?.reviewed_reports ?? 0),
     decisionsPending: Number(row?.decisions_pending ?? 0),
@@ -148,7 +126,7 @@ async function getInterviewWorkflowMetrics(organizationId: string) {
 }
 
 export async function getDashboardWorkflowSnapshot(organizationId: string): Promise<DashboardWorkflowSnapshot> {
-  const [jobs, invites, screeningMetrics, interviewMetrics] = await Promise.all([
+  const [jobs, invites, screeningMetrics, interviewMetrics, pipelineData] = await Promise.all([
     prisma.jobPosition.count({
       where: {
         organizationId,
@@ -163,6 +141,7 @@ export async function getDashboardWorkflowSnapshot(organizationId: string): Prom
     }),
     getScreeningWorkflowMetrics(organizationId),
     getInterviewWorkflowMetrics(organizationId),
+    getDashboardPipelineData({ organizationId }),
   ])
 
   const workflowMetrics = {
@@ -172,8 +151,8 @@ export async function getDashboardWorkflowSnapshot(organizationId: string): Prom
     shortlistedCandidates: screeningMetrics.shortlistedCandidates,
     screeningStarted: screeningMetrics.screeningRuns > 0,
     screeningCompleted: screeningMetrics.screeningRuns > 0 && screeningMetrics.shortlistedCandidates > 0,
-    interviewsRunning: interviewMetrics.inProgress,
-    completedInterviews: interviewMetrics.completed,
+    interviewsRunning: pipelineData.pipeline.inProgress,
+    completedInterviews: pipelineData.pipeline.completed,
     pendingReports: interviewMetrics.pendingReports,
     reviewedReports: interviewMetrics.reviewedReports,
     decisionsPending: interviewMetrics.decisionsPending,
@@ -183,16 +162,16 @@ export async function getDashboardWorkflowSnapshot(organizationId: string): Prom
     jobs_count: jobs,
     veris_screening_count: screeningMetrics.screeningRuns,
     interview_links_count: invites,
-    interviews_count: interviewMetrics.completed + interviewMetrics.inProgress,
+    interviews_count: pipelineData.pipeline.completed + pipelineData.pipeline.inProgress,
     pending_reviews_count: interviewMetrics.pendingReports + interviewMetrics.decisionsPending,
   })
 
   return {
     pipeline: {
-      pending: interviewMetrics.pending,
-      inProgress: interviewMetrics.inProgress,
-      completed: interviewMetrics.completed,
-      flagged: interviewMetrics.flagged,
+      pending: pipelineData.pipeline.pending,
+      inProgress: pipelineData.pipeline.inProgress,
+      completed: pipelineData.pipeline.completed,
+      flagged: pipelineData.pipeline.flagged,
     },
     workflowMetrics,
     dashboardState,

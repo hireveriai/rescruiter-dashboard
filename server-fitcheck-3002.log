@@ -1,0 +1,176 @@
+
+> hireveri-recruiter@0.1.0 dev
+> next dev --port 3002
+
+▲ Next.js 16.1.6 (Turbopack)
+- Local:         http://localhost:3002
+- Network:       http://192.168.1.14:3002
+- Environments: .env.local
+
+✓ Starting...
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+✓ Ready in 2.1s
+ GET / 200 in 1838ms (compile: 759ms, proxy.ts: 203ms, render: 876ms)
+ GET / 200 in 388ms (compile: 15ms, proxy.ts: 15ms, render: 358ms)
+ GET / 200 in 179ms (compile: 8ms, proxy.ts: 7ms, render: 164ms)
+⚠ Cross origin request detected from 127.0.0.1 to /_next/* resource. In a future major version of Next.js, you will need to explicitly configure "allowedDevOrigins" in next.config to allow this.
+Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
+ GET /api/dashboard/alerts 200 in 3.0s (compile: 2.2s, proxy.ts: 20ms, render: 818ms)
+ GET /api/me 200 in 4.7s (compile: 2.4s, proxy.ts: 19ms, render: 2.3s)
+ GET /api/me 200 in 4.7s (compile: 2.4s, proxy.ts: 26ms, render: 2.3s)
+ GET /api/me 200 in 4.8s (compile: 2.4s, proxy.ts: 12ms, render: 2.4s)
+prisma:error 
+Invalid `prisma.$queryRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `42702`. Message: `ERROR: column reference "attempt_id" is ambiguous`
+ GET /api/dashboard/candidates 200 in 1447ms (compile: 431ms, proxy.ts: 10ms, render: 1005ms)
+ GET /api/dashboard/workflow?refresh=1778947144419 200 in 7.1s (compile: 2.1s, proxy.ts: 19ms, render: 5.0s)
+ GET /api/dashboard/overview?refresh=1778947144423 200 in 7.3s (compile: 2.3s, proxy.ts: 11ms, render: 5.0s)
+ GET /api/dashboard/workflow?refresh=1778947144447 200 in 4.5s (compile: 6ms, proxy.ts: 10ms, render: 4.5s)
+ GET /api/dashboard/pipeline 200 in 3.4s (compile: 379ms, proxy.ts: 5ms, render: 3.0s)
+ GET /api/dashboard/pipeline 200 in 3.5s (compile: 434ms, proxy.ts: 8ms, render: 3.1s)
+prisma:error 
+Invalid `prisma.$queryRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `42702`. Message: `ERROR: column reference "attempt_id" is ambiguous`
+ GET /api/dashboard/veris 200 in 1008ms (compile: 401ms, proxy.ts: 18ms, render: 590ms)
+ GET /jobs 200 in 2.7s (compile: 2.3s, proxy.ts: 4ms, render: 485ms)
+ GET /api/dashboard/alerts 200 in 284ms (compile: 46ms, proxy.ts: 17ms, render: 221ms)
+ GET /api/me 200 in 371ms (compile: 58ms, proxy.ts: 12ms, render: 301ms)
+ GET /api/jobs?includeInactive=1 200 in 915ms (compile: 603ms, proxy.ts: 16ms, render: 296ms)
+ GET /candidates 200 in 1447ms (compile: 1212ms, proxy.ts: 7ms, render: 228ms)
+ GET /api/dashboard/alerts 200 in 379ms (compile: 153ms, proxy.ts: 10ms, render: 215ms)
+ GET /api/me 200 in 589ms (compile: 159ms, proxy.ts: 15ms, render: 415ms)
+ GET /api/dashboard/candidates?limit=all 200 in 596ms (compile: 206ms, proxy.ts: 13ms, render: 377ms)
+ GET /interviews 200 in 1316ms (compile: 1126ms, proxy.ts: 4ms, render: 186ms)
+ GET /api/dashboard/alerts 200 in 155ms (compile: 25ms, proxy.ts: 14ms, render: 116ms)
+ GET /api/me 200 in 261ms (compile: 34ms, proxy.ts: 13ms, render: 213ms)
+ GET /api/dashboard/interviews 200 in 1052ms (compile: 645ms, proxy.ts: 13ms, render: 394ms)
+ GET /reports 200 in 2.0s (compile: 1666ms, proxy.ts: 4ms, render: 350ms)
+ GET /api/dashboard/alerts 200 in 121ms (compile: 13ms, proxy.ts: 13ms, render: 96ms)
+ GET /api/me 200 in 241ms (compile: 19ms, proxy.ts: 11ms, render: 211ms)
+prisma:error 
+Invalid `prisma.$queryRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `42702`. Message: `ERROR: column reference "attempt_id" is ambiguous`
+ GET /api/reports/overview 200 in 1293ms (compile: 499ms, proxy.ts: 10ms, render: 784ms)
+ GET /ai-screening 200 in 1296ms (compile: 1130ms, proxy.ts: 5ms, render: 161ms)
+ GET /api/dashboard/alerts 200 in 179ms (compile: 24ms, proxy.ts: 15ms, render: 140ms)
+ GET /api/jobs?includeInactive=1 200 in 317ms (compile: 34ms, proxy.ts: 14ms, render: 269ms)
+ GET /api/me 200 in 340ms (compile: 30ms, proxy.ts: 11ms, render: 298ms)
+ GET /api/jobs?includeInactive=1 200 in 316ms (compile: 15ms, proxy.ts: 7ms, render: 293ms)
+ GET /api/process-jd 200 in 462ms (compile: 277ms, proxy.ts: 15ms, render: 171ms)
+ GET /api/process-jd 200 in 388ms (compile: 197ms, proxy.ts: 8ms, render: 183ms)
+ GET / 200 in 255ms (compile: 11ms, proxy.ts: 12ms, render: 232ms)
+ GET /api/dashboard/alerts 200 in 313ms (compile: 71ms, proxy.ts: 22ms, render: 221ms)
+ GET /api/me 200 in 3.5s (compile: 71ms, proxy.ts: 29ms, render: 3.4s)
+ GET /api/me 200 in 3.6s (compile: 75ms, proxy.ts: 28ms, render: 3.5s)
+ GET /api/me 200 in 3.6s (compile: 84ms, proxy.ts: 32ms, render: 3.5s)
+prisma:error 
+Invalid `prisma.$queryRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `42702`. Message: `ERROR: column reference "attempt_id" is ambiguous`
+ GET /api/dashboard/candidates 200 in 1491ms (compile: 27ms, proxy.ts: 48ms, render: 1416ms)
+ GET /api/dashboard/workflow?refresh=1778947197789 200 in 6.6s (compile: 72ms, proxy.ts: 43ms, render: 6.4s)
+ GET /api/dashboard/overview?refresh=1778947197797 200 in 6.9s (compile: 95ms, proxy.ts: 35ms, render: 6.7s)
+ GET /api/dashboard/workflow?refresh=1778947197839 200 in 7.0s (compile: 10ms, proxy.ts: 10ms, render: 7.0s)
+prisma:error 
+Invalid `prisma.$queryRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `42702`. Message: `ERROR: column reference "attempt_id" is ambiguous`
+ GET /api/dashboard/veris 200 in 2.5s (compile: 23ms, proxy.ts: 22ms, render: 2.5s)
+ GET /api/dashboard/pipeline 200 in 4.2s (compile: 17ms, proxy.ts: 8ms, render: 4.2s)
+ GET /api/dashboard/pipeline 200 in 4.1s (compile: 10ms, proxy.ts: 24ms, render: 4.1s)
+ GET /jobs 200 in 135ms (compile: 6ms, proxy.ts: 6ms, render: 122ms)
+ GET /api/dashboard/alerts 200 in 163ms (compile: 13ms, proxy.ts: 13ms, render: 137ms)
+ GET /api/jobs?includeInactive=1 200 in 219ms (compile: 22ms, proxy.ts: 13ms, render: 184ms)
+ GET /api/me 200 in 276ms (compile: 18ms, proxy.ts: 13ms, render: 245ms)
+ GET /candidates 200 in 103ms (compile: 5ms, proxy.ts: 4ms, render: 94ms)
+ GET /api/dashboard/alerts 200 in 180ms (compile: 11ms, proxy.ts: 9ms, render: 160ms)
+ GET /api/me 200 in 327ms (compile: 18ms, proxy.ts: 9ms, render: 300ms)
+ GET /api/dashboard/candidates?limit=all 200 in 366ms (compile: 25ms, proxy.ts: 10ms, render: 331ms)
+ GET /interviews 200 in 77ms (compile: 3ms, proxy.ts: 3ms, render: 71ms)
+ GET /api/dashboard/alerts 200 in 135ms (compile: 8ms, proxy.ts: 10ms, render: 117ms)
+ GET /api/me 200 in 439ms (compile: 17ms, proxy.ts: 9ms, render: 414ms)
+ GET /api/dashboard/interviews 200 in 491ms (compile: 28ms, proxy.ts: 8ms, render: 456ms)
+ GET /reports 200 in 88ms (compile: 3ms, proxy.ts: 3ms, render: 82ms)
+ GET /api/dashboard/alerts 200 in 147ms (compile: 11ms, proxy.ts: 9ms, render: 127ms)
+ GET /api/me 200 in 446ms (compile: 19ms, proxy.ts: 7ms, render: 420ms)
+ GET /ai-screening 200 in 146ms (compile: 8ms, proxy.ts: 3ms, render: 135ms)
+prisma:error 
+Invalid `prisma.$queryRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `42702`. Message: `ERROR: column reference "attempt_id" is ambiguous`
+ GET /api/reports/overview 200 in 859ms (compile: 21ms, proxy.ts: 6ms, render: 831ms)
+ GET /api/dashboard/alerts 200 in 275ms (compile: 47ms, proxy.ts: 10ms, render: 217ms)
+ GET /api/jobs?includeInactive=1 200 in 304ms (compile: 61ms, proxy.ts: 24ms, render: 219ms)
+ GET /api/process-jd 200 in 333ms (compile: 103ms, proxy.ts: 24ms, render: 206ms)
+ GET /api/me 200 in 464ms (compile: 47ms, proxy.ts: 23ms, render: 393ms)
+ GET /api/jobs?includeInactive=1 200 in 298ms (compile: 18ms, proxy.ts: 16ms, render: 264ms)
+ GET /api/process-jd 200 in 323ms (compile: 25ms, proxy.ts: 19ms, render: 279ms)
+ GET /jobs 200 in 721ms (compile: 314ms, proxy.ts: 11ms, render: 396ms)
+ GET /api/dashboard/alerts 200 in 209ms (compile: 21ms, proxy.ts: 18ms, render: 169ms)
+ GET /api/jobs?includeInactive=1 200 in 257ms (compile: 43ms, proxy.ts: 19ms, render: 195ms)
+ GET /api/me 200 in 339ms (compile: 34ms, proxy.ts: 18ms, render: 286ms)
+ GET / 200 in 1504ms (compile: 453ms, proxy.ts: 8ms, render: 1043ms)
+ GET /api/dashboard/alerts 200 in 243ms (compile: 34ms, proxy.ts: 11ms, render: 198ms)
+ GET /api/me 200 in 1148ms (compile: 37ms, proxy.ts: 14ms, render: 1097ms)
+ GET /api/me 200 in 1255ms (compile: 69ms, proxy.ts: 13ms, render: 1173ms)
+ GET /api/me 200 in 1299ms (compile: 74ms, proxy.ts: 10ms, render: 1214ms)
+prisma:error 
+Invalid `prisma.$queryRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `42702`. Message: `ERROR: column reference "attempt_id" is ambiguous`
+ GET /api/dashboard/candidates 200 in 1449ms (compile: 13ms, proxy.ts: 8ms, render: 1428ms)
+ GET /api/dashboard/workflow?refresh=1778947369575 200 in 4.0s (compile: 61ms, proxy.ts: 15ms, render: 3.9s)
+ GET /api/dashboard/overview?refresh=1778947369602 200 in 4.5s (compile: 58ms, proxy.ts: 33ms, render: 4.4s)
+ GET /api/dashboard/workflow?refresh=1778947369745 200 in 4.6s (compile: 32ms, proxy.ts: 82ms, render: 4.5s)
+prisma:error 
+Invalid `prisma.$queryRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `42702`. Message: `ERROR: column reference "attempt_id" is ambiguous`
+ GET /api/dashboard/veris 200 in 2.4s (compile: 6ms, proxy.ts: 5ms, render: 2.4s)
+ GET /api/dashboard/pipeline 200 in 4.1s (compile: 76ms, proxy.ts: 16ms, render: 4.0s)
+ GET /api/dashboard/pipeline 200 in 4.0s (compile: 8ms, proxy.ts: 15ms, render: 4.0s)
+ GET / 200 in 339ms (compile: 10ms, proxy.ts: 9ms, render: 319ms)
+ GET /api/dashboard/alerts 200 in 568ms (compile: 177ms, proxy.ts: 24ms, render: 367ms)
+ GET /api/me 200 in 1117ms (compile: 249ms, proxy.ts: 21ms, render: 847ms)
+ GET /jobs 200 in 825ms (compile: 124ms, proxy.ts: 15ms, render: 687ms)
+ GET /api/me 200 in 1617ms (compile: 290ms, proxy.ts: 77ms, render: 1250ms)
+ GET /api/me 200 in 1617ms (compile: 298ms, proxy.ts: 77ms, render: 1241ms)
+prisma:error 
+Invalid `prisma.$queryRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `42702`. Message: `ERROR: column reference "attempt_id" is ambiguous`
+ GET /api/dashboard/workflow?refresh=1778947388417 200 in 3.3s (compile: 302ms, proxy.ts: 65ms, render: 3.0s)
+ GET /api/dashboard/overview?refresh=1778947388421 200 in 3.4s (compile: 321ms, proxy.ts: 31ms, render: 3.1s)
+ GET /api/dashboard/alerts 200 in 482ms (compile: 35ms, proxy.ts: 20ms, render: 427ms)
+ GET /api/jobs?includeInactive=1 200 in 524ms (compile: 60ms, proxy.ts: 22ms, render: 442ms)
+ GET /api/me 200 in 779ms (compile: 45ms, proxy.ts: 20ms, render: 714ms)
+ GET /api/dashboard/workflow?refresh=1778947388732 200 in 2.7s (compile: 137ms, proxy.ts: 46ms, render: 2.6s)
+ GET / 200 in 318ms (compile: 14ms, proxy.ts: 11ms, render: 292ms)
+ GET /api/dashboard/alerts 200 in 305ms (compile: 79ms, proxy.ts: 12ms, render: 213ms)
+ GET /jobs 200 in 256ms (compile: 22ms, proxy.ts: 8ms, render: 226ms)
+ GET /api/me 200 in 679ms (compile: 99ms, proxy.ts: 12ms, render: 568ms)
+ GET /api/me 200 in 1334ms (compile: 118ms, proxy.ts: 21ms, render: 1196ms)
+ GET /api/me 200 in 1429ms (compile: 127ms, proxy.ts: 25ms, render: 1276ms)
+prisma:error 
+Invalid `prisma.$queryRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `42702`. Message: `ERROR: column reference "attempt_id" is ambiguous`
+ GET /api/dashboard/workflow?refresh=1778947395362 200 in 3.5s (compile: 107ms, proxy.ts: 18ms, render: 3.3s)
+ GET /api/dashboard/overview?refresh=1778947395368 200 in 3.5s (compile: 124ms, proxy.ts: 18ms, render: 3.4s)
+ GET /api/dashboard/alerts 200 in 860ms (compile: 13ms, proxy.ts: 9ms, render: 837ms)
+ GET /api/jobs?includeInactive=1 200 in 916ms (compile: 21ms, proxy.ts: 10ms, render: 885ms)
+ GET /api/me 200 in 1172ms (compile: 20ms, proxy.ts: 10ms, render: 1142ms)
+ GET /api/dashboard/workflow?refresh=1778947395677 200 in 3.4s (compile: 5ms, proxy.ts: 8ms, render: 3.3s)

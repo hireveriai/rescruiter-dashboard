@@ -260,11 +260,11 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
             <Link
               href={buildAuthUrl("/", searchParams)}
               onClick={() => handleNavigationClick("/")}
-              className="flex w-[210px] shrink-0 flex-col justify-center leading-none xl:w-[240px]"
+              className="flex w-[72px] shrink-0 flex-col justify-center leading-none sm:w-[210px] xl:w-[240px]"
               aria-label="HireVeri home"
             >
               <span className="text-lg font-semibold tracking-tight text-white xl:text-xl">HireVeri</span>
-              <span className="mt-1 whitespace-nowrap text-[10px] font-medium uppercase tracking-[0.14em] text-blue-300/80 xl:tracking-[0.18em]">
+              <span className="mt-1 hidden whitespace-nowrap text-[10px] font-medium uppercase tracking-[0.14em] text-blue-300/80 sm:block xl:tracking-[0.18em]">
                 Cognitive Hiring System
               </span>
             </Link>
@@ -355,7 +355,7 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
 
             <button
               onClick={() => onSendInterviewClick?.()}
-              className="whitespace-nowrap rounded-lg border border-blue-400/25 bg-transparent px-2.5 py-1.5 text-xs font-medium text-blue-300/90 transition hover:border-blue-300/60 hover:bg-blue-500/10 hover:text-white xl:px-3 xl:py-2"
+              className="hidden whitespace-nowrap rounded-lg border border-blue-400/25 bg-transparent px-2.5 py-1.5 text-xs font-medium text-blue-300/90 transition hover:border-blue-300/60 hover:bg-blue-500/10 hover:text-white min-[380px]:inline-flex xl:px-3 xl:py-2"
             >
               Send Interview Link
             </button>

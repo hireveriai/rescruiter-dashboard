@@ -136,6 +136,10 @@ export default function RecruiterDashboardBootstrap({ children }) {
           credentials: "include",
           cache: "no-store",
         })
+        const workflowPromise = fetch(buildAuthUrl(`/api/dashboard/workflow?refresh=${Date.now()}`, searchParams), {
+          credentials: "include",
+          cache: "no-store",
+        })
 
         const profileResponse = await profilePromise
         const profileData = await profileResponse.json().catch(() => null)
@@ -187,6 +191,32 @@ export default function RecruiterDashboardBootstrap({ children }) {
           message: "",
         }))
         profileReady = true
+
+        workflowPromise
+          .then((response) => response.json().then((payload) => ({ ok: response.ok, payload })))
+          .then(({ ok, payload }) => {
+            if (!active || !ok || !payload?.success) {
+              return
+            }
+
+            setState((current) => {
+              const nextOverview = {
+                ...(current.overview ?? {}),
+                profile: current.overview?.profile ?? profile,
+                ...payload.data,
+              }
+
+              return {
+                status: "ready",
+                profile: current.profile ?? profile,
+                overview: nextOverview,
+                message: "",
+              }
+            })
+          })
+          .catch((error) => {
+            console.warn("Fast dashboard workflow bootstrap failed", error)
+          })
 
         const overviewResponse = await overviewPromise
         const overviewData = await overviewResponse.json().catch(() => null)
