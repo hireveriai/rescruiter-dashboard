@@ -51,6 +51,11 @@ type RecruiterJwtLookup = RecruiterLookupRow & {
   email?: string
 }
 
+type CookieEntry = {
+  key: string
+  value: string
+}
+
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const AUTH_APP_URL =
   process.env.AUTH_APP_URL ||
@@ -63,16 +68,16 @@ const DEV_AUTH_BYPASS =
   (process.env.DEV_AUTH_BYPASS === "true" ||
     process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS === "true")
 
-function parseCookieHeader(cookieHeader: string | null): Record<string, string> {
+function parseCookieEntries(cookieHeader: string | null): CookieEntry[] {
   if (!cookieHeader) {
-    return {}
+    return []
   }
 
   return cookieHeader
     .split(";")
     .map((part) => part.trim())
     .filter(Boolean)
-    .reduce<Record<string, string>>((acc, part) => {
+    .reduce<CookieEntry[]>((acc, part) => {
       const separatorIndex = part.indexOf("=")
 
       if (separatorIndex === -1) {
@@ -81,9 +86,40 @@ function parseCookieHeader(cookieHeader: string | null): Record<string, string> 
 
       const key = part.slice(0, separatorIndex).trim()
       const value = part.slice(separatorIndex + 1).trim()
-      acc[key] = value
+      acc.push({ key, value })
       return acc
-    }, {})
+    }, [])
+}
+
+function parseCookieHeader(cookieHeader: string | null): Record<string, string> {
+  return parseCookieEntries(cookieHeader).reduce<Record<string, string>>((acc, entry) => {
+    acc[entry.key] = entry.value
+    return acc
+  }, {})
+}
+
+function uniqueNormalizedValues(values: Array<string | null | undefined>) {
+  const seen = new Set<string>()
+  const normalized: string[] = []
+
+  for (const value of values) {
+    const candidate = normalizeCookieValue(value)
+
+    if (!candidate || seen.has(candidate)) {
+      continue
+    }
+
+    seen.add(candidate)
+    normalized.push(candidate)
+  }
+
+  return normalized
+}
+
+function getCookieValues(cookieHeader: string | null, name: string) {
+  return parseCookieEntries(cookieHeader)
+    .filter((entry) => entry.key === name)
+    .map((entry) => entry.value)
 }
 
 function normalizeCookieValue(value: string | null | undefined): string | null {
@@ -294,14 +330,41 @@ function extractJwtFromRequest(request: Request, cookieMap: Record<string, strin
   )
 }
 
+function extractJwtCandidatesFromRequest(
+  request: Request,
+  cookieHeader: string | null,
+  cookieMap: Record<string, string>
+) {
+  const candidates: Array<string | null | undefined> = []
+  const authHeader = request.headers.get("authorization")
+
+  if (authHeader?.toLowerCase().startsWith("bearer ")) {
+    candidates.push(authHeader.slice(7).trim())
+  }
+
+  candidates.push(extractSupabaseJwtFromCookies(cookieMap))
+
+  for (const name of ["authToken", "accessToken", "access_token", "token"]) {
+    candidates.push(cookieMap[name])
+    candidates.push(...getCookieValues(cookieHeader, name))
+  }
+
+  return uniqueNormalizedValues(candidates)
+}
+
 export function getAuthTokenFromRequest(request: Request): string | null {
-  const cookieMap = parseCookieHeader(request.headers.get("cookie"))
-  return extractJwtFromRequest(request, cookieMap)
+  const cookieHeader = request.headers.get("cookie")
+  const cookieMap = parseCookieHeader(cookieHeader)
+  return extractJwtCandidatesFromRequest(request, cookieHeader, cookieMap)[0] ?? null
 }
 
 export function getHireveriSessionFromRequest(request: Request): string | null {
-  const cookieMap = parseCookieHeader(request.headers.get("cookie"))
-  return normalizeCookieValue(cookieMap.hireveri_session)
+  const cookieHeader = request.headers.get("cookie")
+  const cookieMap = parseCookieHeader(cookieHeader)
+  return uniqueNormalizedValues([
+    cookieMap.hireveri_session,
+    ...getCookieValues(cookieHeader, "hireveri_session"),
+  ])[0] ?? null
 }
 
 async function lookupIdentityFromSupabaseSession(sessionId: string): Promise<string | null> {
@@ -552,15 +615,58 @@ async function lookupDevBypassRecruiter(): Promise<RecruiterLookupRow | null> {
   }
 }
 
-export async function getRecruiterRequestContext(request: Request): Promise<RecruiterRequestContext> {
-  const cookieMap = parseCookieHeader(request.headers.get("cookie"))
-  const sessionCookie = normalizeCookieValue(cookieMap.hireveri_session)
-  const sessionId = sessionCookie
-  const jwt = extractJwtFromRequest(request, cookieMap)
-  const jwtSub = decodeJwtSub(jwt)
-  const recruiterJwt = decodeVerifiedRecruiterJwt(jwt)
+async function lookupActiveAuthSession(sessionId: string): Promise<AuthSessionRow | null> {
+  if (!UUID_REGEX.test(sessionId)) {
+    return null
+  }
 
-  if (recruiterJwt) {
+  try {
+    const sessionRows = await prisma.$queryRaw<AuthSessionRow[]>(Prisma.sql`
+      select
+        s.session_id::text as session_id,
+        s.identity_id::text as identity_id,
+        s.is_active
+      from public.auth_sessions s
+      where s.session_id::text = ${sessionId}
+        and s.is_active = true
+        and (s.expires_at is null or s.expires_at > now())
+      limit 1
+    `)
+
+    return sessionRows[0] ?? null
+  } catch (error) {
+    console.warn("Recruiter auth session lookup skipped", error)
+    return null
+  }
+}
+
+async function lookupRecruiterForIdentity(identityId: string): Promise<RecruiterLookupRow | null> {
+  let recruiter = await lookupRecruiterByIdentity(identityId)
+
+  if (!recruiter) {
+    recruiter = await reconcileRecruiterIdentity(identityId)
+  }
+
+  return recruiter
+}
+
+export async function getRecruiterRequestContext(request: Request): Promise<RecruiterRequestContext> {
+  const cookieHeader = request.headers.get("cookie")
+  const cookieMap = parseCookieHeader(cookieHeader)
+  const sessionCandidates = uniqueNormalizedValues([
+    cookieMap.hireveri_session,
+    ...getCookieValues(cookieHeader, "hireveri_session"),
+  ])
+  const jwtCandidates = extractJwtCandidatesFromRequest(request, cookieHeader, cookieMap)
+  const sessionCookiePresent = sessionCandidates.length > 0
+
+  for (const jwt of jwtCandidates) {
+    const recruiterJwt = decodeVerifiedRecruiterJwt(jwt)
+
+    if (!recruiterJwt) {
+      continue
+    }
+
     let recruiter = await lookupRecruiterByUserOrg(recruiterJwt.user_id, recruiterJwt.organization_id)
 
     if (!recruiter && recruiterJwt.email) {
@@ -571,14 +677,16 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
       return {
         userId: recruiter.user_id,
         organizationId: recruiter.organization_id,
-        sessionCookiePresent: Boolean(sessionCookie),
+        sessionCookiePresent,
         sessionCookieMatched: true,
         sessionValidatedVia: "jwt",
       }
     }
   }
 
-  if (!sessionCookie && !jwtSub) {
+  const jwtIdentityCandidates = uniqueNormalizedValues(jwtCandidates.map((jwt) => decodeJwtSub(jwt)))
+
+  if (!sessionCookiePresent && jwtIdentityCandidates.length === 0) {
     if (DEV_AUTH_BYPASS) {
       const recruiter = await lookupDevBypassRecruiter()
       if (recruiter?.user_id && recruiter.organization_id) {
@@ -595,39 +703,27 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
     throw new ApiError(401, "SESSION_COOKIE_MISSING", "Authenticated recruiter session is missing")
   }
 
-  let identityId: string | null = jwtSub
-  let validatedVia: RecruiterRequestContext["sessionValidatedVia"] = jwtSub ? "jwt" : "identity_cookie"
+  for (const sessionId of sessionCandidates) {
+    const matchedSession = await lookupActiveAuthSession(sessionId)
 
-  let matchedSession: AuthSessionRow | null = null
+    if (!matchedSession?.identity_id) {
+      continue
+    }
 
-  if (!identityId && sessionId) {
-    try {
-      const sessionRows = await prisma.$queryRaw<AuthSessionRow[]>(Prisma.sql`
-        select
-          s.session_id::text as session_id,
-          s.identity_id::text as identity_id,
-          s.is_active
-        from public.auth_sessions s
-        where s.session_id::text = ${sessionId}
-          and (s.expires_at is null or s.expires_at > now())
-        limit 1
-      `)
+    const recruiter = await lookupRecruiterForIdentity(matchedSession.identity_id)
 
-      if (sessionRows[0]?.identity_id) {
-        matchedSession = sessionRows[0]
-        identityId = sessionRows[0].identity_id
-        validatedVia = "auth_session"
+    if (recruiter?.user_id && recruiter.organization_id) {
+      return {
+        userId: recruiter.user_id,
+        organizationId: recruiter.organization_id,
+        sessionCookiePresent: true,
+        sessionCookieMatched: true,
+        sessionValidatedVia: "auth_session",
       }
-    } catch (error) {
-      console.warn("Recruiter auth session lookup skipped", error)
     }
   }
 
-  if (matchedSession) {
-    await reactivateAuthSessionIfNeeded(matchedSession)
-  }
-
-  if (!identityId && sessionId) {
+  for (const sessionId of sessionCandidates) {
     const recruiter = await lookupRecruiterViaAuthService(sessionId)
 
     if (recruiter?.user_id && recruiter.organization_id) {
@@ -641,42 +737,45 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
     }
   }
 
-  if (!identityId) {
-    identityId = sessionId ? await lookupIdentityFromSupabaseSession(sessionId) : null
+  const identityCandidates = [...jwtIdentityCandidates]
+
+  for (const sessionId of sessionCandidates) {
+    const identityId = await lookupIdentityFromSupabaseSession(sessionId)
+    if (identityId) {
+      identityCandidates.push(identityId)
+    }
   }
 
-  if (!identityId) {
-    if (DEV_AUTH_BYPASS) {
-      const recruiter = await lookupDevBypassRecruiter()
-      if (recruiter?.user_id && recruiter.organization_id) {
-        return {
-          userId: recruiter.user_id,
-          organizationId: recruiter.organization_id,
-          sessionCookiePresent: Boolean(sessionCookie),
-          sessionCookieMatched: false,
-          sessionValidatedVia: "identity_cookie",
-        }
+  for (const identityId of uniqueNormalizedValues(identityCandidates)) {
+    const recruiter = await lookupRecruiterForIdentity(identityId)
+
+    if (recruiter?.user_id && recruiter.organization_id) {
+      return {
+        userId: recruiter.user_id,
+        organizationId: recruiter.organization_id,
+        sessionCookiePresent,
+        sessionCookieMatched: Boolean(sessionCookiePresent || jwtIdentityCandidates.includes(identityId)),
+        sessionValidatedVia: jwtIdentityCandidates.includes(identityId) ? "jwt" : "identity_cookie",
       }
     }
-
-    throw new ApiError(401, "INVALID_SESSION", "Authenticated recruiter session is invalid or expired")
   }
 
-  let recruiter = await lookupRecruiterByIdentity(identityId)
-
-  if (!recruiter) {
-    recruiter = await reconcileRecruiterIdentity(identityId)
+  if (DEV_AUTH_BYPASS) {
+    const recruiter = await lookupDevBypassRecruiter()
+    if (recruiter?.user_id && recruiter.organization_id) {
+      return {
+        userId: recruiter.user_id,
+        organizationId: recruiter.organization_id,
+        sessionCookiePresent,
+        sessionCookieMatched: false,
+        sessionValidatedVia: "identity_cookie",
+      }
+    }
   }
 
-  if (!recruiter?.user_id || !recruiter.organization_id) {
+  if (jwtIdentityCandidates.length > 0) {
     throw new ApiError(401, "RECRUITER_NOT_FOUND", "Recruiter not found for the authenticated session")
   }
 
-  return {
-    userId: recruiter.user_id,
-    organizationId: recruiter.organization_id,
-    sessionCookiePresent: Boolean(sessionCookie),
-    sessionCookieMatched: Boolean(sessionCookie || validatedVia === "jwt"),
-    sessionValidatedVia: validatedVia,
-  }
+  throw new ApiError(401, "INVALID_SESSION", "Authenticated recruiter session is invalid or expired")
 }

@@ -8,7 +8,7 @@ const AUTH_COOKIE_NAMES = [
   "access_token",
   "token",
 ]
-const LEGACY_COOKIE_DOMAINS = [".hireveri.com", ".verihireai.work"]
+const COOKIE_DOMAINS = [undefined, ".hireveri.com", ".verihireai.work"]
 
 function sameOriginPath(value: string | null) {
   if (!value) {
@@ -47,13 +47,15 @@ export async function GET(request: Request) {
   }
 
   const response = NextResponse.redirect(new URL(next, url.origin))
+  response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+  response.headers.set("Pragma", "no-cache")
   const options = cookieOptions(request)
 
   for (const name of AUTH_COOKIE_NAMES) {
-    for (const domain of LEGACY_COOKIE_DOMAINS) {
+    for (const domain of COOKIE_DOMAINS) {
       response.cookies.set(name, "", {
         ...options,
-        domain,
+        ...(domain ? { domain } : {}),
         maxAge: 0,
       })
     }
