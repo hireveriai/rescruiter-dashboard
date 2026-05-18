@@ -6,6 +6,7 @@ import { errorResponse } from "@/lib/server/response"
 import { prisma } from "@/lib/server/prisma"
 import { getInterviewAppUrl } from "@/lib/server/interview-url"
 import { deriveInterviewStatus } from "@/lib/server/services/interview-status"
+import { finalizeStaleInterviewAttempts } from "@/lib/server/services/interview-stale-finalizer"
 
 type InterviewAnswerSummaryRow = {
   attempt_id: string
@@ -297,6 +298,7 @@ async function fetchAnswerSummaries(attemptIds: string[]) {
 export async function GET(request: Request) {
   try {
     const auth = await getRecruiterRequestContext(request)
+    await finalizeStaleInterviewAttempts(auth.organizationId)
 
     const interviews = await prisma.interview.findMany({
       where: {

@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/server/prisma"
 
 import { deriveInterviewStatus } from "@/lib/server/services/interview-status"
+import { finalizeStaleInterviewAttempts } from "@/lib/server/services/interview-stale-finalizer"
 import {
   buildAnswerFallbackSummary,
   deriveResultFromAnswerSummaries,
@@ -110,6 +111,8 @@ function deriveScreenedCandidateStatus(row: CandidateDashboardRow) {
 export async function getCandidatesDashboard(
   options: CandidatesDashboardOptions
 ): Promise<CandidatesDashboardItem[]> {
+  await finalizeStaleInterviewAttempts(options.organizationId)
+
   const take = options.limit === "all" || options.limit === undefined ? undefined : options.limit
 
   const rows = await prisma.$queryRaw<CandidateDashboardRow[]>(Prisma.sql`

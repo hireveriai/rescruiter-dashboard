@@ -2,6 +2,7 @@ import { getInterviewAppUrl } from "@/lib/server/interview-url"
 import { prisma } from "@/lib/server/prisma"
 import { deriveInterviewStatus, isInviteUsable } from "@/lib/server/services/interview-status"
 import { ensureInterviewRecoverySchema } from "@/lib/server/services/interview-recovery"
+import { finalizeStaleInterviewAttempts } from "@/lib/server/services/interview-stale-finalizer"
 
 type DashboardPipelineOptions = {
   organizationId: string
@@ -46,6 +47,7 @@ export async function getDashboardPipelineData(
   options: DashboardPipelineOptions
 ): Promise<DashboardPipelineData> {
   await ensureInterviewRecoverySchema()
+  await finalizeStaleInterviewAttempts(options.organizationId)
   const appUrl = getInterviewAppUrl().replace(/\/$/, "")
 
   const interviews = await prisma.interview.findMany({
@@ -201,6 +203,7 @@ export async function getDashboardPipelineData(
     }
 
     if (normalizedDisplayStatus === "PREPARATION_FAILED") {
+      pending += 1
       flagged += 1
       pendingInterviews.push({
         inviteId: latestInvite?.inviteId ?? interview.interviewId,
@@ -232,9 +235,8 @@ export async function getDashboardPipelineData(
       return
     }
 
-    pending += 1
-
     if (normalizedInterviewStatus === "READY" && latestInvite && isInviteUsable(latestInvite)) {
+      pending += 1
       pendingInterviews.push({
         inviteId: latestInvite.inviteId,
         link: `${appUrl}/interview/${latestInvite.token}`,
