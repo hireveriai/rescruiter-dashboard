@@ -24,6 +24,7 @@ type CandidatesDashboardItem = {
   jobTitle: string
   status: string
   score: number | null
+  verisScreeningScore: number | null
   aiSummaryShort: string
   aiSummaryFull: string | null
   decision: string | null
@@ -48,9 +49,11 @@ type CandidateDashboardRow = {
   interview_created_at: Date | null
   job_title: string | null
   screening_job_title: string | null
+  screening_match_id: string | null
   screening_match_score: number | null
   screening_recommendation: string | null
   screening_created_at: Date | null
+  invite_ai_screening_match_id: string | null
   invite_access_type: string | null
   invite_start_time: Date | null
   invite_end_time: Date | null
@@ -108,6 +111,58 @@ function deriveScreenedCandidateStatus(row: CandidateDashboardRow) {
   return candidateStatus
 }
 
+function deriveCandidateInterviewStatus(row: CandidateDashboardRow) {
+  const latestAttempt = row.attempt_id
+    ? {
+        attemptId: row.attempt_id,
+        status: row.attempt_status,
+        endedAt: row.attempt_ended_at,
+      }
+    : null
+  const latestInvite = row.invite_created_at || row.invite_status
+    ? {
+        status: row.invite_status,
+        expiresAt: row.invite_expires_at,
+        usedAt: row.invite_used_at,
+      }
+    : null
+  const status = deriveInterviewStatus({
+    interviewStatus: row.interview_status,
+    latestAttempt,
+    latestInvite,
+  })
+
+  return status === "READY" ? "INVITED" : status
+}
+
+function hasInterviewEvaluation(row: CandidateDashboardRow, answerSummaries: InterviewAnswerSummary[]) {
+  const attemptStatus = String(row.attempt_status ?? "").toUpperCase()
+  const interviewStatus = String(row.interview_status ?? "").toUpperCase()
+
+  return (
+    row.final_score !== null ||
+    row.decision !== null ||
+    answerSummaries.length > 0 ||
+    Boolean(row.attempt_ended_at) ||
+    attemptStatus === "COMPLETED" ||
+    attemptStatus === "SUBMITTED" ||
+    attemptStatus === "EVALUATED" ||
+    interviewStatus === "COMPLETED"
+  )
+}
+
+function hasVerisScreening(row: CandidateDashboardRow, hasInterview: boolean) {
+  if (hasInterview) {
+    return Boolean(
+      row.screening_match_id &&
+        row.invite_ai_screening_match_id &&
+        row.screening_match_id === row.invite_ai_screening_match_id
+    )
+  }
+
+  return Boolean(row.screening_match_id)
+}
+
 export async function getCandidatesDashboard(
   options: CandidatesDashboardOptions
 ): Promise<CandidatesDashboardItem[]> {
@@ -127,6 +182,7 @@ export async function getCandidatesDashboard(
       i.created_at as interview_created_at,
       jp.job_title,
       sj.title as screening_job_title,
+      sm.id::text as screening_match_id,
       sm.match_score as screening_match_score,
       sm.recommendation as screening_recommendation,
       sm.created_at as screening_created_at,
@@ -137,6 +193,7 @@ export async function getCandidatesDashboard(
       inv.status as invite_status,
       inv.created_at as invite_created_at,
       inv.used_at as invite_used_at,
+      to_jsonb(inv)->>'ai_screening_match_id' as invite_ai_screening_match_id,
       att.attempt_id::text as attempt_id,
       att.status as attempt_status,
       att.started_at as attempt_started_at,
@@ -156,10 +213,16 @@ export async function getCandidatesDashboard(
     left join public.job_positions jp
       on jp.job_id = i.job_id
     left join lateral (
-      select *
+      select sm.*
       from public.candidate_job_matches sm
+      inner join public.jobs match_job
+        on match_job.id = sm.job_id
       where sm.candidate_id = c.candidate_id
         and sm.organization_id = c.organization_id
+        and (
+          i.interview_id is null
+          or match_job.source_job_position_id = i.job_id
+        )
       order by sm.created_at desc
       limit 1
     ) sm on true
@@ -193,32 +256,17 @@ export async function getCandidatesDashboard(
 
   return rows.map((row): CandidatesDashboardItem => {
     const hasInterview = Boolean(row.interview_id)
-    const latestAttempt = row.attempt_id
-      ? {
-          attemptId: row.attempt_id,
-          status: row.attempt_status,
-          startedAt: row.attempt_started_at,
-          endedAt: row.attempt_ended_at,
-        }
-      : null
-    const latestInvite = row.invite_created_at || row.invite_status
-      ? {
-          status: row.invite_status,
-          accessType: row.invite_access_type,
-          startTime: row.invite_start_time,
-          endTime: row.invite_end_time,
-          expiresAt: row.invite_expires_at,
-          usedAt: row.invite_used_at,
-          createdAt: row.invite_created_at,
-        }
-      : null
     const answerSummaries = row.attempt_id ? answerSummaryMap.get(row.attempt_id) ?? [] : []
     const calculatedResult = deriveResultFromAnswerSummaries(answerSummaries)
+    const hasEvaluation = hasInterviewEvaluation(row, answerSummaries)
+    const hasScreening = hasVerisScreening(row, hasInterview)
     const finalScore =
-      row.final_score === null || row.final_score === undefined
-        ? (row.screening_match_score ?? calculatedResult.score)
+      !hasEvaluation
+        ? null
+        : row.final_score === null || row.final_score === undefined
+          ? calculatedResult.score
         : Number(row.final_score)
-    const aiSummaryFull = row.ai_summary ?? buildAnswerFallbackSummary(answerSummaries)
+    const aiSummaryFull = hasEvaluation ? row.ai_summary ?? buildAnswerFallbackSummary(answerSummaries) : null
 
     return {
       candidateId: row.candidate_id,
@@ -226,14 +274,9 @@ export async function getCandidatesDashboard(
       attemptId: row.attempt_id,
       candidateName: row.candidate_name || "Candidate",
       jobTitle: row.job_title ?? row.screening_job_title ?? "-",
-      status: hasInterview
-        ? deriveInterviewStatus({
-            interviewStatus: row.interview_status,
-            latestAttempt,
-            latestInvite,
-          })
-        : deriveScreenedCandidateStatus(row),
-      score: Number.isFinite(finalScore) ? finalScore : calculatedResult.score,
+      status: hasInterview ? deriveCandidateInterviewStatus(row) : deriveScreenedCandidateStatus(row),
+      score: finalScore === null ? null : Number.isFinite(finalScore) ? finalScore : calculatedResult.score,
+      verisScreeningScore: hasScreening ? row.screening_match_score : null,
       aiSummaryShort: getShortSummary(aiSummaryFull),
       aiSummaryFull,
       decision: row.decision ?? calculatedResult.decision,

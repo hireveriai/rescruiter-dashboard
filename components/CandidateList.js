@@ -125,17 +125,18 @@ export default function CandidateList({ initialCandidates, isLoading = false }) 
                 <th className="text-left p-4">Job</th>
                 <th className="text-left p-4">Status</th>
                 <th className="text-left p-4">Score</th>
+                <th className="text-left p-4">VERIS Screening Score</th>
                 <th className="text-left p-4">VERIS Insight</th>
               </tr>
             </thead>
 
             {isLoading ? (
-              <TableSkeleton rows={5} columns={5} showAvatar />
+              <TableSkeleton rows={5} columns={6} showAvatar />
             ) : (
               <tbody>
                 {displayCandidates.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-4 text-gray-400 text-center">
+                  <td colSpan={6} className="p-4 text-gray-400 text-center">
                     No candidates available
                   </td>
                 </tr>
@@ -146,6 +147,7 @@ export default function CandidateList({ initialCandidates, isLoading = false }) 
                     <td className="p-4 text-gray-300">{candidate.jobTitle}</td>
                     <td className={`p-4 ${getStatusColor(candidate.status)}`}>{formatStatusLabel(candidate.status)}</td>
                     <td className={`p-4 ${getScoreColor(candidate.score)}`}>{formatScore(candidate.score)}</td>
+                    <td className={`p-4 ${getScoreColor(candidate.verisScreeningScore)}`}>{formatScore(candidate.verisScreeningScore)}</td>
                     <td className="p-4">
                       {candidate.aiSummaryFull ? (
                         <button
