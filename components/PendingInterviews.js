@@ -395,11 +395,13 @@ function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, onEdit, o
   )
 }
 
-export default function PendingInterviews({ initialPendingInterviews, isLoading = false }) {
+export default function PendingInterviews({ initialPendingInterviews, initialPendingTotal, isLoading = false }) {
   const searchParams = useAuthSearchParams()
   const { timezone } = useOrgTimezone()
   const [interviews, setInterviews] = useState(() => initialPendingInterviews ?? [])
+  const [pendingTotal, setPendingTotal] = useState(() => initialPendingTotal ?? initialPendingInterviews?.length ?? 0)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isLoadingAll, setIsLoadingAll] = useState(false)
   const [editItem, setEditItem] = useState(null)
   const [editForm, setEditForm] = useState({ accessType: "FLEXIBLE", startTime: "", endTime: "" })
   const [savingEdit, setSavingEdit] = useState(false)
@@ -423,19 +425,21 @@ export default function PendingInterviews({ initialPendingInterviews, isLoading 
       }
 
       setInterviews(initialPendingInterviews ?? [])
+      setPendingTotal(initialPendingTotal ?? initialPendingInterviews?.length ?? 0)
     })
 
     return () => {
       active = false
     }
-  }, [hasInitial, initialPendingInterviews])
+  }, [hasInitial, initialPendingInterviews, initialPendingTotal])
 
-  const loadPendingInterviews = useCallback(async () => {
+  const loadPendingInterviews = useCallback(async ({ limit = 5 } = {}) => {
     if (!hasAuthQuery(searchParams)) {
       return
     }
 
-    const response = await fetch(buildAuthUrl("/api/dashboard/pipeline", searchParams), {
+    const path = limit === "all" ? "/api/dashboard/pipeline?limit=all" : `/api/dashboard/pipeline?limit=${limit}`
+    const response = await fetch(buildAuthUrl(path, searchParams), {
       credentials: "include",
       cache: "no-store",
     })
@@ -447,6 +451,7 @@ export default function PendingInterviews({ initialPendingInterviews, isLoading 
     }
 
     setInterviews(data.data?.pendingInterviews ?? [])
+    setPendingTotal(data.data?.pendingTotal ?? data.data?.pendingInterviews?.length ?? 0)
   }, [searchParams])
 
   useEffect(() => {
@@ -456,7 +461,7 @@ export default function PendingInterviews({ initialPendingInterviews, isLoading 
 
     let isMounted = true
 
-    loadPendingInterviews().catch((error) => {
+    loadPendingInterviews({ limit: 5 }).catch((error) => {
       if (isMounted) {
         console.error("Failed to fetch pending interviews", error)
       }
@@ -495,6 +500,24 @@ export default function PendingInterviews({ initialPendingInterviews, isLoading 
   )
 
   const previewInterviews = sortedInterviews.slice(0, 5)
+  const hasMoreInterviews = pendingTotal > previewInterviews.length
+
+  async function handleOpenAllInterviews() {
+    setIsModalOpen(true)
+
+    if (!hasMoreInterviews || isLoadingAll) {
+      return
+    }
+
+    try {
+      setIsLoadingAll(true)
+      await loadPendingInterviews({ limit: "all" })
+    } catch (error) {
+      console.error("Failed to fetch all pending interviews", error)
+    } finally {
+      setIsLoadingAll(false)
+    }
+  }
 
   async function handleCopy(link) {
     const copied = await copyText(link)
@@ -518,7 +541,7 @@ export default function PendingInterviews({ initialPendingInterviews, isLoading 
       if (!response.ok || !data.success) {
         throw new Error(data?.error?.message || data?.message || "Failed to retry preparation")
       }
-      await loadPendingInterviews()
+      await loadPendingInterviews({ limit: 5 })
     } catch (error) {
       setNotice({
         open: true,
@@ -542,7 +565,7 @@ export default function PendingInterviews({ initialPendingInterviews, isLoading 
       if (!response.ok || !data.success) {
         throw new Error(data?.error?.message || data?.message || "Failed to retry email")
       }
-      await loadPendingInterviews()
+      await loadPendingInterviews({ limit: 5 })
     } catch (error) {
       setNotice({
         open: true,
@@ -577,7 +600,7 @@ export default function PendingInterviews({ initialPendingInterviews, isLoading 
       if (recoveryLink) {
         await copyText(recoveryLink)
       }
-      await loadPendingInterviews()
+      await loadPendingInterviews({ limit: 5 })
       setNotice({
         open: true,
         title: action === "approve" ? "Recovery link issued" : "Recovery updated",
@@ -685,7 +708,7 @@ export default function PendingInterviews({ initialPendingInterviews, isLoading 
       }
 
       setEditItem(null)
-      await loadPendingInterviews()
+      await loadPendingInterviews({ limit: 5 })
     } catch (error) {
       setNotice({
         open: true,
@@ -723,7 +746,7 @@ export default function PendingInterviews({ initialPendingInterviews, isLoading 
 
       setDeleteItem(null)
       setDeleteReason("Candidate not available")
-      await loadPendingInterviews()
+      await loadPendingInterviews({ limit: 5 })
       setNotice({
         open: true,
         title: "Interview invite deleted",
@@ -753,13 +776,13 @@ export default function PendingInterviews({ initialPendingInterviews, isLoading 
             </span>
           </h2>
 
-          {sortedInterviews.length > previewInterviews.length ? (
+          {hasMoreInterviews ? (
             <button
               type="button"
               className="text-sm text-blue-400"
-              onClick={() => setIsModalOpen(true)}
+              onClick={handleOpenAllInterviews}
             >
-              View More
+              {isLoadingAll ? "Loading..." : "View More"}
             </button>
           ) : null}
         </div>

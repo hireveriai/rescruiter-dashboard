@@ -31,6 +31,8 @@ const navLoadingMessages = {
   "/contact-us": "Preparing contact workspace...",
 };
 
+const ALERT_READ_STORAGE_KEY = "hireveri-read-alert-ids";
+
 function isActivePath(pathname, href) {
   if (href === "/") {
     return pathname === "/";
@@ -113,7 +115,24 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
   const [profileOpen, setProfileOpen] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [alerts, setAlerts] = useState(() => initialAlerts ?? []);
+  const [readAlertIds, setReadAlertIds] = useState(() => new Set());
   const [profile, setProfile] = useState(initialProfile);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      const stored = window.localStorage.getItem(ALERT_READ_STORAGE_KEY);
+      const parsed = stored ? JSON.parse(stored) : [];
+      if (Array.isArray(parsed)) {
+        setReadAlertIds(new Set(parsed.filter((id) => typeof id === "string" && id.length > 0)));
+      }
+    } catch {
+      setReadAlertIds(new Set());
+    }
+  }, []);
 
   useEffect(() => {
     if (initialAlerts !== undefined) {
@@ -184,6 +203,10 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
   }, [searchParams]);
 
   const displayProfile = initialProfile?.name ? initialProfile : profile;
+  const unreadAlerts = useMemo(
+    () => alerts.filter((alert) => !readAlertIds.has(alert.id)),
+    [alerts, readAlertIds]
+  );
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -233,6 +256,32 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
     setProfileOpen(false);
     logoutRecruiter();
   };
+
+  function persistReadAlertIds(nextReadIds) {
+    setReadAlertIds(nextReadIds);
+
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(ALERT_READ_STORAGE_KEY, JSON.stringify([...nextReadIds]));
+    } catch {
+      // Read state is a convenience layer; ignore storage failures.
+    }
+  }
+
+  function handleMarkAlertRead(alertId) {
+    const nextReadIds = new Set(readAlertIds);
+    nextReadIds.add(alertId);
+    persistReadAlertIds(nextReadIds);
+  }
+
+  function handleMarkAllAlertsRead() {
+    const nextReadIds = new Set(readAlertIds);
+    alerts.forEach((alert) => nextReadIds.add(alert.id));
+    persistReadAlertIds(nextReadIds);
+  }
 
   const handleNavigationClick = (href) => {
     if (typeof window !== "undefined") {
@@ -302,9 +351,9 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
                   ].join(" ")}
                 >
                   Alerts
-                  {alerts.length > 0 ? (
+                  {unreadAlerts.length > 0 ? (
                     <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border border-cyan-300/40 bg-cyan-400/20 px-1 text-[10px] font-semibold text-cyan-100">
-                      {alerts.length > 9 ? "9+" : alerts.length}
+                      {unreadAlerts.length > 9 ? "9+" : unreadAlerts.length}
                     </span>
                   ) : null}
                 </button>
@@ -316,20 +365,24 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
                         <h2 className="text-lg font-semibold text-white">Alerts</h2>
                         <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">Interview Activity</p>
                       </div>
-                      {alerts.length > 0 ? (
-                        <span className="rounded-full border border-cyan-400/25 bg-cyan-500/10 px-2.5 py-1 text-xs font-semibold text-cyan-100">
-                          {alerts.length}
-                        </span>
+                      {unreadAlerts.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={handleMarkAllAlertsRead}
+                          className="rounded-full border border-cyan-400/25 bg-cyan-500/10 px-2.5 py-1 text-xs font-semibold text-cyan-100 transition hover:border-cyan-300/50 hover:bg-cyan-500/20"
+                        >
+                          Mark all as read
+                        </button>
                       ) : null}
                     </div>
 
                     <div className="mt-4 max-h-[420px] space-y-3 overflow-y-auto pr-1">
-                      {alerts.length === 0 ? (
+                      {unreadAlerts.length === 0 ? (
                         <div className="rounded-2xl border border-slate-800 bg-slate-950/35 px-4 py-5 text-sm text-slate-400">
-                          No interview activity alerts yet.
+                          No unread interview activity alerts.
                         </div>
                       ) : (
-                        alerts.slice(0, 8).map((alert) => (
+                        unreadAlerts.slice(0, 8).map((alert) => (
                           <article key={alert.id} className={`rounded-2xl border px-4 py-3 ${getAlertToneClass(alert.tone)}`}>
                             <div className="flex items-start justify-between gap-3">
                               <p className="text-sm font-semibold text-white">{alert.title}</p>
@@ -338,6 +391,15 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
                               </span>
                             </div>
                             <p className="mt-2 text-sm leading-6 text-slate-200">{alert.message}</p>
+                            <div className="mt-3 flex justify-end">
+                              <button
+                                type="button"
+                                onClick={() => handleMarkAlertRead(alert.id)}
+                                className="rounded-lg border border-white/10 bg-slate-950/30 px-2.5 py-1 text-xs font-semibold text-slate-200 transition hover:border-cyan-300/35 hover:bg-cyan-500/10 hover:text-cyan-100"
+                              >
+                                Read
+                              </button>
+                            </div>
                           </article>
                         ))
                       )}

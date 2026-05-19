@@ -35,6 +35,7 @@ type OverviewPayload = {
   }
   dashboardState: ReturnType<typeof deriveDashboardState>
   pendingInterviews: Array<Record<string, unknown>>
+  pendingInterviewsTotal: number
   recordedInterviews: Array<Record<string, unknown>>
   candidates: Awaited<ReturnType<typeof getCandidatesDashboard>>
   veris: VerisSummaryCard[]
@@ -123,7 +124,12 @@ async function getReportAndDecisionMetrics(organizationId: string) {
 async function buildOverview(
   auth: Awaited<ReturnType<typeof getRecruiterRequestContext>>
 ): Promise<OverviewPayload> {
-  const [profile, veris, candidates, recordedInterviews, pipelineData, workflowSnapshot, alerts] = await Promise.all([
+  const pipelinePromise = getDashboardPipelineData({
+    organizationId: auth.organizationId,
+    limit: 5,
+  })
+
+  const [profile, veris, candidates, recordedInterviews, pipelineData, alerts] = await Promise.all([
     getRecruiterProfile(auth),
     getVerisSummaryCards(auth.organizationId, 6),
     getCandidatesDashboard({
@@ -131,12 +137,10 @@ async function buildOverview(
       limit: 5,
     }),
     getDashboardRecordings(auth.organizationId),
-    getDashboardPipelineData({
-      organizationId: auth.organizationId,
-    }),
-    getDashboardWorkflowSnapshot(auth.organizationId),
+    pipelinePromise,
     getDashboardAlerts(auth.organizationId, 8),
   ])
+  const workflowSnapshot = await getDashboardWorkflowSnapshot(auth.organizationId, pipelineData)
 
   return {
     profile,
@@ -147,6 +151,7 @@ async function buildOverview(
     },
     dashboardState: workflowSnapshot.dashboardState,
     pendingInterviews: pipelineData.pendingInterviews,
+    pendingInterviewsTotal: pipelineData.pendingTotal,
     recordedInterviews,
     candidates: candidates ?? [],
     veris,

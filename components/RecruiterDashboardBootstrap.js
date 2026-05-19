@@ -139,12 +139,13 @@ export default function RecruiterDashboardBootstrap({ children }) {
           cache: "no-store",
         })
 
-        const overviewPath = `/api/dashboard/overview?refresh=${Date.now()}`
+        const overviewPath = forceRefresh ? `/api/dashboard/overview?refresh=${Date.now()}` : "/api/dashboard/overview"
         const overviewPromise = fetch(buildAuthUrl(overviewPath, searchParams), {
           credentials: "include",
-          cache: "no-store",
+          cache: forceRefresh ? "no-store" : "default",
         })
-        const workflowPromise = fetch(buildAuthUrl(`/api/dashboard/workflow?refresh=${Date.now()}`, searchParams), {
+        const workflowPath = forceRefresh ? `/api/dashboard/workflow?refresh=${Date.now()}` : "/api/dashboard/workflow"
+        const workflowPromise = fetch(buildAuthUrl(workflowPath, searchParams), {
           credentials: "include",
           cache: "no-store",
         })

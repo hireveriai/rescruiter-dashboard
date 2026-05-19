@@ -43,7 +43,11 @@ function DashboardContent({ profile, overview, isLoading }) {
             <Pipeline initialPipeline={overview?.pipeline} isLoading={isLoading} />
           </Suspense>
           <Suspense fallback={<div className="mt-10 overflow-hidden rounded-lg bg-[#111a2e]"><table className="w-full text-sm"><TableSkeleton rows={3} columns={6} showAvatar /></table></div>}>
-            <PendingInterviews initialPendingInterviews={overview?.pendingInterviews} isLoading={isLoading} />
+            <PendingInterviews
+              initialPendingInterviews={overview?.pendingInterviews}
+              initialPendingTotal={overview?.pendingInterviewsTotal}
+              isLoading={isLoading}
+            />
           </Suspense>
           <Suspense fallback={<CardSkeleton count={3} className="mt-10 grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3" />}>
             <RecordedInterviews

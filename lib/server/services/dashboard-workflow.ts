@@ -27,6 +27,15 @@ export type DashboardWorkflowSnapshot = {
   dashboardState: ReturnType<typeof deriveDashboardState>
 }
 
+type DashboardPipelineSnapshot = {
+  pipeline: {
+    pending: number
+    inProgress: number
+    completed: number
+    flagged: number
+  }
+}
+
 const tableExistenceCache = new Map<string, boolean>()
 
 async function tableExists(tableName: string) {
@@ -125,7 +134,10 @@ async function getInterviewWorkflowMetrics(organizationId: string) {
   }
 }
 
-export async function getDashboardWorkflowSnapshot(organizationId: string): Promise<DashboardWorkflowSnapshot> {
+export async function getDashboardWorkflowSnapshot(
+  organizationId: string,
+  existingPipelineData?: DashboardPipelineSnapshot
+): Promise<DashboardWorkflowSnapshot> {
   const [jobs, invites, screeningMetrics, interviewMetrics, pipelineData] = await Promise.all([
     prisma.jobPosition.count({
       where: {
@@ -141,7 +153,7 @@ export async function getDashboardWorkflowSnapshot(organizationId: string): Prom
     }),
     getScreeningWorkflowMetrics(organizationId),
     getInterviewWorkflowMetrics(organizationId),
-    getDashboardPipelineData({ organizationId }),
+    existingPipelineData ?? getDashboardPipelineData({ organizationId, limit: 5, finalizeStale: false }),
   ])
 
   const workflowMetrics = {

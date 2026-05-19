@@ -112,11 +112,9 @@ export default function CandidateList({ initialCandidates, isLoading = false }) 
             </span>
           </h2>
 
-          {displayCandidates.length > previewCandidates.length ? (
           <Link href={buildAuthUrl("/candidates", searchParams)} className="text-blue-400 text-sm">
-            View More
+            View All
           </Link>
-          ) : null}
         </div>
 
         <div className="bg-[#111a2e] rounded-lg overflow-hidden">

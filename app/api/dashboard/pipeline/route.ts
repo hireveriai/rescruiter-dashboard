@@ -5,12 +5,24 @@ import { errorResponse } from "@/lib/server/response"
 import { getDashboardPipelineData } from "@/lib/server/services/dashboard-pipeline"
 import { getDashboardRecordings } from "@/lib/server/services/dashboard-recordings"
 
+function parseLimit(value: string | null): number | "all" {
+  if (value === "all") {
+    return "all"
+  }
+
+  const parsed = Number.parseInt(value ?? "5", 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 5
+}
+
 export async function GET(request: Request) {
   try {
     const auth = await getRecruiterRequestContext(request)
+    const { searchParams } = new URL(request.url)
+    const limit = parseLimit(searchParams.get("limit"))
     const [pipelineData, recordedInterviews] = await Promise.all([
       getDashboardPipelineData({
         organizationId: auth.organizationId,
+        limit,
       }),
       getDashboardRecordings(auth.organizationId),
     ])
@@ -20,6 +32,7 @@ export async function GET(request: Request) {
       data: {
         pipeline: pipelineData.pipeline,
         pendingInterviews: pipelineData.pendingInterviews,
+        pendingTotal: pipelineData.pendingTotal,
         recordedInterviews,
       },
     })
