@@ -14,7 +14,7 @@ const defaultStepsByMode = {
   dashboard: [
     "Loading recruiter insights",
     "Synchronizing hiring intelligence",
-    "Building AI recruiter insights",
+    "Building recruiter insights",
     "Preparing workflow recommendations",
   ],
   table: [

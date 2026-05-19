@@ -29,7 +29,7 @@ function getTranscriptPreview(item: Record<string, any>) {
       return summary
     }
 
-    return "AI transcription in progress. Cognitive analysis pending."
+    return "Transcript processing. VERIS analysis pending."
   }
 
   return preview
@@ -66,7 +66,7 @@ export default function RecordedInterviewCard({ item, onOpenWarRoom, compact = f
           </div>
 
           <div className="rounded-2xl border border-slate-800/90 bg-slate-950/30 px-3 py-2.5">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">Evidence Preview</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">Evidence</p>
             <p className="mt-1.5 line-clamp-2 min-h-[38px] min-w-0 break-words text-[13px] leading-[19px] text-slate-300">{getTranscriptPreview(item)}</p>
           </div>
 

@@ -274,7 +274,7 @@ function GuidedInterviewEmptyState({ compact = false }) {
     <div className={`rounded-2xl border border-cyan-300/15 bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.12),transparent_34%),linear-gradient(135deg,rgba(15,23,42,0.82),rgba(2,6,23,0.72))] text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] ${compact ? "px-4 py-6" : "px-6 py-8"}`}>
       <p className="text-base font-semibold text-white">Start by creating a job and inviting candidates.</p>
       <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-400">
-        The workflow will guide screening, AI interviews, reports, and hiring decisions.
+        Create a job and begin candidate evaluation.
       </p>
       <div className="mt-4 flex flex-wrap justify-center gap-3">
         <button
@@ -410,6 +410,25 @@ export default function PendingInterviews({ initialPendingInterviews, isLoading 
   const [nowTick, setNowTick] = useState(() => Date.now())
   const [copiedLink, setCopiedLink] = useState("")
   const hasInitial = initialPendingInterviews !== undefined
+
+  useEffect(() => {
+    if (!hasInitial) {
+      return undefined
+    }
+
+    let active = true
+    window.queueMicrotask(() => {
+      if (!active) {
+        return
+      }
+
+      setInterviews(initialPendingInterviews ?? [])
+    })
+
+    return () => {
+      active = false
+    }
+  }, [hasInitial, initialPendingInterviews])
 
   const loadPendingInterviews = useCallback(async () => {
     if (!hasAuthQuery(searchParams)) {

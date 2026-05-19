@@ -22,7 +22,7 @@ function RecordedInterviewsModal({ isOpen, onClose, interviews, organizationId }
           <div>
             <h3 className="text-2xl font-semibold text-white">Cognitive Evidence Archive</h3>
             <p className="mt-2 text-sm text-slate-400">
-              Interview replay evidence, behavioral telemetry, and forensic review entry points.
+              Interview replay evidence, audit trail, and behavioral review entry points.
             </p>
           </div>
 

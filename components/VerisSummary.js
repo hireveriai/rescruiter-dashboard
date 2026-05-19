@@ -36,11 +36,24 @@ function getRiskColor(value) {
   return "text-red-400"
 }
 
+function getInsightSummary(item) {
+  const reason = String(item.recommendationReason ?? "").trim()
+  const behavioralFlags = String(item.behavioralFlagsShort ?? "").trim()
+  const strengths = String(item.strengthsShort ?? "").trim()
+
+  if (reason) return reason
+  if (behavioralFlags && !/^none$/i.test(behavioralFlags)) return behavioralFlags
+  if (strengths) return strengths
+
+  return "Review evidence and pipeline signals before final decision."
+}
+
 export default function VerisSummary({ initialSummaries, isLoading = false }) {
   const searchParams = useAuthSearchParams()
   const [summaries, setSummaries] = useState([])
   const [allSummaries, setAllSummaries] = useState(null)
   const [showAll, setShowAll] = useState(false)
+  const [expandedSummaryIds, setExpandedSummaryIds] = useState(() => new Set())
   const [isLoadingAll, setIsLoadingAll] = useState(false)
   const [loadAllError, setLoadAllError] = useState("")
   const baseSummaries = initialSummaries !== undefined ? initialSummaries : summaries
@@ -113,12 +126,26 @@ export default function VerisSummary({ initialSummaries, isLoading = false }) {
     }
   }
 
+  function toggleSummaryDetails(attemptId) {
+    setExpandedSummaryIds((current) => {
+      const next = new Set(current)
+
+      if (next.has(attemptId)) {
+        next.delete(attemptId)
+      } else {
+        next.add(attemptId)
+      }
+
+      return next
+    })
+  }
+
   return (
-    <div className="mt-10">
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="mt-8">
+      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold">
-            VERIS AI Summaries
+            VERIS Insights
             <span className="ml-2 inline-flex rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2.5 py-1 align-middle text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-200">
               Recent
             </span>
@@ -166,51 +193,74 @@ export default function VerisSummary({ initialSummaries, isLoading = false }) {
             No VERIS summaries available
           </div>
         ) : (
-          displaySummaries.map((item) => (
-            <div
-              key={item.attemptId}
-              className="bg-[#111a2e] p-5 rounded-lg"
-            >
-              <div className="text-lg font-semibold">
-                {item.candidateName}
-              </div>
+          displaySummaries.map((item) => {
+            const isExpanded = expandedSummaryIds.has(item.attemptId)
 
-              <div className="text-gray-400 text-sm mb-3">
-                {item.jobTitle}
-              </div>
+            return (
+              <div
+                key={item.attemptId}
+                className="rounded-lg bg-[#111a2e] p-4"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-base font-semibold text-white">
+                      {item.candidateName}
+                    </div>
 
-              <div className="text-sm">
-                Score: <span className="text-blue-400">{item.scoreLabel ?? "-"}</span>
-              </div>
+                    <div className="mt-0.5 truncate text-sm text-gray-400">
+                      {item.jobTitle}
+                    </div>
+                  </div>
 
-              <div className="text-sm mt-1">
-                Risk Level: <span className={getRiskColor(item.riskLevel)}>{item.riskLevel}</span>
-              </div>
+                  <div className="shrink-0 text-right">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Risk Level</div>
+                    <div className={`mt-1 text-sm font-semibold ${getRiskColor(item.riskLevel)}`}>{item.riskLevel}</div>
+                  </div>
+                </div>
 
-              <div className="text-sm mt-1 text-slate-300">
-                Strengths: <span className="text-slate-100">{item.strengthsShort}</span>
-              </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-slate-400">Recommendation</span>
+                  <span className={`font-semibold ${getRecommendationColor(item.recommendation)}`}>
+                    {item.recommendation}
+                  </span>
+                </div>
 
-              <div className="text-sm mt-1 text-slate-300">
-                Weaknesses: <span className="text-slate-100">{item.weaknessesShort}</span>
-              </div>
+                <p className="mt-2 line-clamp-2 min-h-[38px] text-sm leading-5 text-slate-300">
+                  {getInsightSummary(item)}
+                </p>
 
-              <div className="text-sm mt-1 text-slate-300">
-                Behavioral Flags: <span className="text-slate-100">{item.behavioralFlagsShort}</span>
-              </div>
+                <button
+                  type="button"
+                  onClick={() => toggleSummaryDetails(item.attemptId)}
+                  className="mt-3 text-xs font-semibold text-cyan-200 transition hover:text-cyan-100"
+                >
+                  {isExpanded ? "Hide details" : "View evidence details"}
+                </button>
 
-              <div className="text-sm mt-2">
-                Recommendation:
-                <span className={`ml-2 ${getRecommendationColor(item.recommendation)}`}>
-                  {item.recommendation}
-                </span>
-              </div>
+                {isExpanded ? (
+                  <div className="mt-3 rounded-lg border border-slate-800 bg-slate-950/25 p-3">
+                    <div className="grid gap-2 text-sm text-slate-300">
+                      <div>
+                        Score: <span className="text-blue-400">{item.scoreLabel ?? "-"}</span>
+                      </div>
 
-              <div className="text-sm mt-1 text-slate-400">
-                Reason: <span className="text-slate-200">{item.recommendationReason}</span>
+                      <div>
+                        Strengths: <span className="text-slate-100">{item.strengthsShort}</span>
+                      </div>
+
+                      <div>
+                        Weaknesses: <span className="text-slate-100">{item.weaknessesShort}</span>
+                      </div>
+
+                      <div>
+                        Behavioral Flags: <span className="text-slate-100">{item.behavioralFlagsShort}</span>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
               </div>
-            </div>
-          ))
+            )
+          })
         )}
         </div>
       )}

@@ -212,7 +212,7 @@ function CompletedCandidateModal({ candidate, onClose }) {
           <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/35 p-5">
             <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Summary</p>
             <div className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-300">
-              {candidate.aiSummaryFull || "No AI summary has been recorded for this completed interview yet. Review the transcript below for recorded answers and evaluation details."}
+              {candidate.aiSummaryFull || "No VERIS summary has been recorded for this completed interview yet. Review the transcript below for recorded answers and evaluation details."}
             </div>
           </div>
 
@@ -220,7 +220,7 @@ function CompletedCandidateModal({ candidate, onClose }) {
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Transcript + Result</p>
-                <h4 className="mt-2 text-lg font-semibold text-white">Question, Answer and AI Evaluation</h4>
+                <h4 className="mt-2 text-lg font-semibold text-white">Question, Answer and VERIS Evaluation</h4>
               </div>
               <p className="text-sm text-slate-500">{answerSummaries.length} recorded answer{answerSummaries.length === 1 ? "" : "s"}</p>
             </div>
@@ -287,9 +287,9 @@ function CompletedCandidateModal({ candidate, onClose }) {
                         </div>
 
                         <div className="rounded-xl border border-slate-800/80 bg-[#08111f]/70 p-4">
-                          <p className="text-xs uppercase tracking-[0.2em] text-slate-500">AI Feedback</p>
+                          <p className="text-xs uppercase tracking-[0.2em] text-slate-500">VERIS Feedback</p>
                           <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-300">
-                            {answer.feedback || evaluationText || "No AI feedback has been recorded for this answer."}
+                            {answer.feedback || evaluationText || "No VERIS feedback has been recorded for this answer."}
                           </p>
                         </div>
                       </div>
@@ -428,7 +428,7 @@ export default function CandidatesPage() {
                 <p className="text-xs font-semibold uppercase tracking-[0.32em] text-slate-500">Candidate Registry</p>
                 <h1 className="mt-4 text-4xl font-semibold tracking-tight text-white">All Candidates</h1>
                 <p className="mt-4 text-base leading-7 text-slate-400">
-                  Unified candidate view across pending and completed interview journeys, with evaluation signals and recruiter-facing AI insight.
+                  Unified candidate view across pending and completed interview journeys, with evaluation signals and recruiter-facing insight.
                 </p>
               </div>
 
@@ -526,7 +526,7 @@ export default function CandidatesPage() {
                     <th className="p-5 text-left font-medium">Status</th>
                     <th className="p-5 text-left font-medium">Score</th>
                     <th className="p-5 text-left font-medium">Decision</th>
-                    <th className="p-5 text-left font-medium">AI Insight</th>
+                    <th className="p-5 text-left font-medium">VERIS Insight</th>
                     <th className="p-5 text-right font-medium">Action</th>
                   </tr>
                 </thead>

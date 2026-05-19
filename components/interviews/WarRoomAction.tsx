@@ -18,7 +18,7 @@ export default function WarRoomAction({ onOpen, candidateName = "candidate", com
     >
       <span className="min-w-0">
         <span className="block truncate text-sm font-semibold">Open War Room</span>
-        <span className="mt-1 hidden truncate text-xs text-slate-400 transition group-hover/war:text-blue-100/75 sm:block">Behavioral telemetry & forensic analysis</span>
+        <span className="mt-1 hidden truncate text-xs text-slate-400 transition group-hover/war:text-blue-100/75 sm:block">Evidence, audit trail, and behavioral review</span>
       </span>
       <span className="shrink-0 text-blue-200 transition group-hover/war:translate-x-0.5">→</span>
     </button>

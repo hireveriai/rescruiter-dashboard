@@ -175,3 +175,4 @@ Raw query failed. Code: `42702`. Message: `ERROR: column reference "attempt_id" 
  GET /api/me 200 in 1172ms (compile: 20ms, proxy.ts: 10ms, render: 1142ms)
  GET /api/dashboard/workflow?refresh=1778947395677 200 in 3.4s (compile: 5ms, proxy.ts: 8ms, render: 3.3s)
 prisma:error Error in PostgreSQL connection: Error { kind: Io, cause: Some(Os { code: 10054, kind: ConnectionReset, message: "An existing connection was forcibly closed by the remote host." }) }
+✓ Finished writing to filesystem cache in 12.9s

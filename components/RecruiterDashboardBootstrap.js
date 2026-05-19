@@ -7,6 +7,8 @@ import { clearHireveriSessionCookie, getRecruiterLoginUrl } from "@/lib/client/a
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 import { useOrgTimezone } from "@/components/OrgTimezoneProvider"
 
+const DASHBOARD_AUTO_REFRESH_MS = 10000
+
 function WorkspaceShell({ tone = "loading", title, message, ctaLabel, onCtaClick }) {
   const isError = tone === "error"
 
@@ -107,16 +109,22 @@ export default function RecruiterDashboardBootstrap({ children }) {
     }
 
     if (cachedOverview) {
-      setState((current) => ({
-        status: "ready",
-        profile: cachedOverview?.profile ?? current.profile,
-        overview: cachedOverview,
-        message: "",
-      }))
+      window.queueMicrotask(() => {
+        if (!active) {
+          return
+        }
+
+        setState((current) => ({
+          status: "ready",
+          profile: cachedOverview?.profile ?? current.profile,
+          overview: cachedOverview,
+          message: "",
+        }))
+      })
     }
 
-    async function bootstrap({ forceRefresh = false } = {}) {
-      if (!cachedOverview) {
+    async function bootstrap({ forceRefresh = false, silent = false } = {}) {
+      if (!cachedOverview && !silent) {
         setState((current) => ({
           status: "loading",
           profile: current.profile,
@@ -274,6 +282,18 @@ export default function RecruiterDashboardBootstrap({ children }) {
 
     bootstrap()
 
+    let refreshInFlight = false
+    const refreshTimer = window.setInterval(() => {
+      if (refreshInFlight) {
+        return
+      }
+
+      refreshInFlight = true
+      bootstrap({ forceRefresh: true, silent: true }).finally(() => {
+        refreshInFlight = false
+      })
+    }, DASHBOARD_AUTO_REFRESH_MS)
+
     function handlePageShow(event) {
       if (!event.persisted) {
         return
@@ -291,11 +311,12 @@ export default function RecruiterDashboardBootstrap({ children }) {
 
     return () => {
       active = false
+      window.clearInterval(refreshTimer)
       if (typeof window !== "undefined") {
         window.removeEventListener("pageshow", handlePageShow)
       }
     }
-  }, [searchParams])
+  }, [searchParams, setTimezoneState])
 
   if (state.status === "error") {
     return (

@@ -492,10 +492,10 @@ function getCandidateStrengths(match: MatchRow) {
   }
 
   if (match.recommendation === "STRONG_FIT") {
-    strengths.push("AI marked as a strong fit")
+    strengths.push("VERIS marked as a strong fit")
   }
 
-  return strengths.length > 0 ? strengths : ["No standout strength flagged by the AI screen"]
+  return strengths.length > 0 ? strengths : ["No standout strength flagged by screening"]
 }
 
 function getCandidateWeaknesses(match: MatchRow) {
@@ -517,7 +517,7 @@ function getCandidateWeaknesses(match: MatchRow) {
     weaknesses.push("Medium risk profile")
   }
 
-  return weaknesses.length > 0 ? weaknesses : ["No major weakness surfaced by the AI screen"]
+  return weaknesses.length > 0 ? weaknesses : ["No major weakness surfaced by screening"]
 }
 
 function getCandidateVerdict(match: MatchRow) {
@@ -534,6 +534,20 @@ function getCandidateVerdict(match: MatchRow) {
   }
 
   return "Do not prioritize for this role"
+}
+
+function getCandidateInsightSummary(match: MatchRow, verdict: string) {
+  const reasoning = String(match.insights?.short_reasoning ?? "").trim()
+
+  if (reasoning) {
+    return reasoning
+  }
+
+  if (match.riskLevel === "HIGH") {
+    return "High risk profile. Review evidence before outreach."
+  }
+
+  return verdict
 }
 
 function getConfidenceLevel(match: MatchRow): "HIGH" | "MEDIUM" | "LOW" {
@@ -2478,6 +2492,7 @@ export default function AiScreeningPage() {
                     const gaps = getCandidateWeaknesses(match)
                     const verdict = getCandidateVerdict(match)
                     const reasoning = match.insights?.short_reasoning ?? ""
+                    const insightSummary = getCandidateInsightSummary(match, verdict)
                     const candidateInsight = {
                       candidateName: match.candidateName,
                       strengths,
@@ -2587,10 +2602,7 @@ export default function AiScreeningPage() {
                             preview={(
                               <div className="max-w-full space-y-1 text-[12px] leading-[1.4]">
                                 <p className="max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-slate-300">
-                                  <span className="font-semibold text-emerald-300/80">Strengths:</span> {strengths[0]}
-                                </p>
-                                <p className="max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-slate-300">
-                                  <span className="font-semibold text-amber-300/80">Gaps:</span> {gaps[0]}
+                                  {insightSummary}
                                 </p>
                               </div>
                             )}
@@ -3110,7 +3122,7 @@ export default function AiScreeningPage() {
 
             {comparisonInsight ? (
               <div className="mt-5 rounded-2xl border border-blue-400/20 bg-blue-500/10 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-200/70">AI Insight</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-200/70">VERIS Insight</p>
                 <p className="mt-2 text-sm leading-6 text-blue-50">{comparisonInsight}</p>
               </div>
             ) : null}

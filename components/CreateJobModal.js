@@ -385,7 +385,7 @@ export default function CreateJobModal({
                   <div>
                     <p className="text-sm font-medium text-white">Question Type</p>
                     <p className="mt-1 text-sm text-slate-400">
-                      AI classifies every question first; use this only when a role needs a global override.
+                      VERIS classifies every question first; use this only when a role needs a global override.
                     </p>
                   </div>
                   <div>

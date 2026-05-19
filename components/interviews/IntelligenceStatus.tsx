@@ -23,7 +23,7 @@ export default function IntelligenceStatus({
     {
       label: transcriptReady ? "Transcript Ready" : "Transcript Processing",
       ready: transcriptReady,
-      pendingText: "AI transcription in progress",
+      pendingText: "Transcript Processing",
     },
     {
       label: hasRecording ? "Cognitive Timeline Available" : "Cognitive Timeline Pending",
@@ -36,7 +36,7 @@ export default function IntelligenceStatus({
       pendingText: "",
     },
     {
-      label: cognitiveAnalysisReady ? "Cognitive Analysis Complete" : "Cognitive Analysis Pending",
+      label: cognitiveAnalysisReady ? "VERIS Analysis Complete" : "VERIS Analysis Pending",
       ready: cognitiveAnalysisReady,
       pendingText: "Insights unlock after transcript processing",
     },
@@ -45,7 +45,7 @@ export default function IntelligenceStatus({
   return (
     <div className="rounded-2xl border border-slate-800/90 bg-slate-950/35 p-3">
       <div className="mb-2.5 flex items-center justify-between gap-3">
-        <p className="min-w-0 break-words text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">Intelligence State</p>
+        <p className="min-w-0 break-words text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">Analysis Pipeline</p>
         <span className="hv-ai-node h-1.5 w-1.5 rounded-full bg-cyan-300/80" />
       </div>
       <div className="grid gap-1.5">

@@ -65,7 +65,7 @@ const workflowSteps = [
     id: "veris-screening",
     number: 2,
     title: "VERIS Screening",
-    description: "AI resume verification, profile matching, fraud checks, and candidate shortlisting.",
+    description: "Resume verification, profile matching, risk checks, and candidate shortlisting.",
     cta: "Start Screening",
     secondaryCta: "Skip",
     theme: "violet",
@@ -76,7 +76,7 @@ const workflowSteps = [
     id: "send-link",
     number: 3,
     title: "Send Interview Link",
-    description: "Invite shortlisted candidates securely for AI interviews.",
+    description: "Invite shortlisted candidates securely for VERIS interviews.",
     cta: "Send Interview Link",
     theme: "cyan",
     action: "send-link",
@@ -84,8 +84,8 @@ const workflowSteps = [
   {
     id: "ai-interview",
     number: 4,
-    title: "AI Interview",
-    description: "Monitor cognitive interviews, live telemetry, and interview progress.",
+    title: "VERIS Interview",
+    description: "Track interview starts, completion, and review readiness.",
     cta: "View Interviews",
     theme: "teal",
     href: "/interviews",
@@ -94,7 +94,7 @@ const workflowSteps = [
     id: "review-reports",
     number: 5,
     title: "Review Reports",
-    description: "Analyze confidence signals, fraud indicators, cognitive insights, and AI recommendations.",
+    description: "Review confidence signals, risk indicators, cognitive signals, and recommendations.",
     cta: "Open Reports",
     theme: "amber",
     href: "/reports",
@@ -201,7 +201,7 @@ function getWorkflowState(overview) {
   if (!facts.hasJobs) {
     return {
       activeStepId: "create-job",
-      recommendation: "Start by creating a job and inviting candidates.",
+      recommendation: "Create a job and begin candidate evaluation.",
       statuses: buildStepStatuses("create-job"),
       facts,
     }
@@ -210,7 +210,7 @@ function getWorkflowState(overview) {
   if (facts.activeInterviews > 0) {
     return {
       activeStepId: "ai-interview",
-      recommendation: `${facts.activeInterviews} interview${facts.activeInterviews === 1 ? " is" : "s are"} currently active. Monitor cognitive telemetry and interview progress.`,
+      recommendation: `${facts.activeInterviews} interview${facts.activeInterviews === 1 ? " is" : "s are"} active. Track starts, completion, and review readiness.`,
       statuses: buildStepStatuses(
         "ai-interview",
         ["create-job", "send-link", ...(facts.screeningCompleted ? ["veris-screening"] : [])],
@@ -262,7 +262,7 @@ function getWorkflowState(overview) {
   if (facts.screeningSkipped) {
     return {
       activeStepId: "send-link",
-      recommendation: "Invite candidates to begin AI interviews.",
+      recommendation: "Invite candidates to begin VERIS interviews.",
       statuses: buildStepStatuses("send-link", ["create-job"], ["veris-screening"]),
       facts,
     }
@@ -288,7 +288,7 @@ function getWorkflowState(overview) {
 
   return {
     activeStepId: "veris-screening",
-    recommendation: "VERIS Screening is optional. Use it to enrich resume intelligence before sending interviews.",
+    recommendation: "VERIS Screening is optional. Use it to strengthen evaluation before interviews.",
     statuses: buildStepStatuses("veris-screening", ["create-job"]),
     facts,
   }
@@ -458,7 +458,7 @@ export default function HiringWorkflow({ overview, searchParams, onAction }) {
             <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-cyan-300 hiring-workflow-pulse" />
           </div>
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-200/80">AI Recommended Next Action</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-200/80">VERIS Recommendation</p>
             <p className="mt-1.5 text-[13px] leading-5 text-white">{state.recommendation}</p>
             <div className="mt-2.5 flex flex-wrap gap-2 text-[9px] font-semibold uppercase tracking-[0.14em]">
               <span className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-2 py-0.5 text-cyan-100">{getProgressLabel(state)}</span>

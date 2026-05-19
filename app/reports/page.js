@@ -90,7 +90,7 @@ function LoadingState() {
           "Loading behavioral telemetry...",
           "Preparing cognitive analysis...",
           "Building forensic timeline...",
-          "Finalizing AI insight packets...",
+          "Finalizing VERIS insight packets...",
         ]}
       />
       <div className="overflow-hidden rounded-[28px] border border-slate-800 bg-[#0f172a]">
@@ -321,7 +321,7 @@ export default function ReportsPage() {
 
               <ExpandableSection
                 title="Interview Timeline"
-                subtitle="Timestamped recruiter and AI events, ready for recording deep-linking when recording feeds are attached."
+                subtitle="Timestamped recruiter and system events, ready for recording deep-linking when recording feeds are attached."
               >
                 <div className="space-y-4">
                   {report.interviewTimeline.map((item) => (
@@ -459,7 +459,7 @@ export default function ReportsPage() {
 
               <ExpandableSection
                 title="Audit Logs"
-                subtitle="Recruiter, candidate, and AI-side event trail for enterprise-grade traceability."
+                subtitle="Recruiter, candidate, and system event trail for enterprise-grade traceability."
                 defaultOpen={false}
               >
                 <div className="space-y-3">
