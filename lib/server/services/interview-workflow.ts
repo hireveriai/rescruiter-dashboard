@@ -58,6 +58,8 @@ type InterviewContextRow = {
   end_time?: Date | string | null
   organization_timezone?: string | null
   organization_timezone_label?: string | null
+  organization_name?: string | null
+  expires_at?: Date | string | null
   token: string | null
   link: string | null
   status?: string | null
@@ -309,6 +311,8 @@ async function getInterviewContext(organizationId: string, interviewId: string) 
       c.resume_text,
       ii.start_time,
       ii.end_time,
+      ii.expires_at,
+      o.organization_name,
       o.timezone as organization_timezone,
       o.timezone_label as organization_timezone_label,
       ii.token,
@@ -321,7 +325,7 @@ async function getInterviewContext(organizationId: string, interviewId: string) 
     inner join public.candidates c on c.candidate_id = i.candidate_id
     inner join public.organizations o on o.organization_id = i.organization_id
     left join lateral (
-      select token, start_time, end_time
+      select token, start_time, end_time, expires_at
       from public.interview_invites
       where interview_id = i.interview_id
       order by created_at desc
@@ -528,6 +532,10 @@ export async function sendInterviewEmailForInterview(organizationId: string, int
       to: context.candidate_email,
       name: context.candidate_name || "Candidate",
       link: context.link,
+      companyName: context.organization_name ?? null,
+      roleTitle: context.job_title ?? null,
+      duration: context.interview_duration_minutes ?? null,
+      expiryDate: context.expires_at ?? context.end_time ?? null,
       organizationTimezone: context.organization_timezone ?? null,
       organizationTimezoneLabel: context.organization_timezone_label ?? null,
       scheduledStartUtc: context.start_time ?? null,

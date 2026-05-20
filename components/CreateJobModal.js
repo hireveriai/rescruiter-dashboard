@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params";
 
+import { showActionFeedback } from "@/lib/client/action-feedback";
 import { buildAuthUrl } from "@/lib/client/auth-query";
 
 const FALLBACK_LEVELS = [
@@ -243,11 +244,17 @@ export default function CreateJobModal({
       const data = await res.json();
 
       if (!res.ok) {
+        const message = data?.error?.message || data?.message || "Failed to save job";
         setNotice({
           open: true,
           title: isEditMode ? "Unable to update job" : "Unable to create job",
-          message: data?.error?.message || data?.message || "Failed to save job",
+          message,
           tone: "error",
+        });
+        showActionFeedback({
+          tone: "error",
+          title: isEditMode ? "Job update failed" : "Job creation failed",
+          message,
         });
         return;
       }
@@ -257,14 +264,27 @@ export default function CreateJobModal({
       }
 
       onSuccess?.();
+      showActionFeedback({
+        tone: "success",
+        title: isEditMode ? "Job updated successfully" : "Job created successfully",
+        message: isEditMode
+          ? "The role configuration has been saved."
+          : "The job is ready for candidate evaluation.",
+      });
       handleClose();
     } catch (err) {
       console.error(err);
+      const message = err instanceof Error ? err.message : "Something went wrong";
       setNotice({
         open: true,
         title: isEditMode ? "Unable to update job" : "Unable to create job",
-        message: "Something went wrong",
+        message,
         tone: "error",
+      });
+      showActionFeedback({
+        tone: "error",
+        title: isEditMode ? "Job update failed" : "Job creation failed",
+        message,
       });
     } finally {
       setLoading(false);

@@ -13,6 +13,12 @@ type SendEmailParams = {
   to: string;
   name: string;
   link: string;
+  companyName?: string | null;
+  companyLogo?: string | null;
+  roleTitle?: string | null;
+  duration?: string | number | null;
+  expiryDate?: string | Date | null;
+  subjectTemplate?: string | null;
   organizationTimezone?: string | null;
   organizationTimezoneLabel?: string | null;
   scheduledStartUtc?: string | Date | null;
@@ -58,6 +64,86 @@ function escapeHtml(value: string) {
     .replace(/'/g, "&#039;");
 }
 
+function normalizeText(value: unknown, fallback = "") {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return normalized || fallback;
+}
+
+function interpolateTemplate(template: string, variables: Record<string, string>) {
+  return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => variables[key] ?? "");
+}
+
+function isSafeImageUrl(value: string) {
+  return /^https?:\/\//i.test(value) || /^data:image\/(png|jpe?g|gif|webp);base64,/i.test(value);
+}
+
+function formatDurationLabel(duration: string | number | null | undefined) {
+  if (typeof duration === "number" && Number.isFinite(duration)) {
+    return `${duration} minutes`;
+  }
+
+  const normalized = normalizeText(duration);
+  return normalized || "Configured by hiring team";
+}
+
+function formatExpiryLabel(input: {
+  expiryDate?: string | Date | null;
+  scheduledEndUtc?: string | Date | null;
+  organizationTimezone?: string | null;
+}) {
+  const source = input.expiryDate ?? input.scheduledEndUtc ?? null;
+
+  if (!source) {
+    return "Within the allowed access window";
+  }
+
+  if (source instanceof Date || !Number.isNaN(new Date(source).getTime())) {
+    return formatOrgDateTime(source, input.organizationTimezone ?? undefined);
+  }
+
+  return normalizeText(source, "Within the allowed access window");
+}
+
+function buildInterviewSubject(input: {
+  candidateName: string;
+  companyName: string;
+  companyLogo: string;
+  roleTitle: string;
+  duration: string;
+  expiryDate: string;
+  interviewUrl: string;
+  subjectTemplate?: string | null;
+}) {
+  const template =
+    normalizeText(input.subjectTemplate) ||
+    normalizeText(process.env.INTERVIEW_EMAIL_SUBJECT_TEMPLATE) ||
+    "You've Been Shortlisted for {{roleTitle}} at {{companyName}}";
+
+  const subject = interpolateTemplate(template, {
+    candidateName: input.candidateName,
+    companyName: input.companyName,
+    companyLogo: input.companyLogo,
+    roleTitle: input.roleTitle,
+    duration: input.duration,
+    expiryDate: input.expiryDate,
+    interviewUrl: input.interviewUrl,
+  }).replace(/\s+/g, " ").trim();
+
+  return subject || `Interview Invitation - ${input.companyName}`;
+}
+
+function buildCompanyLogoHtml(companyLogo: string, companyName: string) {
+  if (!companyLogo || !isSafeImageUrl(companyLogo)) {
+    return "";
+  }
+
+  return `
+    <div style="padding-bottom:14px;">
+      <img src="${escapeHtml(companyLogo)}" width="112" alt="${escapeHtml(companyName)} logo" style="display:block;max-width:112px;max-height:48px;border:0;outline:none;text-decoration:none;object-fit:contain;" />
+    </div>
+  `;
+}
+
 function getResendClient() {
   const apiKey = process.env.RESEND_API_KEY?.trim();
 
@@ -76,6 +162,16 @@ function getEmailFrom() {
   const configured = process.env.EMAIL_FROM?.trim();
 
   return configured || DEFAULT_EMAIL_FROM;
+}
+
+function getInterviewEmailFrom(companyName: string) {
+  const configured = process.env.INTERVIEW_EMAIL_FROM?.trim();
+
+  if (configured) {
+    return configured;
+  }
+
+  return `${companyName} Hiring Team <no-reply@mil.hireveri.com>`;
 }
 
 function getErrorMessage(error: unknown) {
@@ -124,60 +220,166 @@ export async function sendInterviewEmail({
   to,
   name,
   link,
+  companyName,
+  companyLogo,
+  roleTitle,
+  duration,
+  expiryDate,
+  subjectTemplate,
   organizationTimezone,
   organizationTimezoneLabel,
   scheduledStartUtc,
   scheduledEndUtc,
 }: SendEmailParams) {
-  const safeName = escapeHtml(name || "Candidate");
+  const displayName = normalizeText(name, "Candidate");
+  const displayCompany = normalizeText(companyName, "Hiring Team");
+  const displayRole = normalizeText(roleTitle, "the open role");
+  const displayLogo = normalizeText(companyLogo);
+  const durationLabel = formatDurationLabel(duration);
+  const expiryLabel = formatExpiryLabel({ expiryDate, scheduledEndUtc, organizationTimezone });
+  const safeName = escapeHtml(displayName);
   const safeLink = escapeHtml(link);
+  const safeCompany = escapeHtml(displayCompany);
+  const safeRole = escapeHtml(displayRole);
+  const safeDuration = escapeHtml(durationLabel);
+  const safeExpiry = escapeHtml(expiryLabel);
+  const subject = buildInterviewSubject({
+    candidateName: displayName,
+    companyName: displayCompany,
+    companyLogo: displayLogo,
+    roleTitle: displayRole,
+    duration: durationLabel,
+    expiryDate: expiryLabel,
+    interviewUrl: link,
+    subjectTemplate,
+  });
 
   const scheduleHtml =
     scheduledStartUtc && scheduledEndUtc
       ? `
-        <p style="margin-top:20px;">
-          Interview Scheduled:<br />
-          <strong>${formatOrgDateTime(scheduledStartUtc, organizationTimezone ?? undefined)}</strong><br />
-          <span style="color:#475569;">Ends ${formatOrgDateTime(scheduledEndUtc, organizationTimezone ?? undefined)}</span><br />
-          <span style="color:#475569;">Timezone: ${organizationTimezoneLabel ?? organizationTimezone ?? "Organization Time"}</span>
-        </p>
+        <tr>
+          <td style="padding:12px 0;border-top:1px solid #e5e7eb;">
+            <div style="font-size:12px;line-height:16px;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;">Interview Window</div>
+            <div style="margin-top:4px;font-size:15px;line-height:22px;color:#0f172a;font-weight:700;">${escapeHtml(formatOrgDateTime(scheduledStartUtc, organizationTimezone ?? undefined))}</div>
+            <div style="font-size:13px;line-height:20px;color:#64748b;">Ends ${escapeHtml(formatOrgDateTime(scheduledEndUtc, organizationTimezone ?? undefined))}</div>
+            <div style="font-size:13px;line-height:20px;color:#64748b;">Timezone: ${escapeHtml(organizationTimezoneLabel ?? organizationTimezone ?? "Organization Time")}</div>
+          </td>
+        </tr>
       `
       : ""
 
   return sendWithRetry({
-    from: getEmailFrom(),
+    from: getInterviewEmailFrom(displayCompany),
     to,
-    subject: "Your HireVeri Interview Invitation",
+    subject,
     text: [
-      `Hi ${name || "Candidate"},`,
-      "You have been invited to complete an interview on HireVeri.",
+      `${displayCompany} Hiring Team`,
+      "powered by HireVeri",
+      "",
+      `Hi ${displayName},`,
+      "",
+      `You've been shortlisted for the next stage of the hiring process for the role of ${displayRole} at ${displayCompany}.`,
+      "Your AI-assisted interview session is now available.",
+      "",
+      "Interview Details:",
+      `- Duration: ${durationLabel}`,
+      `- Deadline: ${expiryLabel}`,
+      "- Environment: Secure monitored interview room",
       scheduledStartUtc && scheduledEndUtc
         ? `Interview window: ${formatOrgDateTime(scheduledStartUtc, organizationTimezone ?? undefined)} - ${formatOrgDateTime(scheduledEndUtc, organizationTimezone ?? undefined)}`
         : "",
-      "Start interview:",
+      "",
+      "Start secure interview:",
       link,
+      "",
+      "Please complete the interview in a quiet environment with a stable internet connection.",
+      "This session may include integrity and behavioral verification monitoring.",
+      "",
+      "This interview is conducted through HireVeri's secure cognitive interview infrastructure.",
     ].filter(Boolean).join("\n"),
     html: `
-      <div style="font-family: Arial, Helvetica, sans-serif; line-height: 1.6; color: #0f172a;">
-        <h2 style="margin-bottom: 12px;">Your HireVeri interview is ready</h2>
+      <div style="margin:0;padding:0;background:#eef2f7;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#eef2f7;">
+          <tr>
+            <td align="center" style="padding:28px 14px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:640px;border-collapse:separate;">
+                <tr>
+                  <td style="padding:0;">
+                    <div style="border:1px solid #dbe3ee;border-radius:22px;background:#ffffff;box-shadow:0 18px 48px rgba(15,23,42,0.10);overflow:hidden;">
+                      <div style="padding:28px 30px 22px;background:#f8fafc;border-bottom:1px solid #e5e7eb;">
+                        ${buildCompanyLogoHtml(displayLogo, displayCompany)}
+                        <div style="font-size:20px;line-height:28px;font-weight:800;color:#0f172a;">${safeCompany} Hiring Team</div>
+                        <div style="margin-top:3px;font-size:12px;line-height:18px;color:#64748b;">powered by HireVeri</div>
+                      </div>
 
-        <p>Hi ${safeName},</p>
+                      <div style="padding:30px;">
+                        <p style="margin:0 0 18px;font-size:16px;line-height:26px;color:#334155;">Hi ${safeName},</p>
+                        <h1 style="margin:0 0 14px;font-size:24px;line-height:32px;color:#0f172a;font-weight:800;">You've been shortlisted</h1>
+                        <p style="margin:0 0 22px;font-size:16px;line-height:26px;color:#334155;">
+                          You've been shortlisted for the next stage of the hiring process for the role of <strong style="color:#0f172a;">${safeRole}</strong> at <strong style="color:#0f172a;">${safeCompany}</strong>.
+                        </p>
+                        <p style="margin:0 0 24px;font-size:15px;line-height:24px;color:#475569;">
+                          Your AI-assisted interview session is now available. Please review the details below and begin when you are ready.
+                        </p>
 
-        <p>You have been invited to complete an interview on HireVeri. Use the secure link below to begin.</p>
-        ${scheduleHtml}
+                        <div style="border:1px solid #e2e8f0;border-radius:18px;background:#f8fafc;padding:4px 18px;margin:0 0 26px;">
+                          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                            <tr>
+                              <td style="padding:14px 0;">
+                                <div style="font-size:12px;line-height:16px;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;">Role</div>
+                                <div style="margin-top:4px;font-size:15px;line-height:22px;color:#0f172a;font-weight:700;">${safeRole}</div>
+                              </td>
+                            </tr>
+                            <tr>
+                              <td style="padding:12px 0;border-top:1px solid #e5e7eb;">
+                                <div style="font-size:12px;line-height:16px;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;">Duration</div>
+                                <div style="margin-top:4px;font-size:15px;line-height:22px;color:#0f172a;font-weight:700;">${safeDuration}</div>
+                              </td>
+                            </tr>
+                            <tr>
+                              <td style="padding:12px 0;border-top:1px solid #e5e7eb;">
+                                <div style="font-size:12px;line-height:16px;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;">Deadline</div>
+                                <div style="margin-top:4px;font-size:15px;line-height:22px;color:#0f172a;font-weight:700;">${safeExpiry}</div>
+                              </td>
+                            </tr>
+                            <tr>
+                              <td style="padding:12px 0;border-top:1px solid #e5e7eb;">
+                                <div style="font-size:12px;line-height:16px;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;">Environment</div>
+                                <div style="margin-top:4px;font-size:15px;line-height:22px;color:#0f172a;font-weight:700;">Secure monitored interview room</div>
+                              </td>
+                            </tr>
+                            ${scheduleHtml}
+                          </table>
+                        </div>
 
-        <a href="${safeLink}"
-           style="display:inline-block;padding:12px 18px;background:#0f172a;color:#fff;text-decoration:none;border-radius:10px;font-weight:600;">
-           Start Interview
-        </a>
+                        <div style="text-align:center;margin:0 0 22px;">
+                          <a href="${safeLink}"
+                             style="display:block;width:100%;box-sizing:border-box;padding:15px 20px;background:#0b1220;color:#ffffff;text-decoration:none;border-radius:14px;font-size:15px;line-height:20px;font-weight:800;text-align:center;">
+                            Start Secure Interview
+                          </a>
+                        </div>
 
-        <p style="margin-top:16px;word-break:break-all;color:#475569;">${safeLink}</p>
+                        <p style="margin:0 0 22px;font-size:12px;line-height:19px;color:#64748b;word-break:break-all;">
+                          If the button does not work, paste this URL into your browser:<br />
+                          <a href="${safeLink}" style="color:#1d4ed8;text-decoration:underline;">${safeLink}</a>
+                        </p>
 
-        <p style="margin-top:20px;">
-          Please use this link within the allowed access window configured for your interview.
-        </p>
+                        <div style="border-radius:16px;background:#f1f5f9;padding:16px 18px;margin:0 0 22px;">
+                          <p style="margin:0 0 8px;font-size:13px;line-height:21px;color:#475569;">Please complete the interview in a quiet environment with a stable internet connection.</p>
+                          <p style="margin:0;font-size:13px;line-height:21px;color:#475569;">This session may include integrity and behavioral verification monitoring.</p>
+                        </div>
 
-        <p style="margin-top:24px;">Regards,<br />HireVeri Recruiter Workspace</p>
+                        <p style="margin:0;font-size:13px;line-height:21px;color:#64748b;">
+                          This interview is conducted through HireVeri's secure cognitive interview infrastructure.
+                        </p>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
       </div>
     `,
   });

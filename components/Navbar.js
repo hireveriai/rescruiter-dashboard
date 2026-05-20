@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { buildAuthUrl, hasAuthQuery } from "@/lib/client/auth-query";
+import { ACTION_FEEDBACK_EVENT } from "@/lib/client/action-feedback";
 import { logoutRecruiter } from "@/lib/client/logout";
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params";
 import { useAmbientLoading } from "@/components/system/loading";
@@ -87,6 +88,22 @@ function getAlertToneClass(tone) {
   return "border-cyan-400/25 bg-cyan-500/10"
 }
 
+function getFeedbackToneClass(tone) {
+  if (tone === "success") {
+    return "border-emerald-400/35 bg-emerald-500/10 text-emerald-100 shadow-[0_24px_70px_rgba(16,185,129,0.12)]";
+  }
+
+  if (tone === "warning") {
+    return "border-amber-400/35 bg-amber-500/10 text-amber-100 shadow-[0_24px_70px_rgba(245,158,11,0.12)]";
+  }
+
+  if (tone === "error" || tone === "danger") {
+    return "border-rose-400/35 bg-rose-500/10 text-rose-100 shadow-[0_24px_70px_rgba(244,63,94,0.12)]";
+  }
+
+  return "border-cyan-400/35 bg-cyan-500/10 text-cyan-100 shadow-[0_24px_70px_rgba(34,211,238,0.12)]";
+}
+
 function formatAlertTime(value) {
   if (!value) {
     return ""
@@ -111,11 +128,13 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
   const { startLoading } = useAmbientLoading();
   const menuRef = useRef(null);
   const alertsRef = useRef(null);
+  const feedbackTimerRef = useRef(null);
   const [openCreateJob, setOpenCreateJob] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [alerts, setAlerts] = useState(() => initialAlerts ?? []);
   const [readAlertIds, setReadAlertIds] = useState(() => new Set());
+  const [feedback, setFeedback] = useState(null);
   const [profile, setProfile] = useState(initialProfile);
 
   useEffect(() => {
@@ -237,6 +256,40 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
       document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("keydown", handleEscape);
       window.removeEventListener("hireveri:open-create-job", handleOpenCreateJobEvent);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    function handleActionFeedback(event) {
+      const nextFeedback = {
+        title: event.detail?.title || "Action completed",
+        message: event.detail?.message || "",
+        tone: event.detail?.tone || "success",
+      };
+
+      setFeedback(nextFeedback);
+
+      if (feedbackTimerRef.current) {
+        window.clearTimeout(feedbackTimerRef.current);
+      }
+
+      feedbackTimerRef.current = window.setTimeout(() => {
+        setFeedback(null);
+        feedbackTimerRef.current = null;
+      }, 4200);
+    }
+
+    window.addEventListener(ACTION_FEEDBACK_EVENT, handleActionFeedback);
+
+    return () => {
+      window.removeEventListener(ACTION_FEEDBACK_EVENT, handleActionFeedback);
+      if (feedbackTimerRef.current) {
+        window.clearTimeout(feedbackTimerRef.current);
+      }
     };
   }, []);
 
@@ -471,6 +524,28 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
           </div>
         </div>
       </header>
+
+      {feedback ? (
+        <div className="fixed right-4 top-20 z-[90] w-[min(420px,calc(100vw-2rem))]">
+          <div className={`rounded-2xl border px-4 py-3 backdrop-blur-xl ${getFeedbackToneClass(feedback.tone)}`}>
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-white">{feedback.title}</p>
+                {feedback.message ? (
+                  <p className="mt-1 text-sm leading-5 text-current/80">{feedback.message}</p>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={() => setFeedback(null)}
+                className="shrink-0 rounded-lg border border-white/10 bg-slate-950/20 px-2 py-1 text-xs font-semibold text-white/80 transition hover:border-white/25 hover:bg-white/10 hover:text-white"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <CreateJobModal open={openCreateJob} setOpen={setOpenCreateJob} />
     </>

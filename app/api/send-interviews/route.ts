@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server"
+import { Prisma } from "@prisma/client"
 
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
 import { ApiError } from "@/lib/server/errors"
 import { errorResponse } from "@/lib/server/response"
+import { prisma } from "@/lib/server/prisma"
 import {
   createInterviewLink,
   getLatestInterviewInviteForEmail,
@@ -26,6 +28,15 @@ type CandidateInterviewSchedule = {
   accessType: InterviewAccessType
   startTime: string | null
   endTime: string | null
+}
+
+type OrganizationEmailBrandRow = {
+  organization_name: string | null
+}
+
+type InterviewJobEmailRow = {
+  job_title: string | null
+  interview_duration_minutes: number | null
 }
 
 function resolveMatchScope(value: unknown, includeAllCandidates: boolean): MatchScope {
@@ -121,6 +132,29 @@ function getErrorMessage(error: unknown) {
   return "Unknown error"
 }
 
+async function getOrganizationEmailBrand(organizationId: string) {
+  const rows = await prisma.$queryRaw<OrganizationEmailBrandRow[]>(Prisma.sql`
+    select organization_name
+    from public.organizations
+    where organization_id = ${organizationId}::uuid
+    limit 1
+  `)
+
+  return rows[0]?.organization_name ?? "Hiring Team"
+}
+
+async function getInterviewJobEmailContext(organizationId: string, jobId: string) {
+  const rows = await prisma.$queryRaw<InterviewJobEmailRow[]>(Prisma.sql`
+    select job_title, interview_duration_minutes
+    from public.job_positions
+    where organization_id = ${organizationId}::uuid
+      and job_id = ${jobId}::uuid
+    limit 1
+  `)
+
+  return rows[0] ?? null
+}
+
 export async function POST(request: Request) {
   try {
     const auth = await getRecruiterRequestContext(request)
@@ -192,6 +226,12 @@ export async function POST(request: Request) {
     }
 
     const interviewJobId = job.sourceJobPositionId || job.id
+    const [companyName, interviewJob] = await Promise.all([
+      getOrganizationEmailBrand(auth.organizationId),
+      getInterviewJobEmailContext(auth.organizationId, interviewJobId),
+    ])
+    const emailRoleTitle = interviewJob?.job_title || job.roleTitle || job.title
+    const emailDuration = interviewJob?.interview_duration_minutes ?? null
     const selected = await getMatchesForInviteSelection({
       organizationId: auth.organizationId,
       jobId: screeningJobId,
@@ -277,6 +317,10 @@ export async function POST(request: Request) {
             to: email,
             name: match.candidate_name,
             link: link.link,
+            companyName,
+            roleTitle: emailRoleTitle,
+            duration: emailDuration,
+            expiryDate: scheduleByCandidateId.get(match.candidate_id)?.endTime ?? null,
           })
 
           await recordInterviewInviteForScreening({

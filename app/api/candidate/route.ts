@@ -234,6 +234,7 @@ export async function POST(req: Request) {
     const email = getStringValue(formData.get("email")).toLowerCase()
     const jobId = getStringValue(formData.get("jobId"))
     const resumeEntry = formData.get("resume")
+    const includeResumeText = getStringValue(formData.get("includeResumeText")) !== "false"
 
     const candidateValidation = createCandidateSchema.safeParse({
       fullName,
@@ -382,7 +383,7 @@ export async function POST(req: Request) {
       candidateId: result.candidate_id,
       resumeUrl,
       parsedData: {
-        resumeText,
+        resumeText: includeResumeText ? resumeText : undefined,
         extractedSkills: parsedResume?.skills ?? [],
         experienceYears: parsedResume?.experienceYears ?? null,
         parsedResume,

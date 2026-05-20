@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
+import { showActionFeedback } from "@/lib/client/action-feedback"
 import { buildAuthUrl } from "@/lib/client/auth-query"
 import { copyText } from "@/lib/client/copy-to-clipboard"
 import { formatDateTime } from "@/lib/client/date-format"
@@ -174,6 +175,15 @@ export default function SendInterviewModal({ isOpen, onClose }) {
   const hasJobs = jobs.length > 0
   const emptyJobsState = useMemo(() => !jobsLoading && !hasJobs, [jobsLoading, hasJobs])
 
+  const showFormError = (message) => {
+    setError(message)
+    showActionFeedback({
+      tone: "error",
+      title: "Action required",
+      message,
+    })
+  }
+
   const resetFileInputs = () => {
     if (primaryFileInputRef.current) {
       primaryFileInputRef.current.value = ""
@@ -201,27 +211,27 @@ export default function SendInterviewModal({ isOpen, onClose }) {
     setCopyStatus("idle")
 
     if (!hasJobs) {
-      setError("Create a job first to send your interview link")
+      showFormError("Create a job first to send your interview link")
       return
     }
 
     if (!jobId || !name || !email) {
-      setError("Please fill all required fields")
+      showFormError("Please fill all required fields")
       return
     }
 
     if (!isValidEmail(email)) {
-      setError("Please enter a valid candidate email address")
+      showFormError("Please enter a valid candidate email address")
       return
     }
 
     if (!resumeFile) {
-      setError("Resume is required")
+      showFormError("Resume is required")
       return
     }
 
     if (accessType === "SCHEDULED" && (!startTime || !endTime)) {
-      setError("Start time and end time are required")
+      showFormError("Start time and end time are required")
       return
     }
 
@@ -258,6 +268,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
       candidateFormData.append("email", email)
       candidateFormData.append("jobId", jobId)
       candidateFormData.append("resume", resumeFile)
+      candidateFormData.append("includeResumeText", "false")
 
       const candidateResponse = await fetch(buildAuthUrl("/api/candidate", searchParams), {
         method: "POST",
@@ -286,11 +297,6 @@ export default function SendInterviewModal({ isOpen, onClose }) {
         candidateData.parsedData?.extractedSkills ||
         candidateData.data?.parsedData?.extractedSkills ||
         []
-      const extractedResumeText =
-        candidateData.parsedData?.resumeText ||
-        candidateData.data?.parsedData?.resumeText ||
-        ""
-
       const interviewResponse = await fetch(buildAuthUrl("/api/interview/create-link", searchParams), {
         method: "POST",
         credentials: "include",
@@ -301,7 +307,6 @@ export default function SendInterviewModal({ isOpen, onClose }) {
           jobId,
           candidateId,
           resume_skills: Array.isArray(extractedResumeSkills) ? extractedResumeSkills : [],
-          candidate_resume_text: extractedResumeText || undefined,
           accessType,
           startTime: accessType === "SCHEDULED" ? startTime : undefined,
           endTime: accessType === "SCHEDULED" ? endTime : undefined,
@@ -324,10 +329,36 @@ export default function SendInterviewModal({ isOpen, onClose }) {
 
       const responseData = interviewData.data || interviewData
       setLink(responseData.link || "")
-      setEmailStatus(responseData.emailSent === true ? "sent" : "failed")
+      setEmailStatus(
+        responseData.emailSent === true
+          ? "sent"
+          : responseData.emailQueued === true || responseData.preparationQueued === true
+            ? "queued"
+            : "failed"
+      )
       setEmailError(responseData.emailError || "")
+      const emailQueued = responseData.emailQueued === true || responseData.preparationQueued === true
+      showActionFeedback({
+        tone: responseData.emailSent === true || emailQueued ? "success" : "warning",
+        title: responseData.emailSent === true
+          ? "Interview link sent successfully"
+          : emailQueued
+            ? "Interview link generated"
+          : "Interview link generated",
+        message: responseData.emailSent === true
+          ? "The candidate invite has been generated and emailed."
+          : emailQueued
+            ? "Preparation is running in the background. The email will send automatically."
+          : "Email delivery failed. Copy the link and send it manually.",
+      })
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to send interview link")
+      const message = err instanceof Error ? err.message : "Failed to send interview link"
+      setError(message)
+      showActionFeedback({
+        tone: "error",
+        title: "Interview link failed",
+        message,
+      })
     } finally {
       setLoading(false)
     }
@@ -344,6 +375,13 @@ export default function SendInterviewModal({ isOpen, onClose }) {
   const copy = async () => {
     const copied = await copyText(link)
     setCopyStatus(copied ? "success" : "failed")
+    showActionFeedback({
+      tone: copied ? "success" : "error",
+      title: copied ? "Link copied" : "Copy failed",
+      message: copied
+        ? "The interview link is ready to share."
+        : "Select the link manually and copy it from the field.",
+    })
   }
 
   const clearResumeFile = () => {
@@ -588,7 +626,9 @@ export default function SendInterviewModal({ isOpen, onClose }) {
                   <p className="mb-2 text-sm text-emerald-300">
                     {emailStatus === "sent"
                       ? "Link generated and email sent successfully"
-                      : "Link generated successfully. Email delivery needs attention."}
+                      : emailStatus === "queued"
+                        ? "Link generated. Email delivery is in progress."
+                        : "Link generated successfully. Email delivery needs attention."}
                   </p>
                   {emailStatus === "failed" ? (
                     <p className="mb-3 text-xs text-amber-200">

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { after, NextResponse } from "next/server"
 import { Prisma } from "@prisma/client"
 
 import { ApiError } from "@/lib/server/errors"
@@ -35,6 +35,19 @@ type JobStatusRow = {
 type ActiveInviteRow = {
   invite_id: string
   interview_id: string
+}
+
+type FinalizeInterviewPreparationInput = {
+  organizationId: string
+  interviewId: string
+  jobId: string
+  candidateEmail: string
+  useAiQuestions: boolean
+  candidateResumeText?: string
+  resumeSkills?: string[]
+  totalQuestions?: number
+  interviewDurationMinutes?: number
+  similarityThreshold?: number
 }
 
 function areSkillListsEquivalent(left: string[], right: string[]) {
@@ -90,6 +103,80 @@ async function revokeActiveInvitesForCandidate(params: {
       status = 'EXPIRED'
     where interview_id = any(${interviewIds}::uuid[])
   `)
+}
+
+async function markInterviewReadyWithoutQuestionGeneration(organizationId: string, interviewId: string) {
+  await prisma.$executeRaw(Prisma.sql`
+    update public.interviews
+    set
+      status = 'READY',
+      question_status = 'COMPLETED',
+      failure_reason = null,
+      last_error = null,
+      questions_generated_at = now(),
+      is_active = true
+    where interview_id = ${interviewId}::uuid
+      and organization_id = ${organizationId}::uuid
+  `)
+
+  await prisma.$executeRaw(Prisma.sql`
+    update public.interview_invites
+    set status = 'ACTIVE'
+    where interview_id = ${interviewId}::uuid
+  `)
+}
+
+async function sendPreparedInterviewEmail(input: {
+  organizationId: string
+  interviewId: string
+  jobId: string
+  candidateEmail: string
+}) {
+  const emailResult = await sendInterviewEmailForInterview(input.organizationId, input.interviewId)
+
+  if (emailResult.emailSent) {
+    await recordInterviewInviteTracking({
+      interviewId: input.interviewId,
+      companyId: input.organizationId,
+      jobId: input.jobId,
+      candidateEmail: input.candidateEmail,
+    })
+  } else {
+    await markEmailFailed(input.organizationId, input.interviewId, emailResult.emailError ?? "Email delivery failed")
+  }
+
+  return emailResult
+}
+
+async function finalizeInterviewPreparation(input: FinalizeInterviewPreparationInput) {
+  try {
+    if (input.useAiQuestions) {
+      await prepareInterviewQuestionsWithRetry({
+        organizationId: input.organizationId,
+        interviewId: input.interviewId,
+        candidateResumeText: input.candidateResumeText,
+        resumeSkills: input.resumeSkills,
+        totalQuestions: input.totalQuestions,
+        interviewDurationMinutes: input.interviewDurationMinutes,
+        similarityThreshold: input.similarityThreshold,
+      })
+    } else {
+      await markInterviewReadyWithoutQuestionGeneration(input.organizationId, input.interviewId)
+    }
+
+    await sendPreparedInterviewEmail({
+      organizationId: input.organizationId,
+      interviewId: input.interviewId,
+      jobId: input.jobId,
+      candidateEmail: input.candidateEmail,
+    })
+  } catch (error) {
+    console.error("Interview preparation background task failed", {
+      interviewId: input.interviewId,
+      organizationId: input.organizationId,
+      error,
+    })
+  }
 }
 
 export async function POST(request: Request) {
@@ -228,16 +315,21 @@ export async function POST(request: Request) {
           ...result,
           emailSent: result.emailStatus === "SENT",
           emailError: result.emailStatus === "FAILED" ? result.lastError : null,
+          emailQueued: result.emailStatus !== "SENT" && result.emailStatus !== "FAILED",
+          preparationQueued: true,
         },
         202
       )
     }
 
     if (!result.reused) {
-      if (useAiQuestions) {
-        await prepareInterviewQuestionsWithRetry({
+      after(() =>
+        finalizeInterviewPreparation({
           organizationId: auth.organizationId,
           interviewId: result.interviewId,
+          jobId,
+          candidateEmail: candidate.email,
+          useAiQuestions,
           candidateResumeText:
             String(
               payload.candidate_resume_text ??
@@ -258,52 +350,74 @@ export async function POST(request: Request) {
             undefined,
           similarityThreshold: payload.similarity_threshold ?? payload.similarityThreshold ?? 0.8,
         })
-      } else {
-        await prisma.$executeRaw(Prisma.sql`
-          update public.interviews
-          set
-            status = 'READY',
-            question_status = 'COMPLETED',
-            failure_reason = null,
-            last_error = null,
-            questions_generated_at = now(),
-            is_active = true
-          where interview_id = ${result.interviewId}::uuid
-            and organization_id = ${auth.organizationId}::uuid
-        `)
-        await prisma.$executeRaw(Prisma.sql`
-          update public.interview_invites
-          set status = 'ACTIVE'
-          where interview_id = ${result.interviewId}::uuid
-        `)
-      }
+      )
+
+      return successResponse(
+        {
+          ...result,
+          status: "PREPARING",
+          questionStatus: useAiQuestions ? "GENERATING" : "PENDING",
+          emailStatus: "PENDING",
+          emailSent: false,
+          emailQueued: true,
+          preparationQueued: true,
+          emailError: null,
+          link: result.link,
+        },
+        202
+      )
     }
 
-    const emailResult =
-      result.reused && result.emailStatus === "SENT"
-        ? { emailSent: true, emailError: null, link: result.link }
-        : await sendInterviewEmailForInterview(auth.organizationId, result.interviewId)
+    if (result.emailStatus !== "SENT") {
+      after(() =>
+        sendPreparedInterviewEmail({
+          organizationId: auth.organizationId,
+          interviewId: result.interviewId,
+          jobId,
+          candidateEmail: candidate.email,
+        }).catch((error) => {
+          console.error("Interview email background task failed", {
+            interviewId: result.interviewId,
+            organizationId: auth.organizationId,
+            error,
+          })
+        })
+      )
 
-    if (emailResult.emailSent) {
-      await recordInterviewInviteTracking({
+      return successResponse(
+        {
+          ...result,
+          status: "READY",
+          questionStatus: "COMPLETED",
+          emailStatus: "SENDING",
+          emailSent: false,
+          emailQueued: true,
+          preparationQueued: false,
+          emailError: null,
+          link: result.link,
+        },
+        202
+      )
+    }
+
+    await recordInterviewInviteTracking({
         interviewId: result.interviewId,
         companyId: auth.organizationId,
         jobId,
         candidateEmail: candidate.email,
       })
-    } else {
-      await markEmailFailed(auth.organizationId, result.interviewId, emailResult.emailError ?? "Email delivery failed")
-    }
 
     return successResponse(
       {
         ...result,
         status: "READY",
         questionStatus: "COMPLETED",
-        emailStatus: emailResult.emailSent ? "SENT" : "FAILED",
-        emailSent: emailResult.emailSent,
-        emailError: emailResult.emailError,
-        link: emailResult.link || result.link,
+        emailStatus: "SENT",
+        emailSent: true,
+        emailQueued: false,
+        preparationQueued: false,
+        emailError: null,
+        link: result.link,
       },
       201
     )
