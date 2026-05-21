@@ -500,13 +500,19 @@ async function lookupRecruiterViaAuthService(sessionId: string): Promise<Recruit
     const payload = (await response.json()) as AuthServiceRecruiterSession
     const userId = payload.userId?.trim()
     const organizationId = payload.organizationId?.trim()
+    const email = payload.email?.trim().toLowerCase()
 
     if (!userId || !organizationId || !UUID_REGEX.test(userId) || !UUID_REGEX.test(organizationId)) {
       console.warn("Recruiter auth service returned invalid session payload")
       return null
     }
 
-    const recruiter = await lookupRecruiterByUserOrg(userId, organizationId)
+    let recruiter = await lookupRecruiterByUserOrg(userId, organizationId)
+
+    if (!recruiter && email) {
+      recruiter = await lookupRecruiterByEmailOrg(email, organizationId)
+    }
+
     return recruiter?.user_id && recruiter.organization_id ? recruiter : null
   } catch (error) {
     console.warn("Recruiter auth service session lookup failed", error)
