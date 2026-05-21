@@ -56,7 +56,7 @@ type CookieEntry = {
   value: string
 }
 
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const AUTH_APP_URL =
   process.env.AUTH_APP_URL ||
   process.env.NEXT_PUBLIC_AUTH_APP_URL ||
