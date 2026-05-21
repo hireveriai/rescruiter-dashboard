@@ -1,7 +1,7 @@
 ﻿"use client"
 
 import Link from "next/link"
-import { useEffect, useMemo, useState } from "react"
+import { Fragment, useEffect, useMemo, useState } from "react"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
@@ -164,7 +164,7 @@ function isCompletedCandidate(candidate) {
   return String(candidate?.status ?? "").toUpperCase() === "COMPLETED"
 }
 
-function CompletedCandidateModal({ candidate, onClose }) {
+function CompletedCandidateDetails({ candidate, onClose }) {
   if (!candidate) {
     return null
   }
@@ -172,8 +172,7 @@ function CompletedCandidateModal({ candidate, onClose }) {
   const answerSummaries = Array.isArray(candidate.answerSummaries) ? candidate.answerSummaries : []
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#020817]/80 px-4 py-4 backdrop-blur-md sm:py-6" role="dialog" aria-modal="true">
-      <div className="relative w-full max-w-6xl overflow-hidden rounded-[28px] border border-emerald-400/20 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.13),_transparent_34%),linear-gradient(180deg,rgba(15,23,42,0.98),rgba(9,14,28,0.98))] shadow-[0_0_80px_rgba(16,185,129,0.12)]">
+    <div className="relative overflow-hidden rounded-[28px] border border-emerald-400/20 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.13),_transparent_34%),linear-gradient(180deg,rgba(15,23,42,0.98),rgba(9,14,28,0.98))] shadow-[0_0_80px_rgba(16,185,129,0.12)]">
         <div className="absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-emerald-300/70 to-transparent" />
 
         <div className="flex flex-col gap-4 border-b border-white/10 px-6 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-8">
@@ -300,7 +299,6 @@ function CompletedCandidateModal({ candidate, onClose }) {
             )}
           </div>
         </div>
-      </div>
     </div>
   )
 }
@@ -310,7 +308,7 @@ export default function CandidatesPage() {
   const [candidates, setCandidates] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
-  const [selectedCandidate, setSelectedCandidate] = useState(null)
+  const [expandedCandidateId, setExpandedCandidateId] = useState("")
   const [openSendInterview, setOpenSendInterview] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("ALL")
@@ -554,8 +552,12 @@ export default function CandidatesPage() {
                       </td>
                     </tr>
                   ) : (
-                    filteredCandidates.map((candidate, index) => (
-                      <tr key={candidate.interviewId || candidate.candidateId || `${candidate.candidateName}-${index}`} className="border-t border-slate-800/80 align-top">
+                    filteredCandidates.map((candidate, index) => {
+                      const rowKey = candidate.interviewId || candidate.candidateId || `${candidate.candidateName}-${index}`
+
+                      return (
+                      <Fragment key={rowKey}>
+                      <tr className="border-t border-slate-800/80 align-top">
                         <td className="p-5 font-medium text-white">{candidate.candidateName}</td>
                         <td className="p-5 text-slate-300">{candidate.jobTitle}</td>
                         <td className="p-5">
@@ -578,18 +580,27 @@ export default function CandidatesPage() {
                           {isCompletedCandidate(candidate) ? (
                             <button
                               type="button"
-                              onClick={() => setSelectedCandidate(candidate)}
+                              onClick={() => setExpandedCandidateId((current) => current === rowKey ? "" : rowKey)}
                               className="inline-flex items-center justify-center rounded-xl border border-emerald-400/25 bg-emerald-400/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:border-emerald-300/50 hover:bg-emerald-400/15 hover:text-white"
                               aria-label={`View completed summary for ${candidate.candidateName}`}
                             >
-                              View
+                              {expandedCandidateId === rowKey ? "Hide" : "View"}
                             </button>
                           ) : (
                             <span className="text-slate-600">-</span>
                           )}
                         </td>
                       </tr>
-                    ))
+                      {expandedCandidateId === rowKey ? (
+                        <tr className="border-t border-emerald-400/10">
+                          <td colSpan={7} className="bg-slate-950/30 p-5">
+                            <CompletedCandidateDetails candidate={candidate} onClose={() => setExpandedCandidateId("")} />
+                          </td>
+                        </tr>
+                      ) : null}
+                      </Fragment>
+                      )
+                    })
                   )}
                   </tbody>
                 )}
@@ -598,9 +609,6 @@ export default function CandidatesPage() {
           </section>
         </main>
       </div>
-
-      <CompletedCandidateModal candidate={selectedCandidate} onClose={() => setSelectedCandidate(null)} />
-
       <SendInterviewModal isOpen={openSendInterview} onClose={() => setOpenSendInterview(false)} />
     </>
   )

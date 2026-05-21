@@ -164,14 +164,14 @@ function getEmailFrom() {
   return configured || DEFAULT_EMAIL_FROM;
 }
 
-function getInterviewEmailFrom(companyName: string) {
+function getInterviewEmailFrom() {
   const configured = process.env.INTERVIEW_EMAIL_FROM?.trim();
 
   if (configured) {
     return configured;
   }
 
-  return `${companyName} Hiring Team <no-reply@mil.hireveri.com>`;
+  return getEmailFrom();
 }
 
 function getErrorMessage(error: unknown) {
@@ -269,7 +269,7 @@ export async function sendInterviewEmail({
       : ""
 
   return sendWithRetry({
-    from: getInterviewEmailFrom(displayCompany),
+    from: getInterviewEmailFrom(),
     to,
     subject,
     text: [

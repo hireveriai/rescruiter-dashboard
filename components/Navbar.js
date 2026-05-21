@@ -34,6 +34,19 @@ const navLoadingMessages = {
 
 const ALERT_READ_STORAGE_KEY = "hireveri-read-alert-ids";
 
+function normalizeStorageKeyPart(value) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function getAlertReadStorageKey(profile) {
+  const organization = normalizeStorageKeyPart(profile?.organization);
+  return organization ? `${ALERT_READ_STORAGE_KEY}:${organization}` : ALERT_READ_STORAGE_KEY;
+}
+
 function isActivePath(pathname, href) {
   if (href === "/") {
     return pathname === "/";
@@ -136,6 +149,8 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
   const [readAlertIds, setReadAlertIds] = useState(() => new Set());
   const [feedback, setFeedback] = useState(null);
   const [profile, setProfile] = useState(initialProfile);
+  const displayProfile = initialProfile?.name ? initialProfile : profile;
+  const alertReadStorageKey = useMemo(() => getAlertReadStorageKey(displayProfile), [displayProfile]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -143,15 +158,22 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
     }
 
     try {
-      const stored = window.localStorage.getItem(ALERT_READ_STORAGE_KEY);
+      const stored =
+        window.localStorage.getItem(alertReadStorageKey) ||
+        window.localStorage.getItem(ALERT_READ_STORAGE_KEY);
       const parsed = stored ? JSON.parse(stored) : [];
       if (Array.isArray(parsed)) {
-        setReadAlertIds(new Set(parsed.filter((id) => typeof id === "string" && id.length > 0)));
+        const nextReadIds = new Set(parsed.filter((id) => typeof id === "string" && id.length > 0));
+        setReadAlertIds(nextReadIds);
+
+        if (alertReadStorageKey !== ALERT_READ_STORAGE_KEY) {
+          window.localStorage.setItem(alertReadStorageKey, JSON.stringify([...nextReadIds]));
+        }
       }
     } catch {
       setReadAlertIds(new Set());
     }
-  }, []);
+  }, [alertReadStorageKey]);
 
   useEffect(() => {
     if (initialAlerts !== undefined) {
@@ -221,7 +243,6 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
     };
   }, [searchParams]);
 
-  const displayProfile = initialProfile?.name ? initialProfile : profile;
   const unreadAlerts = useMemo(
     () => alerts.filter((alert) => !readAlertIds.has(alert.id)),
     [alerts, readAlertIds]
@@ -318,7 +339,7 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
     }
 
     try {
-      window.localStorage.setItem(ALERT_READ_STORAGE_KEY, JSON.stringify([...nextReadIds]));
+      window.localStorage.setItem(alertReadStorageKey, JSON.stringify([...nextReadIds]));
     } catch {
       // Read state is a convenience layer; ignore storage failures.
     }

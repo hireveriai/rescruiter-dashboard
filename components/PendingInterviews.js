@@ -346,7 +346,7 @@ function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, onEdit, o
                   <div className="font-medium text-white">{item.candidateName}</div>
                   <div className="text-slate-300">{item.jobTitle}</div>
                   <div>
-                    <span className={`rounded-full border px-3 py-1 text-xs font-medium ${getWorkflowStatusClass(item)}`}>
+                    <span className={`inline-flex min-w-[96px] items-center justify-center whitespace-nowrap rounded-full border px-3 py-1 text-center text-xs font-medium leading-5 ${getWorkflowStatusClass(item)}`}>
                       {getWorkflowStatus(item)}
                     </span>
                     <RecoverySummary recovery={item.recovery} />
@@ -816,7 +816,7 @@ export default function PendingInterviews({ initialPendingInterviews, initialPen
                     <td className="p-4">{item.candidateName}</td>
                     <td className="p-4 text-gray-300">{item.jobTitle}</td>
                     <td className="p-4">
-                      <span className={`rounded-full border px-3 py-1 text-xs font-medium ${getWorkflowStatusClass(item)}`}>
+                      <span className={`inline-flex min-w-[96px] items-center justify-center whitespace-nowrap rounded-full border px-3 py-1 text-center text-xs font-medium leading-5 ${getWorkflowStatusClass(item)}`}>
                         {getWorkflowStatus(item)}
                       </span>
                       <RecoverySummary recovery={item.recovery} />

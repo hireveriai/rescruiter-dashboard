@@ -1,7 +1,7 @@
 ﻿"use client"
 
 import Link from "next/link"
-import { useEffect, useMemo, useState } from "react"
+import { Fragment, useEffect, useMemo, useState } from "react"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
@@ -146,7 +146,7 @@ function getAccessLabel(item) {
   return "Flexible"
 }
 
-function CompletedInterviewModal({ interview, onClose }) {
+function CompletedInterviewDetails({ interview, onClose }) {
   if (!interview) {
     return null
   }
@@ -154,8 +154,7 @@ function CompletedInterviewModal({ interview, onClose }) {
   const answerSummaries = Array.isArray(interview.answerSummaries) ? interview.answerSummaries : []
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#020817]/80 px-4 py-4 backdrop-blur-md sm:py-6" role="dialog" aria-modal="true">
-      <div className="relative w-full max-w-6xl overflow-hidden rounded-[28px] border border-emerald-400/20 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.13),_transparent_34%),linear-gradient(180deg,rgba(15,23,42,0.98),rgba(9,14,28,0.98))] shadow-[0_0_80px_rgba(16,185,129,0.12)]">
+    <div className="relative overflow-hidden rounded-[28px] border border-emerald-400/20 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.13),_transparent_34%),linear-gradient(180deg,rgba(15,23,42,0.98),rgba(9,14,28,0.98))] shadow-[0_0_80px_rgba(16,185,129,0.12)]">
         <div className="absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-emerald-300/70 to-transparent" />
 
         <div className="flex flex-col gap-4 border-b border-white/10 px-6 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-8">
@@ -282,7 +281,6 @@ function CompletedInterviewModal({ interview, onClose }) {
             )}
           </div>
         </div>
-      </div>
     </div>
   )
 }
@@ -291,7 +289,7 @@ export default function InterviewsPage() {
   const searchParams = useAuthSearchParams()
   const [interviews, setInterviews] = useState([])
   const [loading, setLoading] = useState(true)
-  const [selectedInterview, setSelectedInterview] = useState(null)
+  const [expandedInterviewId, setExpandedInterviewId] = useState("")
   const [openSendInterview, setOpenSendInterview] = useState(false)
   const [actionBusyId, setActionBusyId] = useState("")
   const [copiedInterviewId, setCopiedInterviewId] = useState("")
@@ -343,13 +341,9 @@ export default function InterviewsPage() {
   }, [searchParams])
 
   useEffect(() => {
-    if (!selectedInterview) {
-      return undefined
-    }
-
     function handleEscape(event) {
       if (event.key === "Escape") {
-        setSelectedInterview(null)
+        setExpandedInterviewId("")
       }
     }
 
@@ -358,7 +352,7 @@ export default function InterviewsPage() {
     return () => {
       document.removeEventListener("keydown", handleEscape)
     }
-  }, [selectedInterview])
+  }, [])
 
   const stats = useMemo(() => {
     const total = interviews.length
@@ -602,7 +596,8 @@ export default function InterviewsPage() {
                   </tr>
                 ) : (
                   filteredInterviews.map((interview) => (
-                    <tr key={interview.interviewId} className="border-t border-slate-800/80 text-slate-200">
+                    <Fragment key={interview.interviewId}>
+                    <tr className="border-t border-slate-800/80 text-slate-200">
                       <td className="p-5 font-medium text-white">{interview.candidateName}</td>
                       <td className="p-5 text-slate-300">{interview.jobTitle}</td>
                       <td className="p-5">
@@ -618,11 +613,11 @@ export default function InterviewsPage() {
                         {isCompletedInterview(interview) ? (
                           <button
                             type="button"
-                            onClick={() => setSelectedInterview(interview)}
+                            onClick={() => setExpandedInterviewId((current) => current === interview.interviewId ? "" : interview.interviewId)}
                             className="inline-flex items-center justify-center rounded-xl border border-emerald-400/25 bg-emerald-400/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:border-emerald-300/50 hover:bg-emerald-400/15 hover:text-white"
                             aria-label={`View completed summary for ${interview.candidateName}`}
                           >
-                            View
+                            {expandedInterviewId === interview.interviewId ? "Hide" : "View"}
                           </button>
                         ) : String(interview.status).toUpperCase() === "PREPARATION_FAILED" ? (
                           <button
@@ -666,6 +661,14 @@ export default function InterviewsPage() {
                         )}
                       </td>
                     </tr>
+                    {expandedInterviewId === interview.interviewId ? (
+                      <tr key={`${interview.interviewId}-details`} className="border-t border-emerald-400/10">
+                        <td colSpan={8} className="bg-slate-950/30 p-5">
+                          <CompletedInterviewDetails interview={interview} onClose={() => setExpandedInterviewId("")} />
+                        </td>
+                      </tr>
+                    ) : null}
+                    </Fragment>
                   ))
                 )}
                 </tbody>
@@ -676,7 +679,6 @@ export default function InterviewsPage() {
       </main>
 
       <SendInterviewModal isOpen={openSendInterview} onClose={() => setOpenSendInterview(false)} />
-      <CompletedInterviewModal interview={selectedInterview} onClose={() => setSelectedInterview(null)} />
     </div>
   )
 }
