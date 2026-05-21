@@ -59,7 +59,7 @@ function getConnectionConfig() {
   return {
     connectionString: connectionUrl.toString(),
     ssl: usesLocalDatabase ? false : { rejectUnauthorized: false },
-    max: 1,
+    max: Number(process.env.PG_POOL_MAX || 5),
     idleTimeoutMillis: 10000,
     connectionTimeoutMillis: 10000,
   }

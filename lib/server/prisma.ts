@@ -42,7 +42,7 @@ function getNormalizedDatabaseUrl() {
     const parsedUrl = new URL(normalizedUrl)
 
     if (!parsedUrl.searchParams.has("connection_limit")) {
-      parsedUrl.searchParams.set("connection_limit", "1")
+      parsedUrl.searchParams.set("connection_limit", process.env.PRISMA_CONNECTION_LIMIT || "5")
     }
 
     if (!parsedUrl.searchParams.has("pool_timeout")) {
