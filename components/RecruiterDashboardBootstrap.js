@@ -163,7 +163,9 @@ export default function RecruiterDashboardBootstrap({ children }) {
             status: "error",
             profile: null,
             overview: null,
-            message: "Session could not be validated. Please sign in again.",
+            message: profileData?.error?.code
+              ? `Session could not be validated (${profileData.error.code}). Please sign in again.`
+              : "Session could not be validated. Please sign in again.",
           })
           if (typeof window !== "undefined") {
             window.sessionStorage.removeItem("hireveri-overview")

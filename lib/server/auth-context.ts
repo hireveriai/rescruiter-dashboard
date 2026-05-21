@@ -476,6 +476,122 @@ async function lookupRecruiterByEmailOrg(
   return recruiterRows[0] ?? null
 }
 
+async function repairRecruiterByEmailOrg(
+  email: string,
+  organizationId: string
+): Promise<RecruiterLookupRow | null> {
+  try {
+    await prisma.$executeRaw(Prisma.sql`
+      update public.users
+      set
+        role = case
+          when role in ('RECRUITER', 'ADMIN', 'ORG_OWNER') then role
+          else 'RECRUITER'
+        end,
+        is_active = true,
+        is_email_verified = true
+      where lower(email) = ${email}
+        and organization_id::text = ${organizationId}
+    `)
+  } catch (error) {
+    console.warn("Trusted recruiter email repair failed", error)
+    return null
+  }
+
+  return lookupRecruiterByEmailOrg(email, organizationId)
+}
+
+async function ensureRecruiterUserFromTrustedAuth(input: {
+  userId: string
+  organizationId: string
+  email: string
+}): Promise<RecruiterLookupRow | null> {
+  const email = input.email.trim().toLowerCase()
+
+  if (!email || !UUID_REGEX.test(input.userId) || !UUID_REGEX.test(input.organizationId)) {
+    return null
+  }
+
+  try {
+    await prisma.$executeRaw(Prisma.sql`
+      insert into public.users (
+        user_id,
+        organization_id,
+        full_name,
+        email,
+        role,
+        is_active,
+        is_email_verified,
+        created_at
+      )
+      values (
+        ${input.userId}::uuid,
+        ${input.organizationId}::uuid,
+        split_part(${email}, '@', 1),
+        ${email},
+        'RECRUITER',
+        true,
+        true,
+        now()
+      )
+      on conflict (user_id) do update
+      set
+        organization_id = excluded.organization_id,
+        email = excluded.email,
+        role = case
+          when public.users.role in ('RECRUITER', 'ADMIN', 'ORG_OWNER') then public.users.role
+          else excluded.role
+        end,
+        is_active = true,
+        is_email_verified = true
+    `)
+  } catch (error) {
+    console.warn("Trusted recruiter user upsert without auth_user_id failed", error)
+    return null
+  }
+
+  try {
+    await prisma.$queryRaw(Prisma.sql`
+      select public.fn_ensure_default_recruiter_profile(
+        ${input.userId}::uuid,
+        ${input.organizationId}::uuid
+      )
+    `)
+  } catch (error) {
+    console.warn("Trusted recruiter profile auto-heal skipped", error)
+  }
+
+  return lookupRecruiterByUserOrg(input.userId, input.organizationId)
+}
+
+async function resolveTrustedRecruiterByUserOrgOrEmail(input: {
+  userId: string
+  organizationId: string
+  email?: string | null
+}): Promise<RecruiterLookupRow | null> {
+  let recruiter = await lookupRecruiterByUserOrg(input.userId, input.organizationId)
+
+  const email = input.email?.trim().toLowerCase()
+
+  if (!recruiter && email) {
+    recruiter = await lookupRecruiterByEmailOrg(email, input.organizationId)
+  }
+
+  if (!recruiter && email) {
+    recruiter = await repairRecruiterByEmailOrg(email, input.organizationId)
+  }
+
+  if (!recruiter && email) {
+    recruiter = await ensureRecruiterUserFromTrustedAuth({
+      userId: input.userId,
+      organizationId: input.organizationId,
+      email,
+    })
+  }
+
+  return recruiter
+}
+
 async function lookupRecruiterViaAuthService(sessionId: string): Promise<RecruiterLookupRow | null> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 5_000)
@@ -507,12 +623,7 @@ async function lookupRecruiterViaAuthService(sessionId: string): Promise<Recruit
       return null
     }
 
-    let recruiter = await lookupRecruiterByUserOrg(userId, organizationId)
-
-    if (!recruiter && email) {
-      recruiter = await lookupRecruiterByEmailOrg(email, organizationId)
-    }
-
+    const recruiter = await resolveTrustedRecruiterByUserOrgOrEmail({ userId, organizationId, email })
     return recruiter?.user_id && recruiter.organization_id ? recruiter : null
   } catch (error) {
     console.warn("Recruiter auth service session lookup failed", error)
@@ -673,11 +784,11 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
       continue
     }
 
-    let recruiter = await lookupRecruiterByUserOrg(recruiterJwt.user_id, recruiterJwt.organization_id)
-
-    if (!recruiter && recruiterJwt.email) {
-      recruiter = await lookupRecruiterByEmailOrg(recruiterJwt.email, recruiterJwt.organization_id)
-    }
+    const recruiter = await resolveTrustedRecruiterByUserOrgOrEmail({
+      userId: recruiterJwt.user_id,
+      organizationId: recruiterJwt.organization_id,
+      email: recruiterJwt.email,
+    })
 
     if (recruiter?.user_id && recruiter.organization_id) {
       return {
