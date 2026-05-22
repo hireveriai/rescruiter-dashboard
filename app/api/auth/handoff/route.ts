@@ -63,6 +63,9 @@ export async function GET(request: Request) {
 
   if (token) {
     response.cookies.set("authToken", token, options)
+    response.cookies.set("accessToken", token, options)
+    response.cookies.set("access_token", token, options)
+    response.cookies.set("token", token, options)
   }
 
   if (session) {

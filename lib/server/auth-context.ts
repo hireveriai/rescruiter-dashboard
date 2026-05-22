@@ -38,6 +38,12 @@ type AuthServiceRecruiterSession = {
   email?: string
 }
 
+type AuthServiceRecruiterToken = {
+  userId?: string
+  organizationId?: string
+  email?: string | null
+}
+
 type JwtClaims = {
   sub?: string
   userId?: string
@@ -722,6 +728,42 @@ async function lookupRecruiterViaAuthServiceUncached(sessionId: string): Promise
   }
 }
 
+async function lookupRecruiterViaAuthTokenService(token: string): Promise<RecruiterLookupRow | null> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 5_000)
+
+  try {
+    const url = new URL("/api/auth/recruiter-token", AUTH_APP_URL)
+    const response = await fetch(url, {
+      headers: {
+        authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+      signal: controller.signal,
+    })
+
+    if (!response.ok) {
+      return null
+    }
+
+    const payload = (await response.json()) as AuthServiceRecruiterToken
+    const userId = payload.userId?.trim()
+    const organizationId = payload.organizationId?.trim()
+    const email = payload.email?.trim().toLowerCase()
+
+    if (!userId || !organizationId || !UUID_REGEX.test(userId) || !UUID_REGEX.test(organizationId)) {
+      return null
+    }
+
+    return resolveTrustedRecruiterByUserOrgOrEmail({ userId, organizationId, email })
+  } catch (error) {
+    console.warn("Recruiter auth service token lookup failed", error)
+    return null
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 async function fetchAuthUserEmail(identityId: string): Promise<string | null> {
   try {
     const rows = await prisma.$queryRaw<AuthUserRow[]>(Prisma.sql`
@@ -870,6 +912,18 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
     const recruiterJwt = decodeVerifiedRecruiterJwt(jwt)
 
     if (!recruiterJwt) {
+      const authServiceRecruiter = await lookupRecruiterViaAuthTokenService(jwt)
+
+      if (authServiceRecruiter?.user_id && authServiceRecruiter.organization_id) {
+        return {
+          userId: authServiceRecruiter.user_id,
+          organizationId: authServiceRecruiter.organization_id,
+          sessionCookiePresent,
+          sessionCookieMatched: sessionCookiePresent,
+          sessionValidatedVia: "jwt",
+        }
+      }
+
       continue
     }
 
