@@ -1,5 +1,6 @@
 export type DashboardStateMetricsInput = {
   jobs_count?: number | null
+  active_jobs_count?: number | null
   veris_screening_count?: number | null
   interview_links_count?: number | null
   interviews_count?: number | null
@@ -11,6 +12,7 @@ export type DashboardHeroState = "NO_JOB_CREATED" | "VERIS_OPTIONAL" | "WORKFLOW
 export type DashboardStateSnapshot = {
   heroState: DashboardHeroState
   jobs_count: number
+  active_jobs_count: number
   veris_screening_count: number
   interview_links_count: number
   interviews_count: number
@@ -25,6 +27,7 @@ function toCount(value: number | null | undefined) {
 export function deriveDashboardState(input: DashboardStateMetricsInput): DashboardStateSnapshot {
   const snapshot = {
     jobs_count: toCount(input.jobs_count),
+    active_jobs_count: toCount(input.active_jobs_count ?? input.jobs_count),
     veris_screening_count: toCount(input.veris_screening_count),
     interview_links_count: toCount(input.interview_links_count),
     interviews_count: toCount(input.interviews_count),
@@ -32,7 +35,7 @@ export function deriveDashboardState(input: DashboardStateMetricsInput): Dashboa
     heroState: "NO_JOB_CREATED" as DashboardHeroState,
   }
 
-  if (snapshot.jobs_count === 0) {
+  if (snapshot.active_jobs_count === 0) {
     snapshot.heroState = "NO_JOB_CREATED"
     return snapshot
   }

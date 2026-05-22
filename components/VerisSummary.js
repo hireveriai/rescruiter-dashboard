@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useEffect, useState } from "react"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
@@ -51,16 +52,10 @@ function getInsightSummary(item) {
 export default function VerisSummary({ initialSummaries, isLoading = false }) {
   const searchParams = useAuthSearchParams()
   const [summaries, setSummaries] = useState([])
-  const [allSummaries, setAllSummaries] = useState(null)
-  const [showAll, setShowAll] = useState(false)
   const [expandedSummaryIds, setExpandedSummaryIds] = useState(() => new Set())
-  const [isLoadingAll, setIsLoadingAll] = useState(false)
-  const [loadAllError, setLoadAllError] = useState("")
   const baseSummaries = initialSummaries !== undefined ? initialSummaries : summaries
-  const displaySummaries = showAll ? allSummaries ?? baseSummaries : baseSummaries.slice(0, DASHBOARD_SUMMARY_LIMIT)
-  const hasMoreSummaries = showAll
-    ? displaySummaries.length > DASHBOARD_SUMMARY_LIMIT
-    : baseSummaries.length > DASHBOARD_SUMMARY_LIMIT
+  const displaySummaries = baseSummaries.slice(0, DASHBOARD_SUMMARY_LIMIT)
+  const hasMoreSummaries = baseSummaries.length > DASHBOARD_SUMMARY_LIMIT
 
   useEffect(() => {
     if (initialSummaries !== undefined) {
@@ -92,40 +87,6 @@ export default function VerisSummary({ initialSummaries, isLoading = false }) {
     }
   }, [initialSummaries, searchParams])
 
-  async function handleViewAll() {
-    if (showAll) {
-      setShowAll(false)
-      setLoadAllError("")
-      return
-    }
-
-    if (allSummaries) {
-      setShowAll(true)
-      return
-    }
-
-    try {
-      setIsLoadingAll(true)
-      setLoadAllError("")
-      const response = await fetch(buildAuthUrl("/api/dashboard/veris?limit=all", searchParams), {
-        credentials: "include",
-        cache: "no-store",
-      })
-      const data = await response.json()
-
-      if (!response.ok || !data.success) {
-        throw new Error(data?.error?.message || data?.message || "Unable to load all VERIS summaries")
-      }
-
-      setAllSummaries(data.data ?? [])
-      setShowAll(true)
-    } catch (error) {
-      setLoadAllError(error instanceof Error ? error.message : "Unable to load all VERIS summaries")
-    } finally {
-      setIsLoadingAll(false)
-    }
-  }
-
   function toggleSummaryDetails(attemptId) {
     setExpandedSummaryIds((current) => {
       const next = new Set(current)
@@ -152,28 +113,20 @@ export default function VerisSummary({ initialSummaries, isLoading = false }) {
           </h2>
           {!isLoading ? (
             <p className="mt-1 text-sm text-slate-500">
-              Showing {displaySummaries.length} of {showAll ? displaySummaries.length : baseSummaries.length} summaries
+              Showing {displaySummaries.length} of {baseSummaries.length} summaries
             </p>
           ) : null}
         </div>
 
-        {hasMoreSummaries || showAll ? (
-          <button
-            type="button"
-            onClick={handleViewAll}
-            disabled={isLoadingAll}
+        {hasMoreSummaries ? (
+          <Link
+            href={buildAuthUrl("/veris-insights", searchParams)}
             className="self-start rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-300 transition hover:border-cyan-400/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60 sm:self-auto"
           >
-            {isLoadingAll ? "Loading..." : showAll ? "Show less" : "View all"}
-          </button>
+            View all
+          </Link>
         ) : null}
       </div>
-
-      {loadAllError ? (
-        <div className="mb-4 rounded-lg border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-          {loadAllError}
-        </div>
-      ) : null}
 
       {isLoading ? (
         <div className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">

@@ -202,6 +202,7 @@ type SummaryRow = {
 type RecordingRow = {
   attempt_id: string | null
   interview_id: string | null
+  recording_id: string | null
   recording_url: string | null
   created_at: string | null
 }
@@ -242,6 +243,10 @@ function percentage(part: number, total: number) {
   }
 
   return Number(((part / total) * 100).toFixed(1))
+}
+
+function buildRecordingPlaybackUrl(recordingId: string | null | undefined) {
+  return recordingId ? `/api/recordings/${encodeURIComponent(recordingId)}` : null
 }
 
 function average(values: number[]) {
@@ -813,8 +818,9 @@ async function fetchRecordingRows(organizationId: string) {
   }
 
   const columns = await getTableColumns("interview_recordings")
+  const idColumn = columns.has("recording_id") ? "recording_id" : columns.has("id") ? "id" : null
   const urlColumn = columns.has("audio_url") ? "audio_url" : columns.has("recording_url") ? "recording_url" : null
-  if (!urlColumn) {
+  if (!idColumn || !urlColumn) {
     return [] as RecordingRow[]
   }
 
@@ -822,6 +828,7 @@ async function fetchRecordingRows(organizationId: string) {
     select
       ${columns.has("attempt_id") ? "ir.attempt_id::text" : "null::text"} as attempt_id,
       ${columns.has("interview_id") ? "ir.interview_id::text" : "ia.interview_id::text"} as interview_id,
+      ir.${quoteIdentifier(idColumn)}::text as recording_id,
       ir.${quoteIdentifier(urlColumn)}::text as recording_url,
       ${columns.has("created_at") ? "ir.created_at::text" : "now()::text"} as created_at
     from public.interview_recordings ir
@@ -1121,7 +1128,7 @@ export async function getNormalizedReportRows(organizationId: string): Promise<N
         endedAt: attempt?.endedAt?.toISOString() ?? null,
         inviteCreatedAt: latestInvite?.createdAt?.toISOString() ?? null,
         inviteExpiresAt: latestInvite?.expiresAt?.toISOString() ?? null,
-        latestRecordingUrl: recording?.recording_url ?? null,
+        latestRecordingUrl: buildRecordingPlaybackUrl(recording?.recording_id),
         avg_confidence_score: responseAverages.avg_confidence_score,
         avg_clarity_score: responseAverages.avg_clarity_score,
         avg_depth_score: responseAverages.avg_depth_score,

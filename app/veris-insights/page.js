@@ -1,0 +1,235 @@
+"use client"
+
+import Link from "next/link"
+import { useEffect, useMemo, useState } from "react"
+
+import Navbar from "@/components/Navbar"
+import RouteLoadingShell from "@/components/system/skeletons/RouteLoadingShell"
+import { buildAuthUrl } from "@/lib/client/auth-query"
+import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
+
+function getRecommendationColor(value) {
+  const normalized = String(value ?? "").toUpperCase()
+
+  if (normalized === "STRONG HIRE" || normalized === "HIRE") {
+    return "text-green-400"
+  }
+
+  if (normalized === "HOLD" || normalized === "REVIEW REQUIRED") {
+    return "text-yellow-400"
+  }
+
+  return "text-red-400"
+}
+
+function getRiskColor(value) {
+  const normalized = String(value ?? "").toUpperCase()
+
+  if (normalized === "LOW") {
+    return "text-green-400"
+  }
+
+  if (normalized === "MEDIUM") {
+    return "text-yellow-400"
+  }
+
+  return "text-red-400"
+}
+
+function getInsightSummary(item) {
+  const reason = String(item.recommendationReason ?? "").trim()
+  const behavioralFlags = String(item.behavioralFlagsShort ?? "").trim()
+  const strengths = String(item.strengthsShort ?? "").trim()
+
+  if (reason) return reason
+  if (behavioralFlags && !/^none$/i.test(behavioralFlags)) return behavioralFlags
+  if (strengths) return strengths
+
+  return "Review evidence and pipeline signals before final decision."
+}
+
+export default function VerisInsightsPage() {
+  const searchParams = useAuthSearchParams()
+  const [summaries, setSummaries] = useState([])
+  const [expandedIds, setExpandedIds] = useState(() => new Set())
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState("")
+
+  useEffect(() => {
+    let active = true
+
+    async function loadSummaries() {
+      try {
+        setIsLoading(true)
+        setError("")
+
+        const response = await fetch(buildAuthUrl("/api/dashboard/veris?limit=all", searchParams), {
+          credentials: "include",
+          cache: "no-store",
+        })
+        const payload = await response.json()
+
+        if (!response.ok || !payload?.success) {
+          throw new Error(payload?.error?.message || payload?.message || "Unable to load VERIS insights")
+        }
+
+        if (active) {
+          setSummaries(Array.isArray(payload.data) ? payload.data : [])
+        }
+      } catch (loadError) {
+        if (active) {
+          setError(loadError instanceof Error ? loadError.message : "Unable to load VERIS insights")
+        }
+      } finally {
+        if (active) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    loadSummaries()
+
+    return () => {
+      active = false
+    }
+  }, [searchParams])
+
+  const counts = useMemo(() => {
+    return summaries.reduce(
+      (acc, item) => {
+        const recommendation = String(item.recommendation ?? "").toUpperCase()
+        const risk = String(item.riskLevel ?? "").toUpperCase()
+
+        if (recommendation === "HIRE" || recommendation === "STRONG HIRE") acc.recommended += 1
+        if (recommendation === "HOLD" || recommendation === "REVIEW REQUIRED") acc.review += 1
+        if (risk === "HIGH") acc.highRisk += 1
+
+        return acc
+      },
+      { total: summaries.length, recommended: 0, review: 0, highRisk: 0 }
+    )
+  }, [summaries])
+
+  function toggleDetails(attemptId) {
+    setExpandedIds((current) => {
+      const next = new Set(current)
+
+      if (next.has(attemptId)) {
+        next.delete(attemptId)
+      } else {
+        next.add(attemptId)
+      }
+
+      return next
+    })
+  }
+
+  return (
+    <div className="min-h-screen bg-[#0b1220] text-white">
+      <Navbar />
+      <main className="px-6 py-8">
+        <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300/80">Evidence Review</p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight">VERIS Insights</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
+              Full candidate intelligence summaries with recommendation, risk posture, and review evidence.
+            </p>
+          </div>
+          <Link
+            href={buildAuthUrl("/", searchParams)}
+            className="inline-flex w-fit items-center justify-center rounded-xl border border-slate-700 bg-slate-950/50 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-cyan-400/40 hover:text-white"
+          >
+            Back to Dashboard
+          </Link>
+        </div>
+
+        {isLoading ? (
+          <RouteLoadingShell mode="forensic" intelligenceVariant="veris" title="Loading VERIS insights" />
+        ) : error ? (
+          <div className="rounded-xl border border-amber-400/25 bg-amber-500/10 p-5 text-sm text-amber-100">
+            {error}
+          </div>
+        ) : (
+          <>
+            <div className="mb-5 grid gap-3 md:grid-cols-4">
+              {[
+                ["Total Summaries", counts.total],
+                ["Recommended", counts.recommended],
+                ["Review Queue", counts.review],
+                ["High Risk", counts.highRisk],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-lg border border-slate-800 bg-[#111a2e] px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{label}</p>
+                  <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
+                </div>
+              ))}
+            </div>
+
+            {summaries.length === 0 ? (
+              <div className="rounded-lg border border-slate-800 bg-[#111a2e] p-6 text-center text-slate-400">
+                No VERIS insights available yet.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                {summaries.map((item) => {
+                  const isExpanded = expandedIds.has(item.attemptId)
+
+                  return (
+                    <article key={item.attemptId} className="rounded-lg border border-slate-800 bg-[#111a2e] p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <h2 className="truncate text-base font-semibold text-white">{item.candidateName}</h2>
+                          <p className="mt-0.5 truncate text-sm text-slate-400">{item.jobTitle}</p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Risk Level</p>
+                          <p className={`mt-1 text-sm font-semibold ${getRiskColor(item.riskLevel)}`}>{item.riskLevel}</p>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+                        <span className="text-slate-400">Recommendation</span>
+                        <span className={`font-semibold ${getRecommendationColor(item.recommendation)}`}>{item.recommendation}</span>
+                        <span className="text-slate-700">/</span>
+                        <span className="text-slate-400">Score</span>
+                        <span className="font-semibold text-blue-300">{item.scoreLabel ?? "-"}</span>
+                      </div>
+
+                      <p className="mt-2 text-sm leading-6 text-slate-300">{getInsightSummary(item)}</p>
+
+                      <button
+                        type="button"
+                        onClick={() => toggleDetails(item.attemptId)}
+                        className="mt-3 text-xs font-semibold text-cyan-200 transition hover:text-cyan-100"
+                      >
+                        {isExpanded ? "Hide evidence details" : "View evidence details"}
+                      </button>
+
+                      {isExpanded ? (
+                        <div className="mt-3 grid gap-2 rounded-lg border border-slate-800 bg-slate-950/25 p-3 text-sm text-slate-300">
+                          <div>
+                            Strengths: <span className="text-slate-100">{item.strengthsShort || "-"}</span>
+                          </div>
+                          <div>
+                            Weaknesses: <span className="text-slate-100">{item.weaknessesShort || "-"}</span>
+                          </div>
+                          <div>
+                            Behavioral Flags: <span className="text-slate-100">{item.behavioralFlagsShort || "-"}</span>
+                          </div>
+                          <div>
+                            Decision Rationale: <span className="text-slate-100">{item.recommendationReason || "-"}</span>
+                          </div>
+                        </div>
+                      ) : null}
+                    </article>
+                  )
+                })}
+              </div>
+            )}
+          </>
+        )}
+      </main>
+    </div>
+  )
+}

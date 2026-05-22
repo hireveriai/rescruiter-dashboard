@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client"
 import { deriveDashboardState } from "@/lib/dashboard/dashboard-state-engine"
 import { prisma } from "@/lib/server/prisma"
 import { getDashboardPipelineData } from "@/lib/server/services/dashboard-pipeline"
+import { jobPositionsSupportIsActive } from "@/lib/server/services/jobs"
 
 export type DashboardWorkflowSnapshot = {
   pipeline: {
@@ -13,6 +14,7 @@ export type DashboardWorkflowSnapshot = {
   }
   workflowMetrics: {
     jobs: number
+    activeJobs: number
     invites: number
     screeningRuns: number
     shortlistedCandidates: number
@@ -80,6 +82,41 @@ type InterviewWorkflowRow = {
   decisions_pending: number
 }
 
+type JobWorkflowRow = {
+  jobs: number
+  active_jobs: number
+}
+
+async function getJobWorkflowMetrics(organizationId: string) {
+  const supportsIsActive = await jobPositionsSupportIsActive()
+
+  if (!supportsIsActive) {
+    const jobs = await prisma.jobPosition.count({
+      where: {
+        organizationId,
+      },
+    })
+
+    return {
+      jobs,
+      activeJobs: jobs,
+    }
+  }
+
+  const rows = await prisma.$queryRaw<JobWorkflowRow[]>(Prisma.sql`
+    select
+      count(*)::int as jobs,
+      count(*) filter (where coalesce(is_active, true) = true)::int as active_jobs
+    from public.job_positions
+    where organization_id = ${organizationId}::uuid
+  `)
+
+  return {
+    jobs: Number(rows[0]?.jobs ?? 0),
+    activeJobs: Number(rows[0]?.active_jobs ?? 0),
+  }
+}
+
 async function getInterviewWorkflowMetrics(organizationId: string) {
   const rows = await prisma.$queryRaw<InterviewWorkflowRow[]>(Prisma.sql`
     with latest_attempts as (
@@ -138,12 +175,8 @@ export async function getDashboardWorkflowSnapshot(
   organizationId: string,
   existingPipelineData?: DashboardPipelineSnapshot
 ): Promise<DashboardWorkflowSnapshot> {
-  const [jobs, invites, screeningMetrics, interviewMetrics, pipelineData] = await Promise.all([
-    prisma.jobPosition.count({
-      where: {
-        organizationId,
-      },
-    }),
+  const [jobMetrics, invites, screeningMetrics, interviewMetrics, pipelineData] = await Promise.all([
+    getJobWorkflowMetrics(organizationId),
     prisma.interviewInvite.count({
       where: {
         interview: {
@@ -157,7 +190,8 @@ export async function getDashboardWorkflowSnapshot(
   ])
 
   const workflowMetrics = {
-    jobs,
+    jobs: jobMetrics.jobs,
+    activeJobs: jobMetrics.activeJobs,
     invites,
     screeningRuns: screeningMetrics.screeningRuns,
     shortlistedCandidates: screeningMetrics.shortlistedCandidates,
@@ -171,7 +205,8 @@ export async function getDashboardWorkflowSnapshot(
   }
 
   const dashboardState = deriveDashboardState({
-    jobs_count: jobs,
+    jobs_count: jobMetrics.jobs,
+    active_jobs_count: jobMetrics.activeJobs,
     veris_screening_count: screeningMetrics.screeningRuns,
     interview_links_count: invites,
     interviews_count: pipelineData.pipeline.completed + pipelineData.pipeline.inProgress,

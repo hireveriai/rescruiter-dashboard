@@ -138,7 +138,8 @@ function getWorkflowFacts(overview) {
   const metrics = overview?.workflowMetrics ?? {}
   const pipeline = overview?.pipeline ?? {}
   const dashboardState = deriveDashboardState(overview?.dashboardState ?? {})
-  const hasJobs = Number(metrics.jobs ?? 0) > 0
+  const hasActiveJobs = Number(metrics.activeJobs ?? dashboardState.active_jobs_count ?? metrics.jobs ?? 0) > 0
+  const hasJobs = hasActiveJobs
   const invitesSent = Number(metrics.invites ?? overview?.pendingInterviews?.length ?? 0) > 0
   const screeningStarted = Boolean(metrics.screeningStarted) || Number(metrics.screeningRuns ?? 0) > 0 || Number(overview?.veris?.length ?? 0) > 0
   const screeningCompleted = Boolean(metrics.screeningCompleted) || Number(metrics.shortlistedCandidates ?? 0) > 0 || Number(overview?.veris?.length ?? 0) > 0
@@ -151,6 +152,7 @@ function getWorkflowFacts(overview) {
 
   return {
     hasJobs,
+    hasActiveJobs,
     screeningStarted,
     screeningCompleted,
     screeningSkipped,

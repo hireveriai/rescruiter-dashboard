@@ -22,6 +22,7 @@ type OverviewPayload = {
   }
   workflowMetrics: {
     jobs: number
+    activeJobs: number
     invites: number
     screeningRuns: number
     shortlistedCandidates: number
