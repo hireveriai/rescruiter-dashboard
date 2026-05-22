@@ -28,6 +28,10 @@ function getStatusColor(status) {
     return "text-red-400"
   }
 
+  if (normalized === "EXPIRED") {
+    return "text-red-300"
+  }
+
   return "text-yellow-400"
 }
 

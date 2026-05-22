@@ -22,12 +22,16 @@ function normalizeStatus(status: string | null | undefined) {
   return String(status ?? "").trim().toUpperCase()
 }
 
+function isInviteExpired(invite: InviteStatusInput | null | undefined) {
+  const expiresAt = invite?.expiresAt ? new Date(invite.expiresAt) : null
+
+  return expiresAt ? expiresAt.getTime() <= Date.now() : false
+}
+
 export function isInviteUsable(invite: InviteStatusInput) {
   const normalizedStatus = normalizeStatus(invite.status || "ACTIVE")
-  const expiresAt = invite.expiresAt ? new Date(invite.expiresAt) : null
-  const isExpired = expiresAt ? expiresAt.getTime() <= Date.now() : false
 
-  return normalizedStatus === "ACTIVE" && !invite.usedAt && !isExpired
+  return normalizedStatus === "ACTIVE" && !invite.usedAt && !isInviteExpired(invite)
 }
 
 export function isAttemptCompleted(attempt: AttemptStatusInput) {
@@ -76,12 +80,12 @@ export function deriveInterviewStatus({
     return "SENDING_EMAIL"
   }
 
-  if (normalizedInterviewStatus === "READY") {
-    return "READY"
+  if (latestInvite && !isInviteUsable(latestInvite) && normalizedInviteStatus) {
+    return isInviteExpired(latestInvite) && !latestInvite.usedAt ? "EXPIRED" : normalizedInviteStatus
   }
 
-  if (latestInvite && !isInviteUsable(latestInvite) && normalizedInviteStatus) {
-    return normalizedInviteStatus
+  if (normalizedInterviewStatus === "READY") {
+    return "READY"
   }
 
   return normalizedInterviewStatus || "PENDING"

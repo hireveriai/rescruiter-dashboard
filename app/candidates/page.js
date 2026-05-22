@@ -22,6 +22,10 @@ function getStatusBadge(status) {
     return "border-blue-500/20 bg-blue-500/10 text-blue-300"
   }
 
+  if (normalized === "EXPIRED") {
+    return "border-rose-500/20 bg-rose-500/10 text-rose-300"
+  }
+
   return "border-amber-500/20 bg-amber-500/10 text-amber-300"
 }
 
