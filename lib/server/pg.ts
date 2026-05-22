@@ -4,8 +4,22 @@ const globalForPg = globalThis as unknown as {
   pgPool?: Pool
 }
 
+function getRawDatabaseUrl() {
+  return (
+    process.env.DB_POOL_URL ||
+    process.env.POSTGRES_PRISMA_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL_NON_POOLING
+  )
+}
+
+function shouldForceTransactionPooler() {
+  return process.env.DB_POOL_MODE !== "session"
+}
+
 function getNormalizedDatabaseUrl() {
-  const rawUrl = process.env.DATABASE_URL
+  const rawUrl = getRawDatabaseUrl()
 
   if (!rawUrl) {
     throw new Error("Missing DATABASE_URL")
@@ -50,6 +64,11 @@ function getConnectionConfig() {
   const connectionUrl = new URL(normalizedUrl)
   const usesLocalDatabase =
     connectionUrl.hostname === "localhost" || connectionUrl.hostname === "127.0.0.1"
+  const usesSupabasePooler = connectionUrl.hostname.endsWith(".pooler.supabase.com")
+
+  if (shouldForceTransactionPooler() && usesSupabasePooler && (!connectionUrl.port || connectionUrl.port === "5432")) {
+    connectionUrl.port = "6543"
+  }
 
   connectionUrl.searchParams.delete("sslmode")
   connectionUrl.searchParams.delete("sslcert")
@@ -59,9 +78,9 @@ function getConnectionConfig() {
   return {
     connectionString: connectionUrl.toString(),
     ssl: usesLocalDatabase ? false : { rejectUnauthorized: false },
-    max: Number(process.env.PG_POOL_MAX || 5),
-    idleTimeoutMillis: 10000,
-    connectionTimeoutMillis: 10000,
+    max: Number(process.env.PG_POOL_MAX || 1),
+    idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS || 1000),
+    connectionTimeoutMillis: Number(process.env.PG_CONNECTION_TIMEOUT_MS || 5000),
   }
 }
 

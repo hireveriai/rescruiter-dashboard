@@ -196,12 +196,9 @@ function normalizeCookieValue(value: string | null | undefined): string | null {
   return trimmed ? trimmed : null
 }
 
-function getErrorMessage(error: unknown) {
-  if (error instanceof Error && error.message) {
-    return error.message
-  }
-
-  return "Unknown database error"
+function throwRecruiterLookupFailed(context: string, error: unknown): never {
+  console.error(context, error)
+  throw new ApiError(500, "RECRUITER_LOOKUP_FAILED", "Could not validate recruiter access. Please try again.")
 }
 
 function decodeBase64Url(value: string): string | null {
@@ -483,8 +480,7 @@ async function lookupRecruiterByIdentity(
       limit 1
     `)
   } catch (error) {
-    console.error("Recruiter user lookup failed", error)
-    throw new ApiError(500, "RECRUITER_LOOKUP_FAILED", `Could not validate recruiter access: ${getErrorMessage(error)}`)
+    throwRecruiterLookupFailed("Recruiter user lookup failed", error)
   }
 
   return recruiterRows[0] ?? null
@@ -508,8 +504,7 @@ async function lookupRecruiterByUserOrg(
       limit 1
     `)
   } catch (error) {
-    console.error("Recruiter token lookup failed", error)
-    throw new ApiError(500, "RECRUITER_LOOKUP_FAILED", `Could not validate recruiter access: ${getErrorMessage(error)}`)
+    throwRecruiterLookupFailed("Recruiter token lookup failed", error)
   }
 
   return recruiterRows[0] ?? null
@@ -534,8 +529,7 @@ async function lookupRecruiterByEmailOrg(
       limit 1
     `)
   } catch (error) {
-    console.error("Recruiter token email lookup failed", error)
-    throw new ApiError(500, "RECRUITER_LOOKUP_FAILED", `Could not validate recruiter access: ${getErrorMessage(error)}`)
+    throwRecruiterLookupFailed("Recruiter token email lookup failed", error)
   }
 
   return recruiterRows[0] ?? null
@@ -858,8 +852,7 @@ async function lookupDevBypassRecruiter(): Promise<RecruiterLookupRow | null> {
 
     return recruiterRows[0] ?? null
   } catch (error) {
-    console.error("Recruiter dev bypass lookup failed", error)
-    throw new ApiError(500, "RECRUITER_LOOKUP_FAILED", `Could not validate recruiter access: ${getErrorMessage(error)}`)
+    throwRecruiterLookupFailed("Recruiter dev bypass lookup failed", error)
   }
 }
 

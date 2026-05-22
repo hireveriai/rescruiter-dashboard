@@ -4,8 +4,22 @@ const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient
 }
 
+function getRawDatabaseUrl() {
+  return (
+    process.env.DB_POOL_URL ||
+    process.env.POSTGRES_PRISMA_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL_NON_POOLING
+  )
+}
+
+function shouldForceTransactionPooler() {
+  return process.env.DB_POOL_MODE !== "session"
+}
+
 function getNormalizedDatabaseUrl() {
-  const rawUrl = process.env.DATABASE_URL
+  const rawUrl = getRawDatabaseUrl()
 
   if (!rawUrl) {
     throw new Error("Missing DATABASE_URL")
@@ -41,12 +55,28 @@ function getNormalizedDatabaseUrl() {
   try {
     const parsedUrl = new URL(normalizedUrl)
 
+    if (
+      shouldForceTransactionPooler() &&
+      parsedUrl.hostname.endsWith(".pooler.supabase.com") &&
+      (!parsedUrl.port || parsedUrl.port === "5432")
+    ) {
+      parsedUrl.port = "6543"
+    }
+
     if (!parsedUrl.searchParams.has("connection_limit")) {
-      parsedUrl.searchParams.set("connection_limit", process.env.PRISMA_CONNECTION_LIMIT || "5")
+      parsedUrl.searchParams.set("connection_limit", process.env.PRISMA_CONNECTION_LIMIT || "1")
     }
 
     if (!parsedUrl.searchParams.has("pool_timeout")) {
       parsedUrl.searchParams.set("pool_timeout", "20")
+    }
+
+    if (
+      shouldForceTransactionPooler() &&
+      parsedUrl.hostname.endsWith(".pooler.supabase.com") &&
+      !parsedUrl.searchParams.has("pgbouncer")
+    ) {
+      parsedUrl.searchParams.set("pgbouncer", "true")
     }
 
     return parsedUrl.toString()
