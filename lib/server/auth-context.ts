@@ -56,6 +56,15 @@ type CookieEntry = {
   value: string
 }
 
+declare global {
+  var __hireveriRecruiterAuthServiceCache:
+    | Map<string, { expiresAt: number; recruiter: RecruiterLookupRow }>
+    | undefined
+  var __hireveriRecruiterAuthServiceInFlight:
+    | Map<string, Promise<RecruiterLookupRow | null>>
+    | undefined
+}
+
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const AUTH_APP_URL =
   process.env.AUTH_APP_URL ||
@@ -67,6 +76,56 @@ const DEV_AUTH_BYPASS =
   process.env.NODE_ENV !== "production" &&
   (process.env.DEV_AUTH_BYPASS === "true" ||
     process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS === "true")
+const AUTH_SERVICE_CACHE_TTL_MS = 60_000
+const AUTH_SERVICE_CACHE_MAX_ENTRIES = 500
+
+function getAuthServiceCache() {
+  if (!global.__hireveriRecruiterAuthServiceCache) {
+    global.__hireveriRecruiterAuthServiceCache = new Map()
+  }
+
+  return global.__hireveriRecruiterAuthServiceCache
+}
+
+function getAuthServiceInFlightMap() {
+  if (!global.__hireveriRecruiterAuthServiceInFlight) {
+    global.__hireveriRecruiterAuthServiceInFlight = new Map()
+  }
+
+  return global.__hireveriRecruiterAuthServiceInFlight
+}
+
+function getCachedAuthServiceRecruiter(sessionId: string) {
+  const cache = getAuthServiceCache()
+  const cached = cache.get(sessionId)
+
+  if (!cached) {
+    return null
+  }
+
+  if (cached.expiresAt <= Date.now()) {
+    cache.delete(sessionId)
+    return null
+  }
+
+  return cached.recruiter
+}
+
+function setCachedAuthServiceRecruiter(sessionId: string, recruiter: RecruiterLookupRow) {
+  const cache = getAuthServiceCache()
+
+  if (cache.size >= AUTH_SERVICE_CACHE_MAX_ENTRIES) {
+    const firstKey = cache.keys().next().value
+    if (firstKey) {
+      cache.delete(firstKey)
+    }
+  }
+
+  cache.set(sessionId, {
+    expiresAt: Date.now() + AUTH_SERVICE_CACHE_TTL_MS,
+    recruiter,
+  })
+}
 
 function parseCookieEntries(cookieHeader: string | null): CookieEntry[] {
   if (!cookieHeader) {
@@ -593,6 +652,36 @@ async function resolveTrustedRecruiterByUserOrgOrEmail(input: {
 }
 
 async function lookupRecruiterViaAuthService(sessionId: string): Promise<RecruiterLookupRow | null> {
+  const cached = getCachedAuthServiceRecruiter(sessionId)
+
+  if (cached) {
+    return cached
+  }
+
+  const inFlight = getAuthServiceInFlightMap()
+  const existing = inFlight.get(sessionId)
+
+  if (existing) {
+    return existing
+  }
+
+  const promise = lookupRecruiterViaAuthServiceUncached(sessionId)
+  inFlight.set(sessionId, promise)
+
+  try {
+    const recruiter = await promise
+
+    if (recruiter?.user_id && recruiter.organization_id) {
+      setCachedAuthServiceRecruiter(sessionId, recruiter)
+    }
+
+    return recruiter
+  } finally {
+    inFlight.delete(sessionId)
+  }
+}
+
+async function lookupRecruiterViaAuthServiceUncached(sessionId: string): Promise<RecruiterLookupRow | null> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 5_000)
 
