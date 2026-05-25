@@ -91,6 +91,18 @@ function formatDate(value: string | null) {
   }).format(date)
 }
 
+function CompactReference({ value, maxWidth = "max-w-[150px]" }: { value: string | null; maxWidth?: string }) {
+  if (!value) {
+    return <span>-</span>
+  }
+
+  return (
+    <span title={value} className={`block truncate font-mono text-[11px] text-slate-400 ${maxWidth}`}>
+      {value}
+    </span>
+  )
+}
+
 function StatusBadge({ status }: { status: string }) {
   const normalized = status.toLowerCase()
   const tone =
@@ -166,6 +178,12 @@ export default function BillingPage() {
   const [savingSettings, setSavingSettings] = useState(false)
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
+  const [paymentFilters, setPaymentFilters] = useState({
+    status: "all",
+    query: "",
+    startDate: "",
+    endDate: "",
+  })
   const activeSubscription = useMemo(
     () => data.subscriptions.find((subscription) => subscription.status === "active") ?? data.subscriptions[0] ?? null,
     [data.subscriptions]
@@ -174,6 +192,37 @@ export default function BillingPage() {
     () => data.payments.find((payment) => payment.status === "success") ?? data.payments[0] ?? null,
     [data.payments]
   )
+  const paymentStatuses = useMemo(
+    () => Array.from(new Set(data.payments.map((payment) => payment.status).filter(Boolean))).sort(),
+    [data.payments]
+  )
+  const filteredPayments = useMemo(() => {
+    const query = paymentFilters.query.trim().toLowerCase()
+    const startTime = paymentFilters.startDate ? new Date(`${paymentFilters.startDate}T00:00:00`).getTime() : null
+    const endTime = paymentFilters.endDate ? new Date(`${paymentFilters.endDate}T23:59:59`).getTime() : null
+
+    return data.payments.filter((payment) => {
+      const createdTime = new Date(payment.createdAt).getTime()
+      const matchesStatus = paymentFilters.status === "all" || payment.status === paymentFilters.status
+      const matchesStart = startTime === null || createdTime >= startTime
+      const matchesEnd = endTime === null || createdTime <= endTime
+      const searchable = [
+        payment.invoiceNumber,
+        payment.planName,
+        payment.planId,
+        payment.couponCode,
+        payment.razorpayPaymentId,
+        payment.razorpayOrderId,
+        payment.status,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+
+      return matchesStatus && matchesStart && matchesEnd && (!query || searchable.includes(query))
+    })
+  }, [data.payments, paymentFilters])
+  const filtersApplied = paymentFilters.status !== "all" || paymentFilters.query.trim() || paymentFilters.startDate || paymentFilters.endDate
 
   useEffect(() => {
     let active = true
@@ -253,7 +302,7 @@ export default function BillingPage() {
 
   return (
     <main className="min-h-screen bg-[#081120] px-6 py-12 text-white sm:px-8 lg:px-10">
-      <div className="mx-auto max-w-6xl">
+      <div className="mx-auto max-w-[1400px]">
         <Link
           href={buildAuthUrl("/", searchParams)}
           className="inline-flex items-center rounded-xl border border-slate-700 bg-slate-950/50 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-blue-400/40 hover:bg-slate-900 hover:text-white"
@@ -372,34 +421,32 @@ export default function BillingPage() {
               <p className="px-5 py-8 text-sm text-slate-400">No invoices generated yet. Invoices appear after verified Razorpay payments.</p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="min-w-full text-left text-sm">
-                  <thead className="text-xs uppercase tracking-[0.16em] text-slate-500">
+                <table className="min-w-[1080px] table-fixed text-left text-sm">
+                  <thead className="text-[11px] uppercase tracking-[0.12em] text-slate-500">
                     <tr>
-                      <th className="px-5 py-3 font-medium">Invoice</th>
-                      <th className="px-5 py-3 font-medium">Date</th>
-                      <th className="px-5 py-3 font-medium">Plan</th>
-                      <th className="px-5 py-3 font-medium">Coupon</th>
-                      <th className="px-5 py-3 font-medium">Amount</th>
-                      <th className="px-5 py-3 font-medium">Email</th>
-                      <th className="px-5 py-3 font-medium">Razorpay</th>
-                      <th className="px-5 py-3 font-medium">PDF</th>
+                      <th className="w-[160px] px-4 py-3 font-medium">Invoice</th>
+                      <th className="w-[120px] px-4 py-3 font-medium">Date</th>
+                      <th className="w-[170px] px-4 py-3 font-medium">Plan</th>
+                      <th className="w-[130px] px-4 py-3 font-medium">Coupon</th>
+                      <th className="w-[135px] px-4 py-3 text-right font-medium">Amount</th>
+                      <th className="w-[95px] px-4 py-3 font-medium">Email</th>
+                      <th className="w-[220px] px-4 py-3 font-medium">Razorpay</th>
+                      <th className="w-[110px] px-4 py-3 text-right font-medium">PDF</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800">
                     {data.invoices.map((invoice) => (
                       <tr key={invoice.id} className="text-slate-300">
-                        <td className="px-5 py-4 font-semibold text-white">{invoice.invoiceNumber}</td>
-                        <td className="px-5 py-4">{formatDate(invoice.invoiceDate)}</td>
-                        <td className="px-5 py-4">{invoice.planName}</td>
-                        <td className="px-5 py-4">{invoice.couponCode || "-"}</td>
-                        <td className="px-5 py-4">{formatPaise(invoice.finalAmountPaise, invoice.currency)}</td>
-                        <td className="px-5 py-4">{invoice.emailSentAt ? "Sent" : "Pending"}</td>
-                        <td className="px-5 py-4">
-                          <div className="max-w-[200px] truncate text-xs text-slate-400">
-                            {invoice.razorpayPaymentId || invoice.razorpayOrderId || "-"}
-                          </div>
+                        <td className="whitespace-nowrap px-4 py-4 font-semibold text-white">{invoice.invoiceNumber}</td>
+                        <td className="whitespace-nowrap px-4 py-4">{formatDate(invoice.invoiceDate)}</td>
+                        <td className="px-4 py-4"><span className="block truncate" title={invoice.planName}>{invoice.planName}</span></td>
+                        <td className="whitespace-nowrap px-4 py-4">{invoice.couponCode || "-"}</td>
+                        <td className="whitespace-nowrap px-4 py-4 text-right tabular-nums">{formatPaise(invoice.finalAmountPaise, invoice.currency)}</td>
+                        <td className="whitespace-nowrap px-4 py-4">{invoice.emailSentAt ? "Sent" : "Pending"}</td>
+                        <td className="px-4 py-4">
+                          <CompactReference value={invoice.razorpayPaymentId || invoice.razorpayOrderId} maxWidth="max-w-[190px]" />
                         </td>
-                        <td className="px-5 py-4">
+                        <td className="px-4 py-4 text-right">
                           <a
                             href={buildAuthUrl(`/api/billing/invoices/${invoice.id}/download`, searchParams)}
                             className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-100 transition hover:border-blue-400/60 hover:bg-slate-900"
@@ -417,46 +464,109 @@ export default function BillingPage() {
 
           <section className="mt-6 rounded-2xl border border-slate-800 bg-slate-950/35">
             <div className="border-b border-slate-800 px-5 py-4">
-              <h2 className="text-lg font-semibold text-white">Payment History & Billing Details</h2>
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-white">Payment History & Billing Details</h2>
+                  <p className="mt-1 text-sm text-slate-500">Filter by status, date range, invoice, coupon, plan, or Razorpay reference.</p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5 xl:min-w-[840px]">
+                  <label className="block">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Search</span>
+                    <input
+                      value={paymentFilters.query}
+                      onChange={(event) => setPaymentFilters((current) => ({ ...current, query: event.target.value }))}
+                      placeholder="Invoice, coupon, Razorpay"
+                      className="mt-2 h-10 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-blue-400"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Status</span>
+                    <select
+                      value={paymentFilters.status}
+                      onChange={(event) => setPaymentFilters((current) => ({ ...current, status: event.target.value }))}
+                      className="mt-2 h-10 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm text-white outline-none transition focus:border-blue-400"
+                    >
+                      <option value="all">All status</option>
+                      {paymentStatuses.map((status) => (
+                        <option key={status} value={status}>{status}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">From</span>
+                    <input
+                      type="date"
+                      value={paymentFilters.startDate}
+                      max={paymentFilters.endDate || undefined}
+                      onChange={(event) => setPaymentFilters((current) => ({ ...current, startDate: event.target.value }))}
+                      className="mt-2 h-10 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm text-white outline-none transition focus:border-blue-400"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">To</span>
+                    <input
+                      type="date"
+                      value={paymentFilters.endDate}
+                      min={paymentFilters.startDate || undefined}
+                      onChange={(event) => setPaymentFilters((current) => ({ ...current, endDate: event.target.value }))}
+                      className="mt-2 h-10 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm text-white outline-none transition focus:border-blue-400"
+                    />
+                  </label>
+                  <div className="flex items-end">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentFilters({ status: "all", query: "", startDate: "", endDate: "" })}
+                      disabled={!filtersApplied}
+                      className="h-10 w-full rounded-lg border border-slate-700 px-3 text-sm font-semibold text-slate-200 transition hover:border-blue-400/60 hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
             {data.payments.length === 0 ? (
               <p className="px-5 py-8 text-sm text-slate-400">No payment attempts recorded yet.</p>
+            ) : filteredPayments.length === 0 ? (
+              <p className="px-5 py-8 text-sm text-slate-400">No payment records match the selected filters.</p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="min-w-full text-left text-sm">
-                  <thead className="text-xs uppercase tracking-[0.16em] text-slate-500">
+                <table className="min-w-[1280px] table-fixed text-left text-sm">
+                  <thead className="text-[11px] uppercase tracking-[0.12em] text-slate-500">
                     <tr>
-                      <th className="px-5 py-3 font-medium">Date</th>
-                      <th className="px-5 py-3 font-medium">Invoice Number</th>
-                      <th className="px-5 py-3 font-medium">Plan</th>
-                      <th className="px-5 py-3 font-medium">Status</th>
-                      <th className="px-5 py-3 font-medium">Coupon</th>
-                      <th className="px-5 py-3 font-medium">Taxable</th>
-                      <th className="px-5 py-3 font-medium">GST</th>
-                      <th className="px-5 py-3 font-medium">Discount</th>
-                      <th className="px-5 py-3 font-medium">Amount</th>
-                      <th className="px-5 py-3 font-medium">Razorpay</th>
-                      <th className="px-5 py-3 font-medium">Invoice</th>
+                      <th className="w-[118px] px-3 py-3 font-medium">Date</th>
+                      <th className="w-[138px] px-3 py-3 font-medium">Invoice</th>
+                      <th className="w-[145px] px-3 py-3 font-medium">Plan</th>
+                      <th className="w-[118px] px-3 py-3 font-medium">Status</th>
+                      <th className="w-[115px] px-3 py-3 font-medium">Coupon</th>
+                      <th className="w-[130px] px-3 py-3 text-right font-medium">Taxable</th>
+                      <th className="w-[118px] px-3 py-3 text-right font-medium">GST</th>
+                      <th className="w-[118px] px-3 py-3 text-right font-medium">Discount</th>
+                      <th className="w-[130px] px-3 py-3 text-right font-medium">Amount</th>
+                      <th className="w-[180px] px-3 py-3 font-medium">Razorpay</th>
+                      <th className="w-[70px] px-3 py-3 text-right font-medium">PDF</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800">
-                    {data.payments.map((payment) => (
+                    {filteredPayments.map((payment) => (
                       <tr key={payment.id} className="text-slate-300">
-                        <td className="px-5 py-4">{formatDate(payment.createdAt)}</td>
-                        <td className="px-5 py-4 font-semibold text-white">{payment.invoiceNumber || "-"}</td>
-                        <td className="px-5 py-4">{payment.planName || payment.planId || "-"}</td>
-                        <td className="px-5 py-4"><StatusBadge status={payment.status} /></td>
-                        <td className="px-5 py-4">{payment.couponCode || "-"}</td>
-                        <td className="px-5 py-4">{formatPaise(payment.taxableAmountPaise, payment.currency)}</td>
-                        <td className="px-5 py-4">{formatPaise(payment.gstAmountPaise, payment.currency)}</td>
-                        <td className="px-5 py-4">{formatPaise(payment.discountAmountPaise, payment.currency)}</td>
-                        <td className="px-5 py-4">{formatPaise(payment.amount, payment.currency)}</td>
-                        <td className="px-5 py-4">
-                          <div className="max-w-[220px] truncate text-xs text-slate-400">
-                            {payment.razorpayPaymentId || payment.razorpayOrderId || "-"}
-                          </div>
+                        <td className="whitespace-nowrap px-3 py-4">{formatDate(payment.createdAt)}</td>
+                        <td className="px-3 py-4 font-semibold text-white">
+                          <span className="block truncate" title={payment.invoiceNumber || "-"}>{payment.invoiceNumber || "-"}</span>
                         </td>
-                        <td className="px-5 py-4">
+                        <td className="px-3 py-4">
+                          <span className="block truncate" title={payment.planName || payment.planId || "-"}>{payment.planName || payment.planId || "-"}</span>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-4"><StatusBadge status={payment.status} /></td>
+                        <td className="whitespace-nowrap px-3 py-4">{payment.couponCode || "-"}</td>
+                        <td className="whitespace-nowrap px-3 py-4 text-right tabular-nums">{formatPaise(payment.taxableAmountPaise, payment.currency)}</td>
+                        <td className="whitespace-nowrap px-3 py-4 text-right tabular-nums">{formatPaise(payment.gstAmountPaise, payment.currency)}</td>
+                        <td className="whitespace-nowrap px-3 py-4 text-right tabular-nums">{formatPaise(payment.discountAmountPaise, payment.currency)}</td>
+                        <td className="whitespace-nowrap px-3 py-4 text-right tabular-nums">{formatPaise(payment.amount, payment.currency)}</td>
+                        <td className="px-3 py-4">
+                          <CompactReference value={payment.razorpayPaymentId || payment.razorpayOrderId} maxWidth="max-w-[155px]" />
+                        </td>
+                        <td className="px-3 py-4 text-right">
                           {payment.invoiceId ? (
                             <a
                               href={buildAuthUrl(`/api/billing/invoices/${payment.invoiceId}/download`, searchParams)}

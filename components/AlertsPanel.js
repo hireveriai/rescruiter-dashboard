@@ -6,6 +6,8 @@ import { buildAuthUrl, hasAuthQuery } from "@/lib/client/auth-query"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 import { TimelineSkeleton } from "@/components/system/skeletons"
 
+const ALERTS_READ_EVENT = "hireveri:alerts-read"
+
 function getToneClass(tone) {
   if (tone === "success") {
     return "border-emerald-400/20 bg-emerald-500/10 text-emerald-100"
@@ -43,8 +45,14 @@ function formatAlertTime(value) {
 export default function AlertsPanel({ initialAlerts, isLoading = false }) {
   const searchParams = useAuthSearchParams()
   const [alerts, setAlerts] = useState(() => initialAlerts ?? [])
-  const displayAlerts = initialAlerts !== undefined ? initialAlerts : alerts
+  const displayAlerts = alerts
   const visibleAlerts = useMemo(() => displayAlerts.slice(0, 5), [displayAlerts])
+
+  useEffect(() => {
+    if (initialAlerts !== undefined) {
+      setAlerts(initialAlerts ?? [])
+    }
+  }, [initialAlerts])
 
   useEffect(() => {
     if (initialAlerts !== undefined || !hasAuthQuery(searchParams)) {
@@ -71,6 +79,23 @@ export default function AlertsPanel({ initialAlerts, isLoading = false }) {
       active = false
     }
   }, [initialAlerts, searchParams])
+
+  useEffect(() => {
+    function handleAlertsRead(event) {
+      const alertIds = Array.isArray(event.detail?.alertIds) ? event.detail.alertIds : []
+      if (alertIds.length === 0) {
+        return
+      }
+
+      setAlerts((current) => current.filter((alert) => !alertIds.includes(alert.id)))
+    }
+
+    window.addEventListener(ALERTS_READ_EVENT, handleAlertsRead)
+
+    return () => {
+      window.removeEventListener(ALERTS_READ_EVENT, handleAlertsRead)
+    }
+  }, [])
 
   return (
     <div className="mt-10 rounded-[24px] border border-slate-800 bg-[#0f172a] p-5 shadow-[0_18px_60px_rgba(2,6,23,0.22)]">

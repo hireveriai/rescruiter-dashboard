@@ -67,7 +67,7 @@ async function buildFastOverview(
 ): Promise<OverviewPayload> {
   const [profile, alerts] = await Promise.all([
     getRecruiterProfile(auth),
-    getDashboardAlerts(auth.organizationId, 8).catch(() => []),
+    getDashboardAlerts(auth.organizationId, 8, auth.userId).catch(() => []),
   ])
 
   return {
@@ -101,7 +101,7 @@ async function buildOverview(
       finalizeStale: false,
     }),
     pipelinePromise,
-    getDashboardAlerts(auth.organizationId, 8),
+    getDashboardAlerts(auth.organizationId, 8, auth.userId),
   ])
   const workflowSnapshot = await getDashboardWorkflowSnapshot(auth.organizationId, pipelineData)
 
@@ -153,7 +153,7 @@ function setCachedOverview(cacheKey: string, value: OverviewPayload) {
 export async function GET(request: Request) {
   try {
     const auth = await getRecruiterRequestContext(request)
-    const cacheKey = `overview:${auth.organizationId}`
+    const cacheKey = `overview:${auth.organizationId}:${auth.userId}`
     const { searchParams } = new URL(request.url)
     const forceRefresh = searchParams.has("refresh") || searchParams.get("cache") === "bust"
     const fullOverview = searchParams.get("full") === "1"

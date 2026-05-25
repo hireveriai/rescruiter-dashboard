@@ -35,6 +35,7 @@ const navLoadingMessages = {
 };
 
 const ALERT_READ_STORAGE_KEY = "hireveri-read-alert-ids";
+const ALERTS_READ_EVENT = "hireveri:alerts-read";
 
 function normalizeStorageKeyPart(value) {
   return String(value ?? "")
@@ -213,15 +214,7 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
   }, [initialProfile]);
 
   useEffect(() => {
-    if (initialProfile?.name) {
-      return;
-    }
-
     if (!hasAuthQuery(searchParams)) {
-      return;
-    }
-
-    if (initialAlerts !== undefined) {
       return;
     }
 
@@ -242,7 +235,7 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
     return () => {
       active = false;
     };
-  }, [initialAlerts, searchParams]);
+  }, [searchParams]);
 
   useEffect(() => {
     if (!hasAuthQuery(searchParams)) {
@@ -374,16 +367,41 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
     }
   }
 
+  async function persistReadAlertsOnServer(alertIds) {
+    if (!hasAuthQuery(searchParams) || alertIds.length === 0) {
+      return;
+    }
+
+    try {
+      await fetch(buildAuthUrl("/api/dashboard/alerts", searchParams), {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ alertIds }),
+      });
+    } catch {
+      // Keep the immediate UI state; the next successful write will reconcile server read state.
+    }
+  }
+
   function handleMarkAlertRead(alertId) {
     const nextReadIds = new Set(readAlertIds);
     nextReadIds.add(alertId);
     persistReadAlertIds(nextReadIds);
+    setAlerts((current) => current.filter((alert) => alert.id !== alertId));
+    window.dispatchEvent(new CustomEvent(ALERTS_READ_EVENT, { detail: { alertIds: [alertId] } }));
+    void persistReadAlertsOnServer([alertId]);
   }
 
   function handleMarkAllAlertsRead() {
     const nextReadIds = new Set(readAlertIds);
-    alerts.forEach((alert) => nextReadIds.add(alert.id));
+    const alertIds = unreadAlerts.map((alert) => alert.id);
+    alertIds.forEach((alertId) => nextReadIds.add(alertId));
     persistReadAlertIds(nextReadIds);
+    setAlerts((current) => current.filter((alert) => !alertIds.includes(alert.id)));
+    window.dispatchEvent(new CustomEvent(ALERTS_READ_EVENT, { detail: { alertIds } }));
+    void persistReadAlertsOnServer(alertIds);
   }
 
   const handleNavigationClick = (href) => {
@@ -447,7 +465,7 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
                   type="button"
                   onClick={() => setAlertsOpen((value) => !value)}
                   className={[
-                    "relative whitespace-nowrap rounded-xl border px-2 py-2 text-[13px] font-medium transition xl:px-2.5 xl:text-sm",
+                    "inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl border px-2 py-2 text-[13px] font-medium transition xl:px-2.5 xl:text-sm",
                     alertsOpen
                       ? "border-cyan-400/30 bg-cyan-500/10 text-cyan-100"
                       : "border border-transparent text-slate-300 hover:border-slate-800 hover:bg-slate-900/60 hover:text-white",
@@ -455,7 +473,7 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
                 >
                   Alerts
                   {unreadAlerts.length > 0 ? (
-                    <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border border-cyan-300/40 bg-cyan-400/20 px-1 text-[10px] font-semibold text-cyan-100">
+                    <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-cyan-300/40 bg-cyan-400/20 px-1 text-[10px] font-semibold leading-none text-cyan-100">
                       {unreadAlerts.length > 9 ? "9+" : unreadAlerts.length}
                     </span>
                   ) : null}

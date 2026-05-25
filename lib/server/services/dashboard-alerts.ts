@@ -94,7 +94,7 @@ function buildAlert(row: AlertRow): DashboardAlert {
   }
 }
 
-export async function getDashboardAlerts(organizationId: string, limit = 8): Promise<DashboardAlert[]> {
+export async function getDashboardAlerts(organizationId: string, limit = 8, userId?: string): Promise<DashboardAlert[]> {
   const rows = await prisma.$queryRaw<AlertRow[]>(Prisma.sql`
     with latest_attempts as (
       select distinct on (ia.interview_id)
@@ -133,6 +133,16 @@ export async function getDashboardAlerts(organizationId: string, limit = 8): Pro
     select *
     from alert_source
     where alert_type is not null
+      and (
+        ${userId ?? null}::text is null
+        or not exists (
+          select 1
+          from public.dashboard_alert_reads dar
+          where dar.organization_id = ${organizationId}::uuid
+            and dar.user_id = ${userId ?? null}::uuid
+            and dar.alert_id = alert_source.alert_id
+        )
+      )
     order by occurred_at desc nulls last
     limit ${Math.max(1, Math.min(limit, 25))}
   `)
@@ -144,4 +154,40 @@ export async function getDashboardAlerts(organizationId: string, limit = 8): Pro
       alert_type: normalizeStatus(row.alert_type) as DashboardAlert["type"],
     }))
     .map(buildAlert)
+}
+
+export async function markDashboardAlertsRead(input: {
+  organizationId: string
+  userId: string
+  alertIds: string[]
+}) {
+  const alertIds = Array.from(new Set(input.alertIds.map((id) => id.trim()).filter(Boolean))).slice(0, 50)
+
+  if (alertIds.length === 0) {
+    return { marked: 0 }
+  }
+
+  const rows = await prisma.$queryRaw<Array<{ marked: bigint }>>(Prisma.sql`
+    with inserted as (
+      insert into public.dashboard_alert_reads (
+        organization_id,
+        user_id,
+        alert_id,
+        read_at
+      )
+      select
+        ${input.organizationId}::uuid,
+        ${input.userId}::uuid,
+        alert_id,
+        now()
+      from unnest(array[${Prisma.join(alertIds)}]::text[]) as alert_id
+      on conflict (organization_id, user_id, alert_id) do update
+        set read_at = excluded.read_at
+      returning 1
+    )
+    select count(*)::bigint as marked
+    from inserted
+  `)
+
+  return { marked: Number(rows[0]?.marked ?? 0) }
 }

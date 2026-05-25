@@ -30,6 +30,7 @@ type InvoiceSourceRow = {
   coupon_code: string | null
   razorpay_order_id: string | null
   razorpay_payment_id: string | null
+  payment_date: Date | null
 }
 
 type InvoiceRow = {
@@ -80,6 +81,17 @@ function formatDate(value: Date | string) {
     year: "numeric",
     month: "short",
     day: "2-digit",
+  }).format(new Date(value))
+}
+
+function formatDateTime(value: Date | string) {
+  return new Intl.DateTimeFormat("en-IN", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
   }).format(new Date(value))
 }
 
@@ -173,91 +185,166 @@ function drawKeyValue(input: {
   })
 }
 
+function drawRightAlignedText(input: {
+  page: import("pdf-lib").PDFPage
+  text: string
+  xRight: number
+  y: number
+  font: import("pdf-lib").PDFFont
+  size: number
+  color?: ReturnType<typeof rgb>
+}) {
+  const width = input.font.widthOfTextAtSize(input.text, input.size)
+  input.page.drawText(input.text, {
+    x: input.xRight - width,
+    y: input.y,
+    size: input.size,
+    font: input.font,
+    color: input.color ?? rgb(0.07, 0.11, 0.18),
+  })
+}
+
+function getBillingSupportEmail() {
+  return process.env.BILLING_SUPPORT_EMAIL?.trim() || process.env.SUPPORT_EMAIL_TO?.trim() || "support@hireveri.com"
+}
+
+function getBusinessGstin() {
+  return process.env.VERIXANS_GSTIN?.trim() || "Pending / Not Available"
+}
+
+function getBusinessAddress() {
+  return process.env.VERIXANS_REGISTERED_OFFICE?.trim() || "Registered office address will appear on issued GST records when available."
+}
+
+function getWebsiteUrl() {
+  return process.env.NEXT_PUBLIC_HIREVERI_SITE_URL?.trim() || "https://hireveri.com"
+}
+
 export async function generateInvoicePdf(input: InvoiceSourceRow & { invoice_number: string; invoice_date: Date }) {
   const pdf = await PDFDocument.create()
   const page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT])
   const regular = await pdf.embedFont(StandardFonts.Helvetica)
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
   const taxableAmountPaise = Math.max(0, input.original_amount_paise - input.discount_amount_paise)
+  const generatedAt = new Date()
+  const contentWidth = PAGE_WIDTH - MARGIN * 2
+  const rightEdge = PAGE_WIDTH - MARGIN
+  const navy = rgb(0.06, 0.09, 0.16)
+  const muted = rgb(0.38, 0.44, 0.54)
+  const border = rgb(0.84, 0.88, 0.93)
+  const panel = rgb(0.98, 0.99, 1)
 
-  page.drawRectangle({ x: 0, y: PAGE_HEIGHT - 118, width: PAGE_WIDTH, height: 118, color: rgb(0.96, 0.98, 1) })
-  page.drawText("HireVeri", { x: MARGIN, y: PAGE_HEIGHT - 62, size: 24, font: bold, color: rgb(0.06, 0.1, 0.18) })
-  page.drawText("Verixans Technologies Pvt Ltd", { x: MARGIN, y: PAGE_HEIGHT - 84, size: 10, font: regular, color: rgb(0.32, 0.38, 0.48) })
-  page.drawText("GST INVOICE", { x: PAGE_WIDTH - 170, y: PAGE_HEIGHT - 58, size: 16, font: bold, color: rgb(0.07, 0.11, 0.18) })
-  page.drawText(input.invoice_number, { x: PAGE_WIDTH - 170, y: PAGE_HEIGHT - 80, size: 10, font: bold, color: rgb(0.15, 0.23, 0.4) })
+  page.drawRectangle({ x: 0, y: PAGE_HEIGHT - 132, width: PAGE_WIDTH, height: 132, color: rgb(0.965, 0.98, 1) })
+  page.drawText("HireVeri", { x: MARGIN, y: PAGE_HEIGHT - 58, size: 30, font: bold, color: navy })
+  page.drawText("Verixans Technologies Pvt Ltd", { x: MARGIN, y: PAGE_HEIGHT - 82, size: 11, font: bold, color: rgb(0.24, 0.3, 0.4) })
+  page.drawText(getWebsiteUrl(), { x: MARGIN, y: PAGE_HEIGHT - 101, size: 9, font: regular, color: muted })
+  drawRightAlignedText({ page, text: "GST INVOICE", xRight: rightEdge, y: PAGE_HEIGHT - 56, size: 17, font: bold, color: navy })
+  drawRightAlignedText({ page, text: input.invoice_number, xRight: rightEdge, y: PAGE_HEIGHT - 78, size: 11, font: bold, color: rgb(0.17, 0.27, 0.46) })
+  drawRightAlignedText({ page, text: "Status: PAID", xRight: rightEdge, y: PAGE_HEIGHT - 99, size: 10, font: bold, color: rgb(0.02, 0.42, 0.26) })
 
-  drawKeyValue({ page, label: "Invoice date", value: formatDate(input.invoice_date), x: MARGIN, y: PAGE_HEIGHT - 152, font: regular, bold })
-  drawKeyValue({ page, label: "Organization", value: input.organization_name, x: MARGIN, y: PAGE_HEIGHT - 172, font: regular, bold })
-  drawKeyValue({ page, label: "Recruiter email", value: input.recruiter_email || "-", x: MARGIN, y: PAGE_HEIGHT - 192, font: regular, bold })
-  drawKeyValue({ page, label: "GSTIN", value: input.gst_number || "Not provided", x: MARGIN, y: PAGE_HEIGHT - 212, font: regular, bold })
-  if (input.billing_address) {
-    page.drawText("Billing address", {
-      x: MARGIN,
-      y: PAGE_HEIGHT - 236,
-      size: 9,
-      font: regular,
-      color: rgb(0.39, 0.45, 0.55),
-    })
-    drawTextBlock({
-      page,
-      text: input.billing_address,
-      x: MARGIN + 116,
-      y: PAGE_HEIGHT - 236,
-      maxWidth: 170,
-      font: bold,
-      size: 9,
-      color: rgb(0.07, 0.11, 0.18),
-      lineHeight: 13,
-    })
-  }
+  const businessY = PAGE_HEIGHT - 168
+  page.drawText("From", { x: MARGIN, y: businessY, size: 9, font: bold, color: muted })
+  page.drawText("Verixans Technologies Pvt Ltd", { x: MARGIN, y: businessY - 18, size: 11, font: bold, color: navy })
+  drawTextBlock({ page, text: getBusinessAddress(), x: MARGIN, y: businessY - 36, maxWidth: 220, font: regular, size: 9, color: muted, lineHeight: 13 })
+  page.drawText(`GSTIN: ${getBusinessGstin()}`, { x: MARGIN, y: businessY - 76, size: 9, font: regular, color: muted })
+  page.drawText(`Support: ${getBillingSupportEmail()}`, { x: MARGIN, y: businessY - 92, size: 9, font: regular, color: muted })
 
-  drawKeyValue({ page, label: "Razorpay order", value: input.razorpay_order_id || "-", x: 330, y: PAGE_HEIGHT - 152, labelWidth: 92, font: regular, bold })
-  drawKeyValue({ page, label: "Payment ID", value: input.razorpay_payment_id || "-", x: 330, y: PAGE_HEIGHT - 172, labelWidth: 92, font: regular, bold })
-  drawKeyValue({ page, label: "Currency", value: input.currency, x: 330, y: PAGE_HEIGHT - 192, labelWidth: 92, font: regular, bold })
-  drawKeyValue({ page, label: "Coupon", value: input.coupon_code || "None", x: 330, y: PAGE_HEIGHT - 212, labelWidth: 92, font: regular, bold })
+  page.drawText("Bill to", { x: 330, y: businessY, size: 9, font: bold, color: muted })
+  page.drawText(input.organization_name, { x: 330, y: businessY - 18, size: 11, font: bold, color: navy })
+  page.drawText(`Recruiter: ${input.recruiter_email || "-"}`, { x: 330, y: businessY - 38, size: 9, font: regular, color: muted })
+  page.drawText(`GSTIN: ${input.gst_number || "Pending / Not Available"}`, { x: 330, y: businessY - 55, size: 9, font: regular, color: muted })
+  drawTextBlock({
+    page,
+    text: input.billing_address || "Billing address not provided",
+    x: 330,
+    y: businessY - 72,
+    maxWidth: 205,
+    font: regular,
+    size: 9,
+    color: muted,
+    lineHeight: 13,
+  })
 
-  page.drawRectangle({ x: MARGIN, y: PAGE_HEIGHT - 342, width: PAGE_WIDTH - MARGIN * 2, height: 86, borderColor: rgb(0.86, 0.89, 0.94), borderWidth: 1 })
-  page.drawText("Subscription", { x: MARGIN + 18, y: PAGE_HEIGHT - 282, size: 9, font: bold, color: rgb(0.39, 0.45, 0.55) })
-  page.drawText("Credits", { x: 330, y: PAGE_HEIGHT - 282, size: 9, font: bold, color: rgb(0.39, 0.45, 0.55) })
-  page.drawText("Amount", { x: 462, y: PAGE_HEIGHT - 282, size: 9, font: bold, color: rgb(0.39, 0.45, 0.55) })
-  page.drawLine({ start: { x: MARGIN, y: PAGE_HEIGHT - 298 }, end: { x: PAGE_WIDTH - MARGIN, y: PAGE_HEIGHT - 298 }, thickness: 1, color: rgb(0.89, 0.91, 0.95) })
-  drawTextBlock({ page, text: input.plan_name, x: MARGIN + 18, y: PAGE_HEIGHT - 322, maxWidth: 250, font: bold, size: 11 })
-  page.drawText(`${input.interview_credits} interviews`, { x: 330, y: PAGE_HEIGHT - 316, size: 10, font: regular, color: rgb(0.15, 0.19, 0.27) })
-  page.drawText(`${input.screening_credits} screening`, { x: 330, y: PAGE_HEIGHT - 332, size: 10, font: regular, color: rgb(0.15, 0.19, 0.27) })
-  page.drawText(formatPaise(input.original_amount_paise, input.currency), { x: 450, y: PAGE_HEIGHT - 322, size: 10, font: bold, color: rgb(0.07, 0.11, 0.18) })
+  const metaY = PAGE_HEIGHT - 298
+  page.drawRectangle({ x: MARGIN, y: metaY - 72, width: contentWidth, height: 94, color: panel, borderColor: border, borderWidth: 1 })
+  const metaRows = [
+    ["Invoice date", formatDate(input.invoice_date), "Payment date", formatDateTime(input.payment_date ?? input.invoice_date)],
+    ["Generated", formatDateTime(generatedAt), "Currency", input.currency],
+    ["Razorpay verification", "Verified", "Backend verification", "Completed"],
+    ["Razorpay order", input.razorpay_order_id || "-", "Payment ID", input.razorpay_payment_id || "-"],
+  ]
+  metaRows.forEach(([leftLabel, leftValue, rightLabel, rightValue], index) => {
+    const y = metaY - index * 20
+    page.drawText(leftLabel, { x: MARGIN + 16, y, size: 8, font: regular, color: muted })
+    page.drawText(leftValue, { x: MARGIN + 112, y, size: 9, font: bold, color: navy })
+    page.drawText(rightLabel, { x: 318, y, size: 8, font: regular, color: muted })
+    drawTextBlock({ page, text: rightValue, x: 414, y, maxWidth: 126, font: bold, size: 9, color: navy, lineHeight: 11 })
+  })
+
+  const tableTop = PAGE_HEIGHT - 420
+  page.drawText("Subscription details", { x: MARGIN, y: tableTop + 26, size: 13, font: bold, color: navy })
+  page.drawRectangle({ x: MARGIN, y: tableTop - 82, width: contentWidth, height: 92, borderColor: border, borderWidth: 1 })
+  page.drawRectangle({ x: MARGIN, y: tableTop - 18, width: contentWidth, height: 28, color: rgb(0.95, 0.97, 1) })
+  page.drawText("Description", { x: MARGIN + 16, y: tableTop - 8, size: 8, font: bold, color: muted })
+  page.drawText("Credits", { x: 332, y: tableTop - 8, size: 8, font: bold, color: muted })
+  drawRightAlignedText({ page, text: "Amount", xRight: rightEdge - 16, y: tableTop - 8, size: 8, font: bold, color: muted })
+  drawTextBlock({ page, text: input.plan_name, x: MARGIN + 16, y: tableTop - 44, maxWidth: 250, font: bold, size: 11, color: navy, lineHeight: 14 })
+  page.drawText(`${input.interview_credits} interview credits`, { x: 332, y: tableTop - 40, size: 9, font: regular, color: rgb(0.21, 0.27, 0.36) })
+  page.drawText(`${input.screening_credits} screening credits`, { x: 332, y: tableTop - 57, size: 9, font: regular, color: rgb(0.21, 0.27, 0.36) })
+  drawRightAlignedText({ page, text: formatPaise(input.original_amount_paise, input.currency), xRight: rightEdge - 16, y: tableTop - 47, size: 10, font: bold, color: navy })
+
+  const verifyY = PAGE_HEIGHT - 552
+  page.drawRectangle({ x: MARGIN, y: verifyY - 62, width: 225, height: 76, color: panel, borderColor: border, borderWidth: 1 })
+  page.drawText("Payment verification", { x: MARGIN + 14, y: verifyY - 10, size: 10, font: bold, color: navy })
+  ;["Razorpay verified payment", "Backend signature validated", "Subscription activated"].forEach((item, index) => {
+    page.drawText("OK", { x: MARGIN + 14, y: verifyY - 30 - index * 16, size: 8, font: bold, color: rgb(0.02, 0.42, 0.26) })
+    page.drawText(item, { x: MARGIN + 34, y: verifyY - 30 - index * 16, size: 9, font: regular, color: muted })
+  })
 
   const totalsX = 330
-  const totalsY = PAGE_HEIGHT - 398
+  const totalsY = PAGE_HEIGHT - 536
   const totalRows = [
     ["Original amount", formatPaise(input.original_amount_paise, input.currency)],
-    ["Discount", `-${formatPaise(input.discount_amount_paise, input.currency)}`],
+    ["Coupon discount", `-${formatPaise(input.discount_amount_paise, input.currency)}`],
     ["Taxable amount", formatPaise(taxableAmountPaise, input.currency)],
     [`GST ${Number(input.gst_percentage)}%`, formatPaise(input.gst_amount_paise, input.currency)],
   ]
-
   totalRows.forEach(([label, value], index) => {
     const y = totalsY - index * 22
-    page.drawText(label, { x: totalsX, y, size: 10, font: regular, color: rgb(0.39, 0.45, 0.55) })
-    page.drawText(value, { x: 450, y, size: 10, font: bold, color: rgb(0.07, 0.11, 0.18) })
+    page.drawText(label, { x: totalsX, y, size: 9, font: regular, color: muted })
+    drawRightAlignedText({ page, text: value, xRight: rightEdge, y, size: 10, font: bold, color: navy })
   })
-  page.drawLine({ start: { x: totalsX, y: totalsY - 92 }, end: { x: PAGE_WIDTH - MARGIN, y: totalsY - 92 }, thickness: 1, color: rgb(0.81, 0.85, 0.91) })
-  page.drawText("Final paid", { x: totalsX, y: totalsY - 118, size: 12, font: bold, color: rgb(0.07, 0.11, 0.18) })
-  page.drawText(formatPaise(input.final_amount_paise, input.currency), { x: 438, y: totalsY - 118, size: 12, font: bold, color: rgb(0.07, 0.11, 0.18) })
+  page.drawLine({ start: { x: totalsX, y: totalsY - 90 }, end: { x: rightEdge, y: totalsY - 90 }, thickness: 1.2, color: rgb(0.72, 0.78, 0.86) })
+  page.drawText("Final paid", { x: totalsX, y: totalsY - 122, size: 13, font: bold, color: navy })
+  drawRightAlignedText({ page, text: formatPaise(input.final_amount_paise, input.currency), xRight: rightEdge, y: totalsY - 126, size: 16, font: bold, color: navy })
 
-  page.drawRectangle({ x: MARGIN, y: 130, width: PAGE_WIDTH - MARGIN * 2, height: 86, color: rgb(0.98, 0.99, 1), borderColor: rgb(0.86, 0.89, 0.94), borderWidth: 1 })
+  const footerY = 112
+  page.drawRectangle({ x: MARGIN, y: footerY, width: contentWidth, height: 104, color: panel, borderColor: border, borderWidth: 1 })
+  page.drawText("Billing and procurement note", { x: MARGIN + 16, y: footerY + 76, size: 10, font: bold, color: navy })
   drawTextBlock({
     page,
-    text: "Billing note: This invoice is generated after backend payment verification, Razorpay order validation, and organization subscription activation. Keep this document for GST reconciliation, procurement records, and audit review.",
-    x: MARGIN + 18,
-    y: 186,
-    maxWidth: PAGE_WIDTH - MARGIN * 2 - 36,
+    text: "This invoice was generated after backend payment verification, Razorpay order validation, and organization subscription activation. Keep this document for GST reconciliation, procurement records, and audit review.",
+    x: MARGIN + 16,
+    y: footerY + 58,
+    maxWidth: contentWidth - 32,
     font: regular,
-    size: 10,
+    size: 9,
     color: rgb(0.27, 0.33, 0.42),
-    lineHeight: 15,
+    lineHeight: 13,
   })
-  page.drawText("Support: support@hireveri.com", { x: MARGIN + 18, y: 150, size: 10, font: bold, color: rgb(0.15, 0.23, 0.4) })
-  page.drawText("Generated by HireVeri Billing Infrastructure", { x: MARGIN, y: 72, size: 9, font: regular, color: rgb(0.45, 0.51, 0.6) })
+  drawTextBlock({
+    page,
+    text: `Support: ${getBillingSupportEmail()}`,
+    x: MARGIN + 16,
+    y: footerY + 18,
+    maxWidth: 275,
+    font: bold,
+    size: 9,
+    color: rgb(0.15, 0.23, 0.4),
+    lineHeight: 12,
+  })
+  drawRightAlignedText({ page, text: `Generated ${formatDateTime(generatedAt)}`, xRight: rightEdge - 16, y: footerY + 4, size: 8, font: regular, color: muted })
+  page.drawText("Generated by HireVeri Billing Infrastructure", { x: MARGIN, y: 72, size: 8, font: regular, color: rgb(0.45, 0.51, 0.6) })
 
   return Buffer.from(await pdf.save())
 }
@@ -298,7 +385,8 @@ async function getInvoiceSource(paymentId: string) {
       coalesce(p.currency, 'INR') as currency,
       p."couponCode" as coupon_code,
       p."razorpayOrderId" as razorpay_order_id,
-      p."razorpayPaymentId" as razorpay_payment_id
+      p."razorpayPaymentId" as razorpay_payment_id,
+      coalesce(p."updatedAt", p."createdAt") as payment_date
     from public.hireveri_payments p
     inner join public.organizations o on o.organization_id = p."organizationId"
     inner join public.users u on u.user_id = p."userId"::uuid
