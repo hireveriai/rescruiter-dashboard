@@ -78,6 +78,7 @@ alter table public.hireveri_payments
   add column if not exists "updatedAt" timestamptz not null default now(),
   add column if not exists "organizationId" uuid,
   add column if not exists "planId" text,
+  add column if not exists "addonPlanId" text,
   add column if not exists "couponId" uuid,
   add column if not exists "couponCode" text,
   add column if not exists "originalAmountPaise" integer,
@@ -104,6 +105,10 @@ create unique index if not exists hireveri_payments_razorpay_payment_id_key
 
 create index if not exists hireveri_payments_org_created_at_idx
   on public.hireveri_payments ("organizationId", "createdAt" desc);
+
+create index if not exists hireveri_payments_addon_plan_id_idx
+  on public.hireveri_payments ("addonPlanId")
+  where "addonPlanId" is not null;
 
 drop trigger if exists set_hireveri_payments_updated_at on public.hireveri_payments;
 create trigger set_hireveri_payments_updated_at

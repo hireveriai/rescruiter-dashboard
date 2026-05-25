@@ -283,9 +283,12 @@ async function getInvoiceSource(paymentId: string) {
       o.organization_name,
       o.gst_number,
       o.billing_address,
-      pl.name as plan_name,
-      pl."interviewLimit" as interview_credits,
-      pl."screeningCredits" as screening_credits,
+      case
+        when apl.id is not null then pl.name || ' + ' || apl.name
+        else pl.name
+      end as plan_name,
+      pl."interviewLimit" + coalesce(apl."interviewLimit", 0) as interview_credits,
+      pl."screeningCredits" + coalesce(apl."screeningCredits", 0) as screening_credits,
       coalesce(p."originalAmountPaise", p.amount) as original_amount_paise,
       coalesce(p."discountAmountPaise", 0) as discount_amount_paise,
       coalesce(p."gstPercentage", 18)::float8 as gst_percentage,
@@ -299,6 +302,7 @@ async function getInvoiceSource(paymentId: string) {
     inner join public.organizations o on o.organization_id = p."organizationId"
     inner join public.users u on u.user_id = p."userId"::uuid
     inner join public.hireveri_plans pl on pl.id = p."planId"
+    left join public.hireveri_plans apl on apl.id = p."addonPlanId"
     where p.id = ${paymentId}
       and p.status = 'success'::"PaymentStatus"
     limit 1
@@ -651,7 +655,10 @@ export async function getOrganizationBillingHistory(auth: RecruiterRequestContex
       select
         pay.id,
         pay."planId" as plan_id,
-        p.name as plan_name,
+        case
+          when ap.id is not null then p.name || ' + ' || ap.name
+          else p.name
+        end as plan_name,
         inv.invoice_number,
         inv.id::text as invoice_id,
         pay."couponCode" as coupon_code,
@@ -667,6 +674,7 @@ export async function getOrganizationBillingHistory(auth: RecruiterRequestContex
         pay."createdAt" as created_at
       from public.hireveri_payments pay
       left join public.hireveri_plans p on p.id = pay."planId"
+      left join public.hireveri_plans ap on ap.id = pay."addonPlanId"
       left join public.invoices inv on inv.payment_id = pay.id
       where pay."organizationId" = ${auth.organizationId}::uuid
       order by pay."createdAt" desc

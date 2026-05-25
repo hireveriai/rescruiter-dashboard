@@ -320,6 +320,7 @@ model Payment {
   updatedAt             DateTime @default(now()) @db.Timestamptz(6)
   organizationId        String?  @db.Uuid
   planId                String?
+  addonPlanId           String?
   couponId              String?  @db.Uuid
   couponCode            String?
   originalAmountPaise   Int?

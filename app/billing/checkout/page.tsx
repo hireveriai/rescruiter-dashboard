@@ -39,6 +39,7 @@ type Organization = {
 
 type CheckoutSummary = {
   plan: Plan
+  addonPlan: Plan | null
   coupon: {
     code: string
     description: string
@@ -144,6 +145,7 @@ export default function BillingCheckoutPage() {
   const routeSearchParams = useSearchParams()
   const authSearchParams = useAuthSearchParams()
   const planSlug = routeSearchParams.get("plan")?.trim().toLowerCase() || ""
+  const addonPlanSlug = routeSearchParams.get("addon")?.trim().toLowerCase() || routeSearchParams.get("addon_plan")?.trim().toLowerCase() || ""
   const [summary, setSummary] = useState<CheckoutSummary | null>(null)
   const [couponInput, setCouponInput] = useState("")
   const [appliedCouponCode, setAppliedCouponCode] = useState("")
@@ -190,6 +192,7 @@ export default function BillingCheckoutPage() {
       try {
         const data = await requestJson<CheckoutSummary>("/api/validate-coupon", {
           plan: planSlug,
+          addon_plan: addonPlanSlug || null,
           coupon_code: couponCode || null,
         })
 
@@ -205,12 +208,18 @@ export default function BillingCheckoutPage() {
         }
       }
     },
-    [planSlug, requestJson]
+    [addonPlanSlug, planSlug, requestJson]
   )
 
   useEffect(() => {
     loadSummary(null)
   }, [loadSummary])
+
+  useEffect(() => {
+    if (status === "idle" && summary) {
+      void loadRazorpayScript()
+    }
+  }, [status, summary])
 
   async function markOrderTerminal(orderId: string, terminalStatus: "failed" | "cancelled", reason: string) {
     try {
@@ -254,6 +263,7 @@ export default function BillingCheckoutPage() {
         interviewCredits: number
         screeningCredits: number
       } | null
+      addonPlan: Plan | null
     }>("/api/verify-payment", {
       razorpay_order_id: response.razorpay_order_id,
       razorpay_payment_id: response.razorpay_payment_id,
@@ -305,11 +315,13 @@ export default function BillingCheckoutPage() {
         }
       >("/api/create-order", {
         plan: planSlug,
+        addon_plan: addonPlanSlug || null,
         coupon_code: appliedCoupon || null,
       })
 
       setSummary({
         plan: order.plan,
+        addonPlan: order.addonPlan,
         coupon: order.coupon,
         quote: order.quote,
         organization: order.organization,
@@ -332,6 +344,7 @@ export default function BillingCheckoutPage() {
         notes: {
           organization_id: order.organization.organizationId,
           plan: order.plan.slug,
+          addon_plan: order.addonPlan?.slug ?? "",
           coupon: order.coupon?.code ?? "",
         },
         theme: {
@@ -417,7 +430,7 @@ export default function BillingCheckoutPage() {
             <div className="rounded-xl border border-slate-800 bg-slate-950/35 p-4">
               <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Screening Reviews</p>
               <p className="mt-3 text-2xl font-semibold text-slate-100">
-                {summary?.plan.screeningReviews ?? "--"}
+                {summary ? summary.plan.screeningReviews + (summary.addonPlan?.screeningReviews ?? 0) : "--"}
               </p>
             </div>
           </div>
@@ -439,6 +452,11 @@ export default function BillingCheckoutPage() {
                 <p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">
                   {summary?.plan.description || "Fetching dynamic plan details from the billing database."}
                 </p>
+                {summary?.addonPlan ? (
+                  <p className="mt-3 inline-flex rounded-full border border-blue-400/25 bg-blue-500/10 px-3 py-1 text-xs font-semibold text-blue-100">
+                    Add-on selected: {summary.addonPlan.name}
+                  </p>
+                ) : null}
               </div>
               {summary?.plan.isPopular ? (
                 <span className="inline-flex rounded-full border border-blue-400/25 bg-blue-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-blue-100">
@@ -478,6 +496,12 @@ export default function BillingCheckoutPage() {
                 {summary ? formatPaise(summary.quote.originalAmountPaise, summary.quote.currency) : "--"}
               </span>
             </div>
+            {summary?.addonPlan ? (
+              <div className="flex items-center justify-between gap-4 text-sm">
+                <span className="text-slate-400">Included add-on</span>
+                <span className="text-right font-medium text-slate-100">{summary.addonPlan.name}</span>
+              </div>
+            ) : null}
             <div className="flex items-center justify-between gap-4 text-sm">
               <span className="text-slate-400">Coupon discount</span>
               <span className="font-medium text-emerald-200">

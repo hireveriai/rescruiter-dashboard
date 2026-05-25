@@ -9,6 +9,7 @@ export const runtime = "nodejs"
 
 const createOrderSchema = z.object({
   plan: z.string().trim().min(1),
+  addon_plan: z.string().trim().optional().nullable(),
   coupon_code: z.string().trim().optional().nullable(),
 })
 
@@ -20,6 +21,7 @@ export async function POST(request: Request) {
     const order = await createRazorpayOrder({
       auth,
       planSlug: input.plan,
+      addonPlanSlug: input.addon_plan,
       couponCode: input.coupon_code,
     })
 

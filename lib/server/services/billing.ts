@@ -63,6 +63,7 @@ type PaymentRow = {
   organization_id: string
   user_id: string
   plan_id: string
+  addon_plan_id: string | null
   coupon_id: string | null
   coupon_code: string | null
   original_amount_paise: number
@@ -101,6 +102,7 @@ type CheckoutQuote = {
 
 type PaymentValidation = {
   plan: ReturnType<typeof mapPlan>
+  addonPlan: ReturnType<typeof mapPlan> | null
   coupon: ReturnType<typeof mapCoupon> | null
   quote: CheckoutQuote
 }
@@ -225,8 +227,39 @@ function getSubscriptionDurationDays(plan: ReturnType<typeof mapPlan>) {
   return Math.max(1, Math.round(durationDays))
 }
 
-function calculateQuote(plan: ReturnType<typeof mapPlan>, coupon: ReturnType<typeof mapCoupon> | null): CheckoutQuote {
-  const originalAmountPaise = Number(plan.amountPaise)
+function buildCheckoutPlan(
+  plan: ReturnType<typeof mapPlan>,
+  addonPlan: ReturnType<typeof mapPlan> | null
+) {
+  if (!addonPlan) {
+    return plan
+  }
+
+  return {
+    ...plan,
+    name: `${plan.name} + ${addonPlan.name}`,
+    description: `${plan.description}${plan.description ? " " : ""}Includes ${addonPlan.screeningReviews} additional VERIS Screening reviews.`,
+    amountPaise: plan.amountPaise + addonPlan.amountPaise,
+    monthlyAmountPaise: plan.monthlyAmountPaise + addonPlan.monthlyAmountPaise,
+    interviewSessions: plan.interviewSessions + addonPlan.interviewSessions,
+    screeningReviews: plan.screeningReviews + addonPlan.screeningReviews,
+    features: [...plan.features, ...addonPlan.features],
+    metadata: {
+      ...plan.metadata,
+      addon_plan_id: addonPlan.id,
+      addon_plan_slug: addonPlan.slug,
+      addon_plan_name: addonPlan.name,
+    },
+  }
+}
+
+function calculateQuote(
+  plan: ReturnType<typeof mapPlan>,
+  coupon: ReturnType<typeof mapCoupon> | null,
+  addonPlan: ReturnType<typeof mapPlan> | null = null
+): CheckoutQuote {
+  const checkoutPlan = buildCheckoutPlan(plan, addonPlan)
+  const originalAmountPaise = Number(checkoutPlan.amountPaise)
   const discountPercentage = coupon ? Number(coupon.discountPercentage) : 0
   const discountAmountPaise = coupon
     ? Math.min(originalAmountPaise, Math.round((originalAmountPaise * discountPercentage) / 100))
@@ -244,18 +277,20 @@ function calculateQuote(plan: ReturnType<typeof mapPlan>, coupon: ReturnType<typ
     gstPercentage,
     gstAmountPaise,
     finalAmountPaise,
-    currency: plan.currency,
+    currency: checkoutPlan.currency,
   }
 }
 
 function buildPublicQuoteResponse(input: {
   plan: ReturnType<typeof mapPlan>
+  addonPlan?: ReturnType<typeof mapPlan> | null
   coupon: ReturnType<typeof mapCoupon> | null
   quote: CheckoutQuote
   organization?: ReturnType<typeof mapBillingOrganization>
 }) {
   return {
     plan: input.plan,
+    addonPlan: input.addonPlan ?? null,
     coupon: input.coupon
       ? {
           code: input.coupon.code,
@@ -318,6 +353,43 @@ export async function getActiveBillingPlanBySlug(slug: string, client: QueryClie
   )
 
   return rows[0] ? mapPlan(rows[0]) : null
+}
+
+async function getOptionalAddonPlanBySlug(slug: string | null | undefined, client: QueryClient = prisma) {
+  const normalizedSlug = typeof slug === "string" && slug.trim() ? slug.trim().toLowerCase() : ""
+
+  if (!normalizedSlug) {
+    return null
+  }
+
+  const addonPlan = await getActiveBillingPlanBySlug(normalizedSlug, client)
+
+  if (!addonPlan) {
+    throw new ApiError(404, "ADDON_PLAN_NOT_FOUND", "Selected screening add-on was not found")
+  }
+
+  if (addonPlan.planType !== "SCREENING") {
+    throw new ApiError(400, "INVALID_ADDON_PLAN", "Selected add-on must be an active VERIS Screening plan")
+  }
+
+  return addonPlan
+}
+
+function assertPlanBundleAllowed(
+  plan: ReturnType<typeof mapPlan>,
+  addonPlan: ReturnType<typeof mapPlan> | null
+) {
+  if (!addonPlan) {
+    return
+  }
+
+  if (plan.planType === "SCREENING") {
+    throw new ApiError(400, "ADDON_NOT_ALLOWED", "Screening add-ons can only be attached to hiring workflow plans")
+  }
+
+  if (addonPlan.interviewSessions > 0 || addonPlan.screeningReviews <= 0) {
+    throw new ApiError(400, "INVALID_ADDON_PLAN", "Selected add-on is not a valid VERIS Screening capacity plan")
+  }
 }
 
 async function getActiveBillingPlanById(planId: string, client: QueryClient = prisma) {
@@ -498,6 +570,7 @@ export async function getBillingOrganization(auth: RecruiterRequestContext) {
 export async function getCheckoutQuote(input: {
   auth: RecruiterRequestContext
   planSlug: string
+  addonPlanSlug?: string | null
   couponCode?: string | null
 }) {
   const organization = await getBillingOrganization(input.auth)
@@ -507,15 +580,19 @@ export async function getCheckoutQuote(input: {
     throw new ApiError(404, "PLAN_NOT_FOUND", "Selected plan was not found")
   }
 
+  const addonPlan = await getOptionalAddonPlanBySlug(input.addonPlanSlug)
+  assertPlanBundleAllowed(plan, addonPlan)
+  const checkoutPlan = buildCheckoutPlan(plan, addonPlan)
   const coupon = await resolveCouponForPlan({
-    plan,
+    plan: checkoutPlan,
     couponCode: input.couponCode,
     organizationId: organization.organizationId,
   })
-  const quote = calculateQuote(plan, coupon)
+  const quote = calculateQuote(plan, coupon, addonPlan)
 
   return buildPublicQuoteResponse({
     plan,
+    addonPlan,
     coupon,
     quote,
     organization,
@@ -535,6 +612,7 @@ function buildReceiptId() {
 export async function createRazorpayOrder(input: {
   auth: RecruiterRequestContext
   planSlug: string
+  addonPlanSlug?: string | null
   couponCode?: string | null
 }) {
   const organization = await getBillingOrganization(input.auth)
@@ -544,12 +622,15 @@ export async function createRazorpayOrder(input: {
     throw new ApiError(404, "PLAN_NOT_FOUND", "Selected plan was not found")
   }
 
+  const addonPlan = await getOptionalAddonPlanBySlug(input.addonPlanSlug)
+  assertPlanBundleAllowed(plan, addonPlan)
+  const checkoutPlan = buildCheckoutPlan(plan, addonPlan)
   const coupon = await resolveCouponForPlan({
-    plan,
+    plan: checkoutPlan,
     couponCode: input.couponCode,
     organizationId: organization.organizationId,
   })
-  const quote = calculateQuote(plan, coupon)
+  const quote = calculateQuote(plan, coupon, addonPlan)
 
   ensureRazorpayPayableAmount(quote.finalAmountPaise)
 
@@ -567,6 +648,8 @@ export async function createRazorpayOrder(input: {
         user_id: organization.userId,
         plan_id: plan.id,
         plan_slug: plan.slug,
+        addon_plan_id: addonPlan?.id ?? "",
+        addon_plan_slug: addonPlan?.slug ?? "",
         coupon_code: coupon?.code ?? "",
       },
     })) as { id?: string; amount?: number | string; currency?: string }
@@ -635,6 +718,7 @@ export async function createRazorpayOrder(input: {
       "updatedAt",
       "organizationId",
       "planId",
+      "addonPlanId",
       "couponId",
       "couponCode",
       "originalAmountPaise",
@@ -657,6 +741,7 @@ export async function createRazorpayOrder(input: {
       now(),
       ${organization.organizationId}::uuid,
       ${plan.id},
+      ${addonPlan?.id ?? null},
       ${coupon?.id ?? null}::uuid,
       ${coupon?.code ?? null},
       ${quote.originalAmountPaise},
@@ -677,6 +762,7 @@ export async function createRazorpayOrder(input: {
     keyId: getRazorpayKeyId(),
     ...buildPublicQuoteResponse({
       plan,
+      addonPlan,
       coupon,
       quote,
       organization,
@@ -715,6 +801,7 @@ async function getPaymentByOrderForAuth(input: {
       "organizationId"::text as organization_id,
       "userId" as user_id,
       "planId" as plan_id,
+      "addonPlanId" as addon_plan_id,
       "couponId"::text as coupon_id,
       "couponCode" as coupon_code,
       "originalAmountPaise" as original_amount_paise,
@@ -740,10 +827,14 @@ async function getPaymentByOrderForAuth(input: {
 }
 
 function assertPaymentAmountsMatch(payment: PaymentRow, validation: PaymentValidation) {
-  const { quote, plan, coupon } = validation
+  const { quote, plan, addonPlan, coupon } = validation
 
   if (plan.id !== payment.plan_id) {
     throw new ApiError(400, "PLAN_MISMATCH", "Pending payment does not match the selected plan")
+  }
+
+  if ((addonPlan?.id ?? null) !== payment.addon_plan_id) {
+    throw new ApiError(400, "ADDON_PLAN_MISMATCH", "Pending payment add-on state changed")
   }
 
   if ((coupon?.id ?? null) !== payment.coupon_id) {
@@ -774,16 +865,24 @@ async function validatePendingPaymentAgainstCurrentDb(
     throw new ApiError(400, "PLAN_INACTIVE", "Selected plan is no longer active")
   }
 
+  const addonPlan = payment.addon_plan_id ? await getActiveBillingPlanById(payment.addon_plan_id, client) : null
+
+  if (payment.addon_plan_id && !addonPlan) {
+    throw new ApiError(400, "ADDON_PLAN_INACTIVE", "Selected screening add-on is no longer active")
+  }
+
+  assertPlanBundleAllowed(plan, addonPlan)
+  const checkoutPlan = buildCheckoutPlan(plan, addonPlan)
   const coupon = await resolveCouponForPlan({
     client,
-    plan,
+    plan: checkoutPlan,
     couponId: payment.coupon_id,
     couponCode: payment.coupon_code,
     organizationId: payment.organization_id,
     lock: lockCoupon,
   })
-  const quote = calculateQuote(plan, coupon)
-  const validation = { plan, coupon, quote }
+  const quote = calculateQuote(plan, coupon, addonPlan)
+  const validation = { plan, addonPlan, coupon, quote }
 
   assertPaymentAmountsMatch(payment, validation)
   ensureRazorpayPayableAmount(quote.finalAmountPaise)
@@ -988,6 +1087,7 @@ export async function verifyAndActivatePayment(input: {
       where id = ${lockedPayment.id}
     `)
 
+    const activatedPlan = buildCheckoutPlan(validation.plan, validation.addonPlan)
     const durationDays = getSubscriptionDurationDays(validation.plan)
     const subscriptionRows = await tx.$queryRaw<
       Array<{
@@ -1007,8 +1107,8 @@ export async function verifyAndActivatePayment(input: {
       set
         "planId" = ${validation.plan.id},
         status = 'active',
-        "totalCredits" = "totalCredits" + ${validation.plan.interviewSessions},
-        "screeningCredits" = "screeningCredits" + ${validation.plan.screeningReviews},
+        "totalCredits" = "totalCredits" + ${activatedPlan.interviewSessions},
+        "screeningCredits" = "screeningCredits" + ${activatedPlan.screeningReviews},
         "amountPaid" = "amountPaid" + ${lockedPayment.final_amount_paise},
         currency = ${lockedPayment.currency},
         "razorpayOrderId" = ${lockedPayment.razorpay_order_id},
@@ -1036,6 +1136,7 @@ export async function verifyAndActivatePayment(input: {
       alreadyVerified: false,
       paymentId: lockedPayment.id,
       plan: validation.plan,
+      addonPlan: validation.addonPlan,
       subscription: subscription
         ? {
             id: subscription.id,
