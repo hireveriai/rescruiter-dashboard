@@ -91,6 +91,12 @@ declare global {
 }
 
 const RAZORPAY_SCRIPT_URL = "https://checkout.razorpay.com/v1/checkout.js"
+const TRUST_INDICATORS = [
+  "GST Invoice Available",
+  "Secure Razorpay Processing",
+  "Organization Billing",
+  "Audit-ready payment records",
+]
 
 function formatPaise(value: number, currency = "INR") {
   return new Intl.NumberFormat("en-IN", {
@@ -329,7 +335,7 @@ export default function BillingCheckoutPage() {
           coupon: order.coupon?.code ?? "",
         },
         theme: {
-          color: "#22d3ee",
+          color: "#2563eb",
         },
         modal: {
           ondismiss: async () => {
@@ -380,55 +386,63 @@ export default function BillingCheckoutPage() {
   }
 
   return (
-    <main className="min-h-screen overflow-hidden bg-[#07101d] px-4 py-8 text-white sm:px-6 lg:px-8">
-      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_18%_10%,rgba(34,211,238,0.14),transparent_28%),radial-gradient(circle_at_82%_18%,rgba(59,130,246,0.13),transparent_26%),linear-gradient(180deg,rgba(7,16,29,0),rgba(7,16,29,0.96))]" />
-      <div className="pointer-events-none fixed inset-0 opacity-40 [background-image:linear-gradient(rgba(148,163,184,0.07)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.07)_1px,transparent_1px)] [background-size:88px_88px]" />
+    <main className="min-h-screen overflow-hidden bg-[#070c16] px-4 py-8 text-slate-100 sm:px-6 lg:px-8">
+      <div className="pointer-events-none fixed inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.92),rgba(7,12,22,0.98)),radial-gradient(circle_at_50%_0%,rgba(37,99,235,0.12),transparent_34%)]" />
 
       <section className="relative mx-auto grid w-full max-w-6xl gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(360px,0.7fr)]">
-        <div className="rounded-[28px] border border-cyan-400/18 bg-slate-950/72 p-6 shadow-[0_0_100px_rgba(34,211,238,0.10)] backdrop-blur-xl sm:p-8">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.42em] text-cyan-300/80">
-            Secure Billing Checkout
+        <div className="rounded-2xl border border-slate-800 bg-[#0b1220]/95 p-6 shadow-[0_24px_80px_rgba(2,6,23,0.34)] sm:p-8">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-blue-200/75">
+            Enterprise Billing Checkout
           </p>
-          <h1 className="mt-5 max-w-2xl text-3xl font-semibold leading-tight text-white sm:text-5xl">
+          <h1 className="mt-5 max-w-2xl text-3xl font-semibold leading-tight text-slate-50 sm:text-5xl">
             Activate HireVeri for your organization
           </h1>
           <p className="mt-5 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
-            Payment orders, coupons, GST, and activation are verified on HireVeri servers before credits are issued.
+            A server-verified procurement flow for organization billing, GST-ready records, and controlled subscription activation.
           </p>
 
           <div className="mt-8 grid gap-4 sm:grid-cols-3">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-              <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Organization</p>
-              <p className="mt-3 truncate text-sm font-semibold text-white">
+            <div className="rounded-xl border border-slate-800 bg-slate-950/35 p-4">
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Bill to</p>
+              <p className="mt-3 truncate text-sm font-semibold text-slate-50">
                 {summary?.organization.organizationName || "Loading workspace"}
               </p>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-              <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Interview Credits</p>
-              <p className="mt-3 text-2xl font-semibold text-cyan-100">
+            <div className="rounded-xl border border-slate-800 bg-slate-950/35 p-4">
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Interview Credits</p>
+              <p className="mt-3 text-2xl font-semibold text-slate-100">
                 {summary?.plan.interviewSessions ?? "--"}
               </p>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-              <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Screening Reviews</p>
-              <p className="mt-3 text-2xl font-semibold text-cyan-100">
+            <div className="rounded-xl border border-slate-800 bg-slate-950/35 p-4">
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Screening Reviews</p>
+              <p className="mt-3 text-2xl font-semibold text-slate-100">
                 {summary?.plan.screeningReviews ?? "--"}
               </p>
             </div>
           </div>
 
-          <div className="mt-8 rounded-3xl border border-white/10 bg-[#0b1424]/88 p-5">
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            {TRUST_INDICATORS.map((indicator) => (
+              <div key={indicator} className="flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-950/30 px-4 py-3 text-sm text-slate-300">
+                <span className="h-1.5 w-1.5 rounded-full bg-blue-400/80" />
+                <span>{indicator}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-8 rounded-2xl border border-slate-800 bg-[#0f172a]/82 p-5">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <p className="text-sm font-semibold text-cyan-200">Selected plan</p>
-                <h2 className="mt-2 text-3xl font-semibold text-white">{summary?.plan.name || "Loading plan"}</h2>
+                <p className="text-sm font-semibold text-blue-200">Selected plan</p>
+                <h2 className="mt-2 text-3xl font-semibold text-slate-50">{summary?.plan.name || "Loading plan"}</h2>
                 <p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">
                   {summary?.plan.description || "Fetching dynamic plan details from the billing database."}
                 </p>
               </div>
               {summary?.plan.isPopular ? (
-                <span className="inline-flex rounded-full border border-cyan-300/35 bg-cyan-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-cyan-100">
-                  Common choice
+                <span className="inline-flex rounded-full border border-blue-400/25 bg-blue-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-blue-100">
+                  Standard procurement plan
                 </span>
               ) : null}
             </div>
@@ -436,8 +450,8 @@ export default function BillingCheckoutPage() {
             {summary?.plan.features?.length ? (
               <div className="mt-6 grid gap-3 sm:grid-cols-2">
                 {summary.plan.features.map((feature) => (
-                  <div key={feature} className="flex items-start gap-3 rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-3 text-sm text-slate-200">
-                    <span className="mt-1 h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_16px_rgba(34,211,238,0.8)]" />
+                  <div key={feature} className="flex items-start gap-3 rounded-xl border border-slate-800 bg-slate-950/35 px-4 py-3 text-sm text-slate-300">
+                    <span className="mt-2 h-1.5 w-1.5 rounded-full bg-slate-500" />
                     <span>{feature}</span>
                   </div>
                 ))}
@@ -446,21 +460,21 @@ export default function BillingCheckoutPage() {
           </div>
         </div>
 
-        <aside className="rounded-[28px] border border-cyan-400/20 bg-[linear-gradient(180deg,rgba(8,15,30,0.96),rgba(11,20,36,0.94))] p-6 shadow-[0_0_100px_rgba(34,211,238,0.12)] backdrop-blur-xl sm:p-7">
+        <aside className="rounded-2xl border border-slate-800 bg-[linear-gradient(180deg,rgba(15,23,42,0.96),rgba(10,17,31,0.98))] p-6 shadow-[0_24px_80px_rgba(2,6,23,0.38)] sm:p-7">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-xs uppercase tracking-[0.32em] text-slate-500">Payable Summary</p>
-              <p className="mt-3 text-sm text-slate-300">Backend verified quote</p>
+              <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Payment Summary</p>
+              <p className="mt-3 text-sm text-slate-300">Server-verified billing quote</p>
             </div>
-            <div className="rounded-2xl border border-cyan-400/25 bg-cyan-400/10 px-3 py-2 text-xs font-semibold text-cyan-100">
-              Powered by Razorpay
+            <div className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-300">
+              Razorpay secured
             </div>
           </div>
 
-          <div className="mt-6 space-y-3 rounded-3xl border border-white/10 bg-slate-950/45 p-4">
+          <div className="mt-6 space-y-3 rounded-2xl border border-slate-800 bg-slate-950/45 p-4">
             <div className="flex items-center justify-between gap-4 text-sm">
               <span className="text-slate-400">Plan amount</span>
-              <span className="font-medium text-white">
+              <span className="font-medium text-slate-100">
                 {summary ? formatPaise(summary.quote.originalAmountPaise, summary.quote.currency) : "--"}
               </span>
             </div>
@@ -472,28 +486,28 @@ export default function BillingCheckoutPage() {
             </div>
             <div className="flex items-center justify-between gap-4 text-sm">
               <span className="text-slate-400">Taxable amount</span>
-              <span className="font-medium text-white">
+              <span className="font-medium text-slate-100">
                 {summary ? formatPaise(summary.quote.taxableAmountPaise, summary.quote.currency) : "--"}
               </span>
             </div>
             <div className="flex items-center justify-between gap-4 text-sm">
               <span className="text-slate-400">GST {summary ? `${summary.quote.gstPercentage}%` : ""}</span>
-              <span className="font-medium text-white">
+              <span className="font-medium text-slate-100">
                 {summary ? formatPaise(summary.quote.gstAmountPaise, summary.quote.currency) : "--"}
               </span>
             </div>
-            <div className="border-t border-white/10 pt-4">
+            <div className="border-t border-slate-800 pt-4">
               <div className="flex items-end justify-between gap-4">
                 <span className="text-sm font-semibold text-slate-200">Final payable</span>
-                <span className="text-3xl font-semibold text-white">
+                <span className="text-3xl font-semibold text-slate-50">
                   {summary ? formatPaise(summary.quote.finalAmountPaise, summary.quote.currency) : "--"}
                 </span>
               </div>
             </div>
           </div>
 
-          <div className="mt-5 rounded-3xl border border-white/10 bg-white/[0.03] p-4">
-            <label htmlFor="coupon" className="text-sm font-semibold text-white">
+          <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/30 p-4">
+            <label htmlFor="coupon" className="text-sm font-semibold text-slate-100">
               Coupon code
             </label>
             <div className="mt-3 flex gap-2">
@@ -508,20 +522,20 @@ export default function BillingCheckoutPage() {
                 }}
                 disabled={isBusy}
                 placeholder="WELCOME10"
-                className="min-w-0 flex-1 rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-cyan-300 disabled:opacity-60"
+                className="min-w-0 flex-1 rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-blue-400 disabled:opacity-60"
               />
               <button
                 type="button"
                 onClick={handleApplyCoupon}
                 disabled={isBusy || !couponInput.trim()}
-                className="rounded-2xl border border-cyan-300/30 bg-cyan-400/10 px-4 py-3 text-sm font-semibold text-cyan-100 transition hover:border-cyan-200/60 hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:border-blue-500/60 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Apply
               </button>
             </div>
 
             {appliedCoupon ? (
-              <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">
+              <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">
                 <span>{appliedCoupon} active</span>
                 <button type="button" onClick={handleRemoveCoupon} disabled={isBusy} className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-100/80 hover:text-white">
                   Remove
@@ -531,13 +545,13 @@ export default function BillingCheckoutPage() {
           </div>
 
           {notice ? (
-            <div className="mt-4 rounded-2xl border border-cyan-400/20 bg-cyan-400/10 px-4 py-3 text-sm leading-6 text-cyan-100">
+            <div className="mt-4 rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm leading-6 text-blue-100">
               {notice}
             </div>
           ) : null}
 
           {error ? (
-            <div className="mt-4 rounded-2xl border border-rose-400/25 bg-rose-500/10 px-4 py-3 text-sm leading-6 text-rose-100">
+            <div className="mt-4 rounded-xl border border-rose-400/25 bg-rose-500/10 px-4 py-3 text-sm leading-6 text-rose-100">
               {error}
             </div>
           ) : null}
@@ -546,7 +560,7 @@ export default function BillingCheckoutPage() {
             type="button"
             onClick={handleProceedToPayment}
             disabled={!summary || isBusy || status === "success"}
-            className="mt-6 w-full rounded-2xl bg-cyan-400 px-5 py-4 text-sm font-bold text-slate-950 shadow-[0_20px_60px_rgba(34,211,238,0.25)] transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-55"
+            className="mt-6 w-full rounded-xl bg-blue-600 px-5 py-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-55"
           >
             {status === "paying"
               ? "Opening Razorpay..."
@@ -558,7 +572,7 @@ export default function BillingCheckoutPage() {
           </button>
 
           <p className="mt-4 text-center text-xs leading-5 text-slate-500">
-            Subscription activates only after backend signature, order, amount, coupon, and organization checks pass.
+            Subscription activates only after backend signature, order, amount, coupon, and organization verification.
           </p>
 
           {activeOrderId ? (
