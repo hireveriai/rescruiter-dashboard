@@ -59,6 +59,7 @@ type InvoiceRow = {
   invoice_pdf_url: string | null
   invoice_pdf_bucket: string | null
   invoice_pdf_key: string | null
+  invoice_pdf_data: Buffer | Uint8Array | null
   email_sent_at: Date | null
   created_at: Date
 }
@@ -375,6 +376,7 @@ async function getExistingInvoiceByPayment(paymentId: string) {
       invoice_pdf_url,
       invoice_pdf_bucket,
       invoice_pdf_key,
+      invoice_pdf_data,
       email_sent_at,
       created_at
     from public.invoices
@@ -387,13 +389,14 @@ async function getExistingInvoiceByPayment(paymentId: string) {
 
 export async function createAndSendInvoiceForPayment(input: { paymentId: string }) {
   const existing = await getExistingInvoiceByPayment(input.paymentId)
-  if (existing) {
+  const existingHasPdf = Boolean(existing?.invoice_pdf_data || (existing?.invoice_pdf_bucket && existing?.invoice_pdf_key))
+  if (existing && existingHasPdf && existing.email_sent_at) {
     return mapInvoice(existing)
   }
 
   const source = await getInvoiceSource(input.paymentId)
-  const invoiceNumber = await getNextInvoiceNumber(prisma)
-  const invoiceDate = new Date()
+  const invoiceNumber = existing?.invoice_number ?? await getNextInvoiceNumber(prisma)
+  const invoiceDate = existing?.invoice_date ?? new Date()
   const taxableAmountPaise = Math.max(0, Number(source.original_amount_paise) - Number(source.discount_amount_paise))
   const pdf = await generateInvoicePdf({
     ...source,
@@ -404,6 +407,9 @@ export async function createAndSendInvoiceForPayment(input: { paymentId: string 
     organizationId: source.organization_id,
     invoiceNumber,
     buffer: pdf,
+  }).catch((error) => {
+    console.error("Invoice object storage upload failed; using database PDF fallback", error)
+    return null
   })
 
   const invoiceRows = await prisma.$queryRaw<InvoiceRow[]>(Prisma.sql`
@@ -433,6 +439,7 @@ export async function createAndSendInvoiceForPayment(input: { paymentId: string 
       invoice_pdf_url,
       invoice_pdf_bucket,
       invoice_pdf_key,
+      invoice_pdf_data,
       created_at
     )
     values (
@@ -458,15 +465,19 @@ export async function createAndSendInvoiceForPayment(input: { paymentId: string 
       ${source.coupon_code},
       ${source.razorpay_order_id},
       ${source.razorpay_payment_id},
-      ${stored.url},
-      ${stored.bucket},
-      ${stored.key},
+      ${stored?.url ?? null},
+      ${stored?.bucket ?? null},
+      ${stored?.key ?? null},
+      ${pdf},
       now()
     )
     on conflict (payment_id) do update set
+      invoice_number = public.invoices.invoice_number,
+      invoice_date = public.invoices.invoice_date,
       invoice_pdf_url = excluded.invoice_pdf_url,
       invoice_pdf_bucket = excluded.invoice_pdf_bucket,
-      invoice_pdf_key = excluded.invoice_pdf_key
+      invoice_pdf_key = excluded.invoice_pdf_key,
+      invoice_pdf_data = excluded.invoice_pdf_data
     returning
       id::text,
       organization_id::text,
@@ -494,6 +505,7 @@ export async function createAndSendInvoiceForPayment(input: { paymentId: string 
       invoice_pdf_url,
       invoice_pdf_bucket,
       invoice_pdf_key,
+      invoice_pdf_data,
       email_sent_at,
       created_at
   `)
@@ -501,8 +513,9 @@ export async function createAndSendInvoiceForPayment(input: { paymentId: string 
   const invoice = invoiceRows[0]
 
   const recipientEmail = source.invoice_recipient_email || source.recruiter_email
+  let emailSentAt = invoice.email_sent_at
 
-  if (recipientEmail) {
+  if (recipientEmail && !invoice.email_sent_at) {
     try {
       await sendBillingInvoiceEmail({
         to: recipientEmail,
@@ -525,6 +538,7 @@ export async function createAndSendInvoiceForPayment(input: { paymentId: string 
         set email_sent_at = now()
         where id = ${invoice.id}::uuid
       `)
+      emailSentAt = new Date()
     } catch (error) {
       console.error("Billing invoice email failed", error)
     }
@@ -532,8 +546,36 @@ export async function createAndSendInvoiceForPayment(input: { paymentId: string 
 
   return mapInvoice({
     ...invoice,
-      email_sent_at: recipientEmail ? new Date() : invoice.email_sent_at,
+      email_sent_at: emailSentAt,
   })
+}
+
+async function ensureInvoicesForOrganization(auth: RecruiterRequestContext) {
+  const rows = await prisma.$queryRaw<Array<{ payment_id: string }>>(Prisma.sql`
+    select p.id as payment_id
+    from public.hireveri_payments p
+    left join public.invoices i on i.payment_id = p.id
+    where p."organizationId" = ${auth.organizationId}::uuid
+      and p.status = 'success'::"PaymentStatus"
+      and (
+        i.id is null
+        or (
+          i.invoice_pdf_data is null
+          and (i.invoice_pdf_bucket is null or i.invoice_pdf_key is null)
+        )
+        or i.email_sent_at is null
+      )
+    order by p."createdAt" desc
+    limit 10
+  `)
+
+  for (const row of rows) {
+    try {
+      await createAndSendInvoiceForPayment({ paymentId: row.payment_id })
+    } catch (error) {
+      console.error("Billing invoice backfill failed", { paymentId: row.payment_id, error })
+    }
+  }
 }
 
 export async function listOrganizationInvoices(auth: RecruiterRequestContext) {
@@ -565,6 +607,7 @@ export async function listOrganizationInvoices(auth: RecruiterRequestContext) {
       invoice_pdf_url,
       invoice_pdf_bucket,
       invoice_pdf_key,
+      invoice_pdf_data,
       email_sent_at,
       created_at
     from public.invoices
@@ -576,6 +619,8 @@ export async function listOrganizationInvoices(auth: RecruiterRequestContext) {
 }
 
 export async function getOrganizationBillingHistory(auth: RecruiterRequestContext) {
+  await ensureInvoicesForOrganization(auth)
+
   const [invoices, organizationRows, subscriptionRows, paymentRows, screeningUsageRows] = await Promise.all([
     listOrganizationInvoices(auth),
     prisma.$queryRaw<
@@ -822,6 +867,7 @@ export async function getInvoicePdfForDownload(input: {
       invoice_pdf_url,
       invoice_pdf_bucket,
       invoice_pdf_key,
+      invoice_pdf_data,
       email_sent_at,
       created_at
     from public.invoices
@@ -836,6 +882,13 @@ export async function getInvoicePdfForDownload(input: {
   }
 
   if (!invoice.invoice_pdf_bucket || !invoice.invoice_pdf_key) {
+    if (invoice.invoice_pdf_data) {
+      return {
+        fileName: `${sanitizeFileName(invoice.invoice_number)}.pdf`,
+        pdf: Buffer.from(invoice.invoice_pdf_data),
+      }
+    }
+
     throw new ApiError(404, "INVOICE_PDF_NOT_AVAILABLE", "Invoice PDF is not available")
   }
 

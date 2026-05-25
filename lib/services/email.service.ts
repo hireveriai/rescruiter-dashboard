@@ -1,7 +1,7 @@
 import { Resend } from "resend";
 import { formatOrgDateTime } from "@/lib/time";
 
-const DEFAULT_EMAIL_FROM = "HireVeri Recruiter <no-reply@mil.hireveri.com>";
+const DEFAULT_EMAIL_FROM = "HireVeri <no-reply@mail.hireveri.com>";
 const MAX_EMAIL_ATTEMPTS = 3;
 const RETRYABLE_EMAIL_ERROR_PATTERN = /(timeout|timed out|temporar|rate|429|5\d\d|network|fetch|econnreset|etimedout|socket)/i;
 

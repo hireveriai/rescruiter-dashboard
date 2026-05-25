@@ -184,6 +184,7 @@ create table if not exists public.invoices (
   invoice_pdf_url text,
   invoice_pdf_bucket text,
   invoice_pdf_key text,
+  invoice_pdf_data bytea,
   email_sent_at timestamptz,
   created_at timestamptz not null default now(),
   constraint invoices_payment_id_key unique (payment_id),

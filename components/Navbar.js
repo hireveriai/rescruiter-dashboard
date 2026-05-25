@@ -408,11 +408,11 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
     <>
       <header className="sticky top-0 z-40 border-b border-slate-800/80 bg-[#0c1424]/95 text-white backdrop-blur-xl">
         <div className="mx-auto flex w-full max-w-[1840px] flex-nowrap items-center justify-between gap-3 px-3 py-4 sm:px-4 xl:px-6">
-          <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-3 xl:gap-4">
+          <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-2 xl:gap-3">
             <Link
               href={buildAuthUrl("/", searchParams)}
               onClick={() => handleNavigationClick("/")}
-              className="flex w-[72px] shrink-0 flex-col justify-center leading-none sm:w-[210px] xl:w-[240px]"
+              className="flex w-[72px] shrink-0 flex-col justify-center leading-none sm:w-[180px] xl:w-[210px]"
               aria-label="HireVeri home"
             >
               <span className="text-lg font-semibold tracking-tight text-white xl:text-xl">HireVeri</span>
@@ -421,7 +421,7 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
               </span>
             </Link>
 
-            <nav className="hidden min-w-0 flex-1 flex-nowrap items-center justify-start gap-1 md:flex xl:gap-2">
+            <nav className="hidden min-w-0 flex-1 flex-nowrap items-center justify-start gap-0.5 overflow-hidden md:flex xl:gap-1">
               {navItems.map((item) => {
                 const active = isActivePath(pathname, item.href);
 
@@ -442,7 +442,7 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
                 );
               })}
 
-              <div className="relative" ref={alertsRef}>
+              <div className="relative mr-3 shrink-0" ref={alertsRef}>
                 <button
                   type="button"
                   onClick={() => setAlertsOpen((value) => !value)}
@@ -513,7 +513,7 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
             </nav>
           </div>
 
-          <div className="flex shrink-0 flex-nowrap items-center gap-2">
+          <div className="ml-1 flex shrink-0 flex-nowrap items-center gap-2">
             <button onClick={() => setOpenCreateJob(true)} className="whitespace-nowrap rounded-lg border border-slate-700 bg-slate-900/80 px-2.5 py-1.5 text-xs font-medium text-slate-200 transition hover:border-slate-500 hover:bg-slate-800 hover:text-white xl:px-3 xl:py-2">
               Create Job
             </button>

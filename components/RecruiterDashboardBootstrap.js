@@ -311,12 +311,12 @@ export default function RecruiterDashboardBootstrap({ children }) {
   }
 
   if (state.status === "loading" && !state.overview && !state.profile) {
-    return (
-      <WorkspaceShell
-        title="Preparing recruiter workspace"
-        message="Loading your organization dashboard, interview pipeline, and hiring actions."
-      />
-    )
+    return children({
+      profile: null,
+      overview: null,
+      restoreStatus: state.status,
+      showRestoreOverlay: false,
+    })
   }
 
   return children({

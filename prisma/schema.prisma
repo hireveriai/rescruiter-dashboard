@@ -393,6 +393,7 @@ model Invoice {
   invoicePdfUrl       String?  @map("invoice_pdf_url")
   invoicePdfBucket    String?  @map("invoice_pdf_bucket")
   invoicePdfKey       String?  @map("invoice_pdf_key")
+  invoicePdfData      Bytes?   @map("invoice_pdf_data")
   emailSentAt         DateTime? @db.Timestamptz(6) @map("email_sent_at")
   createdAt           DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
 
