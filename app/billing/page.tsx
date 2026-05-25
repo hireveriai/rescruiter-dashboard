@@ -1,0 +1,538 @@
+"use client"
+
+import Link from "next/link"
+import { useEffect, useMemo, useState } from "react"
+
+import { buildAuthUrl } from "@/lib/client/auth-query"
+import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
+
+type Invoice = {
+  id: string
+  invoiceNumber: string
+  invoiceDate: string
+  planName: string
+  finalAmountPaise: number
+  currency: string
+  couponCode: string | null
+  razorpayOrderId: string | null
+  razorpayPaymentId: string | null
+  emailSentAt: string | null
+}
+
+type Payment = {
+  id: string
+  planId: string | null
+  planName: string | null
+  invoiceNumber: string | null
+  invoiceId: string | null
+  couponCode: string | null
+  taxableAmountPaise: number
+  gstAmountPaise: number
+  discountAmountPaise: number
+  amount: number
+  currency: string
+  status: string
+  razorpayOrderId: string | null
+  razorpayPaymentId: string | null
+  createdAt: string
+}
+
+type Subscription = {
+  id: string
+  planName: string | null
+  planId: string
+  status: string
+  totalCredits: number
+  usedCredits: number
+  screeningCredits: number
+  usedScreeningCredits: number
+  amountPaid: number
+  currency: string
+  activatedAt: string | null
+  expiresAt: string | null
+}
+
+type BillingData = {
+  organization: {
+    organizationId: string
+    organizationName: string
+    gstNumber: string | null
+    billingAddress: string | null
+    financeEmail: string | null
+    invoiceRecipientEmail: string | null
+  } | null
+  invoices: Invoice[]
+  payments: Payment[]
+  subscriptions: Subscription[]
+}
+
+function formatPaise(value: number, currency = "INR") {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 2,
+  }).format(Number(value || 0) / 100)
+}
+
+function formatDate(value: string | null) {
+  if (!value) {
+    return "-"
+  }
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return "-"
+  }
+
+  return new Intl.DateTimeFormat("en-IN", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+  }).format(date)
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const normalized = status.toLowerCase()
+  const tone =
+    normalized === "success" || normalized === "active"
+      ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-100"
+      : normalized === "pending"
+        ? "border-amber-500/25 bg-amber-500/10 text-amber-100"
+        : "border-slate-700 bg-slate-900 text-slate-300"
+
+  return (
+    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold capitalize ${tone}`}>
+      {status}
+    </span>
+  )
+}
+
+function CreditUsageCard({
+  title,
+  total,
+  used,
+}: {
+  title: string
+  total: number
+  used: number
+}) {
+  const safeTotal = Math.max(0, Number(total || 0))
+  const safeUsed = Math.min(safeTotal, Math.max(0, Number(used || 0)))
+  const remaining = Math.max(0, safeTotal - safeUsed)
+  const percentage = safeTotal > 0 ? Math.round((safeUsed / safeTotal) * 100) : 0
+
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-sm font-semibold text-white">{title}</p>
+          <p className="mt-1 text-xs text-slate-500">Purchased, used, and remaining credits</p>
+        </div>
+        <span className="rounded-full border border-slate-700 bg-slate-900 px-2.5 py-1 text-xs font-semibold text-slate-300">
+          {percentage}% used
+        </span>
+      </div>
+      <div className="mt-5 h-2 overflow-hidden rounded-full bg-slate-800">
+        <div className="h-full rounded-full bg-blue-500" style={{ width: `${percentage}%` }} />
+      </div>
+      <div className="mt-5 grid grid-cols-3 gap-3 text-sm">
+        <div>
+          <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Purchased</p>
+          <p className="mt-2 text-xl font-semibold text-white">{safeTotal}</p>
+        </div>
+        <div>
+          <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Used</p>
+          <p className="mt-2 text-xl font-semibold text-white">{safeUsed}</p>
+        </div>
+        <div>
+          <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Remaining</p>
+          <p className="mt-2 text-xl font-semibold text-white">{remaining}</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default function BillingPage() {
+  const searchParams = useAuthSearchParams()
+  const [data, setData] = useState<BillingData>({ organization: null, invoices: [], payments: [], subscriptions: [] })
+  const [settings, setSettings] = useState({
+    gstNumber: "",
+    billingAddress: "",
+    financeEmail: "",
+    invoiceRecipientEmail: "",
+  })
+  const [loading, setLoading] = useState(true)
+  const [savingSettings, setSavingSettings] = useState(false)
+  const [error, setError] = useState("")
+  const [notice, setNotice] = useState("")
+  const activeSubscription = useMemo(
+    () => data.subscriptions.find((subscription) => subscription.status === "active") ?? data.subscriptions[0] ?? null,
+    [data.subscriptions]
+  )
+  const lastSuccessfulPayment = useMemo(
+    () => data.payments.find((payment) => payment.status === "success") ?? data.payments[0] ?? null,
+    [data.payments]
+  )
+
+  useEffect(() => {
+    let active = true
+
+    async function loadBilling() {
+      try {
+        const response = await fetch(buildAuthUrl("/api/billing/overview", searchParams), {
+          credentials: "include",
+          cache: "no-store",
+        })
+        const payload = await response.json()
+
+        if (!active) {
+          return
+        }
+
+        if (!response.ok || !payload?.success) {
+          throw new Error(payload?.error?.message || "Unable to load billing history.")
+        }
+
+        setData(payload.data)
+        setSettings({
+          gstNumber: payload.data.organization?.gstNumber ?? "",
+          billingAddress: payload.data.organization?.billingAddress ?? "",
+          financeEmail: payload.data.organization?.financeEmail ?? "",
+          invoiceRecipientEmail: payload.data.organization?.invoiceRecipientEmail ?? "",
+        })
+        setError("")
+      } catch (loadError) {
+        if (active) {
+          setError(loadError instanceof Error ? loadError.message : "Unable to load billing history.")
+        }
+      } finally {
+        if (active) {
+          setLoading(false)
+        }
+      }
+    }
+
+    loadBilling()
+
+    return () => {
+      active = false
+    }
+  }, [searchParams])
+
+  async function saveBillingSettings() {
+    setSavingSettings(true)
+    setError("")
+    setNotice("")
+
+    try {
+      const response = await fetch(buildAuthUrl("/api/billing/invoices", searchParams), {
+        method: "PATCH",
+        credentials: "include",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settings),
+      })
+      const payload = await response.json()
+
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.error?.message || "Unable to save billing settings.")
+      }
+
+      setData((current) => ({
+        ...current,
+        organization: payload.data.organization,
+      }))
+      setNotice("Billing settings updated for future invoices.")
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Unable to save billing settings.")
+    } finally {
+      setSavingSettings(false)
+    }
+  }
+
+  return (
+    <main className="min-h-screen bg-[#081120] px-6 py-12 text-white sm:px-8 lg:px-10">
+      <div className="mx-auto max-w-6xl">
+        <Link
+          href={buildAuthUrl("/", searchParams)}
+          className="inline-flex items-center rounded-xl border border-slate-700 bg-slate-950/50 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-blue-400/40 hover:bg-slate-900 hover:text-white"
+        >
+          Go Back to Dashboard
+        </Link>
+
+        <div className="mt-6 rounded-2xl border border-slate-800 bg-[#0f172a] p-8 shadow-[0_24px_80px_rgba(2,6,23,0.35)]">
+          <p className="text-xs uppercase tracking-[0.3em] text-blue-300/80">Organization Billing</p>
+          <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <h1 className="text-4xl font-semibold tracking-tight text-white">Invoices and payment history</h1>
+              <p className="mt-4 max-w-3xl text-base leading-7 text-slate-300">
+                Download GST-ready invoices, review payment references, and reconcile subscription activity for procurement and finance workflows.
+              </p>
+            </div>
+            <Link
+              href={buildAuthUrl("/billing/checkout", searchParams)}
+              className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-500"
+            >
+              Purchase Plan
+            </Link>
+          </div>
+
+          {error ? (
+            <div className="mt-6 rounded-xl border border-rose-400/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+              {error}
+            </div>
+          ) : null}
+
+          {notice ? (
+            <div className="mt-6 rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+              {notice}
+            </div>
+          ) : null}
+
+          <section className="mt-8 rounded-2xl border border-slate-800 bg-slate-950/35 p-6">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Active Subscription</p>
+                <h2 className="mt-3 text-3xl font-semibold text-white">
+                  {activeSubscription?.planName || activeSubscription?.planId || "No active plan"}
+                </h2>
+                <p className="mt-2 text-sm text-slate-400">
+                  {data.organization?.organizationName || "Organization billing"} · {activeSubscription?.activatedAt ? `Activated ${formatDate(activeSubscription.activatedAt)}` : "Activation pending"}
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[420px]">
+                <div className="rounded-xl border border-slate-800 bg-[#0f172a] p-4">
+                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Status</p>
+                  <div className="mt-3">{activeSubscription ? <StatusBadge status={activeSubscription.status} /> : "-"}</div>
+                </div>
+                <div className="rounded-xl border border-slate-800 bg-[#0f172a] p-4">
+                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Last Payment</p>
+                  <p className="mt-3 text-lg font-semibold text-white">
+                    {formatPaise(lastSuccessfulPayment?.amount ?? activeSubscription?.amountPaid ?? 0, lastSuccessfulPayment?.currency ?? activeSubscription?.currency ?? "INR")}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-800 bg-[#0f172a] p-4">
+                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Current Period</p>
+                  <p className="mt-3 text-sm font-semibold text-white">
+                    Until {formatDate(activeSubscription?.expiresAt ?? null)}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-800 bg-[#0f172a] p-4">
+                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Razorpay</p>
+                  <p className="mt-3 truncate text-xs font-semibold text-slate-300">
+                    {lastSuccessfulPayment?.razorpayPaymentId || lastSuccessfulPayment?.razorpayOrderId || "-"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section id="usage" className="mt-6 grid gap-4 lg:grid-cols-2">
+            <CreditUsageCard
+              title="Interview Credits"
+              total={activeSubscription?.totalCredits ?? 0}
+              used={activeSubscription?.usedCredits ?? 0}
+            />
+            <CreditUsageCard
+              title="VERIS Screening Credits"
+              total={activeSubscription?.screeningCredits ?? 0}
+              used={activeSubscription?.usedScreeningCredits ?? 0}
+            />
+          </section>
+
+          <div className="mt-6 grid gap-4 md:grid-cols-4">
+            <div className="rounded-xl border border-slate-800 bg-slate-950/35 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">GSTIN</p>
+              <p className="mt-3 truncate text-sm font-semibold text-white">{data.organization?.gstNumber || "Not configured"}</p>
+            </div>
+            <div className="rounded-xl border border-slate-800 bg-slate-950/35 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Finance Email</p>
+              <p className="mt-3 truncate text-sm font-semibold text-white">{data.organization?.financeEmail || "Not configured"}</p>
+            </div>
+            <div className="rounded-xl border border-slate-800 bg-slate-950/35 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Invoices</p>
+              <p className="mt-3 text-2xl font-semibold text-white">{data.invoices.length}</p>
+            </div>
+            <div className="rounded-xl border border-slate-800 bg-slate-950/35 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Paid Total</p>
+              <p className="mt-3 text-xl font-semibold text-white">
+                {formatPaise(activeSubscription?.amountPaid ?? 0, activeSubscription?.currency ?? "INR")}
+              </p>
+            </div>
+          </div>
+
+          <section className="mt-8 rounded-2xl border border-slate-800 bg-slate-950/35">
+            <div className="border-b border-slate-800 px-5 py-4">
+              <h2 className="text-lg font-semibold text-white">Invoices</h2>
+            </div>
+            {loading ? (
+              <p className="px-5 py-8 text-sm text-slate-400">Loading billing records...</p>
+            ) : data.invoices.length === 0 ? (
+              <p className="px-5 py-8 text-sm text-slate-400">No invoices generated yet. Invoices appear after verified Razorpay payments.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="text-xs uppercase tracking-[0.16em] text-slate-500">
+                    <tr>
+                      <th className="px-5 py-3 font-medium">Invoice</th>
+                      <th className="px-5 py-3 font-medium">Date</th>
+                      <th className="px-5 py-3 font-medium">Plan</th>
+                      <th className="px-5 py-3 font-medium">Coupon</th>
+                      <th className="px-5 py-3 font-medium">Amount</th>
+                      <th className="px-5 py-3 font-medium">Email</th>
+                      <th className="px-5 py-3 font-medium">Razorpay</th>
+                      <th className="px-5 py-3 font-medium">PDF</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800">
+                    {data.invoices.map((invoice) => (
+                      <tr key={invoice.id} className="text-slate-300">
+                        <td className="px-5 py-4 font-semibold text-white">{invoice.invoiceNumber}</td>
+                        <td className="px-5 py-4">{formatDate(invoice.invoiceDate)}</td>
+                        <td className="px-5 py-4">{invoice.planName}</td>
+                        <td className="px-5 py-4">{invoice.couponCode || "-"}</td>
+                        <td className="px-5 py-4">{formatPaise(invoice.finalAmountPaise, invoice.currency)}</td>
+                        <td className="px-5 py-4">{invoice.emailSentAt ? "Sent" : "Pending"}</td>
+                        <td className="px-5 py-4">
+                          <div className="max-w-[200px] truncate text-xs text-slate-400">
+                            {invoice.razorpayPaymentId || invoice.razorpayOrderId || "-"}
+                          </div>
+                        </td>
+                        <td className="px-5 py-4">
+                          <a
+                            href={buildAuthUrl(`/api/billing/invoices/${invoice.id}/download`, searchParams)}
+                            className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-100 transition hover:border-blue-400/60 hover:bg-slate-900"
+                          >
+                            Download
+                          </a>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          <section className="mt-6 rounded-2xl border border-slate-800 bg-slate-950/35">
+            <div className="border-b border-slate-800 px-5 py-4">
+              <h2 className="text-lg font-semibold text-white">Payment History & Billing Details</h2>
+            </div>
+            {data.payments.length === 0 ? (
+              <p className="px-5 py-8 text-sm text-slate-400">No payment attempts recorded yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="text-xs uppercase tracking-[0.16em] text-slate-500">
+                    <tr>
+                      <th className="px-5 py-3 font-medium">Date</th>
+                      <th className="px-5 py-3 font-medium">Invoice Number</th>
+                      <th className="px-5 py-3 font-medium">Plan</th>
+                      <th className="px-5 py-3 font-medium">Status</th>
+                      <th className="px-5 py-3 font-medium">Coupon</th>
+                      <th className="px-5 py-3 font-medium">Taxable</th>
+                      <th className="px-5 py-3 font-medium">GST</th>
+                      <th className="px-5 py-3 font-medium">Discount</th>
+                      <th className="px-5 py-3 font-medium">Amount</th>
+                      <th className="px-5 py-3 font-medium">Razorpay</th>
+                      <th className="px-5 py-3 font-medium">Invoice</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800">
+                    {data.payments.map((payment) => (
+                      <tr key={payment.id} className="text-slate-300">
+                        <td className="px-5 py-4">{formatDate(payment.createdAt)}</td>
+                        <td className="px-5 py-4 font-semibold text-white">{payment.invoiceNumber || "-"}</td>
+                        <td className="px-5 py-4">{payment.planName || payment.planId || "-"}</td>
+                        <td className="px-5 py-4"><StatusBadge status={payment.status} /></td>
+                        <td className="px-5 py-4">{payment.couponCode || "-"}</td>
+                        <td className="px-5 py-4">{formatPaise(payment.taxableAmountPaise, payment.currency)}</td>
+                        <td className="px-5 py-4">{formatPaise(payment.gstAmountPaise, payment.currency)}</td>
+                        <td className="px-5 py-4">{formatPaise(payment.discountAmountPaise, payment.currency)}</td>
+                        <td className="px-5 py-4">{formatPaise(payment.amount, payment.currency)}</td>
+                        <td className="px-5 py-4">
+                          <div className="max-w-[220px] truncate text-xs text-slate-400">
+                            {payment.razorpayPaymentId || payment.razorpayOrderId || "-"}
+                          </div>
+                        </td>
+                        <td className="px-5 py-4">
+                          {payment.invoiceId ? (
+                            <a
+                              href={buildAuthUrl(`/api/billing/invoices/${payment.invoiceId}/download`, searchParams)}
+                              className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-100 transition hover:border-blue-400/60 hover:bg-slate-900"
+                            >
+                              PDF
+                            </a>
+                          ) : "-"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          <section className="mt-6 rounded-2xl border border-slate-800 bg-slate-950/35 p-5">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-white">Billing Settings</h2>
+                <p className="mt-1 text-sm text-slate-400">Used for future GST invoices, finance routing, and procurement records.</p>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-4 lg:grid-cols-2">
+              <label className="block">
+                <span className="text-sm font-medium text-slate-300">GSTIN</span>
+                <input
+                  value={settings.gstNumber}
+                  onChange={(event) => setSettings((current) => ({ ...current, gstNumber: event.target.value.toUpperCase() }))}
+                  placeholder="22AAAAA0000A1Z5"
+                  className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-blue-400"
+                />
+              </label>
+              <label className="block">
+                <span className="text-sm font-medium text-slate-300">Finance email</span>
+                <input
+                  value={settings.financeEmail}
+                  onChange={(event) => setSettings((current) => ({ ...current, financeEmail: event.target.value }))}
+                  placeholder="finance@company.com"
+                  className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-blue-400"
+                />
+              </label>
+              <label className="block">
+                <span className="text-sm font-medium text-slate-300">Invoice recipient email</span>
+                <input
+                  value={settings.invoiceRecipientEmail}
+                  onChange={(event) => setSettings((current) => ({ ...current, invoiceRecipientEmail: event.target.value }))}
+                  placeholder="accounts-payable@company.com"
+                  className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-blue-400"
+                />
+              </label>
+              <label className="block lg:row-span-2">
+                <span className="text-sm font-medium text-slate-300">Billing address</span>
+                <textarea
+                  value={settings.billingAddress}
+                  onChange={(event) => setSettings((current) => ({ ...current, billingAddress: event.target.value }))}
+                  placeholder="Registered company billing address"
+                  rows={5}
+                  className="mt-2 w-full resize-none rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-blue-400"
+                />
+              </label>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => void saveBillingSettings()}
+              disabled={savingSettings}
+              className="mt-5 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {savingSettings ? "Saving..." : "Save Billing Settings"}
+            </button>
+          </section>
+        </div>
+      </div>
+    </main>
+  )
+}

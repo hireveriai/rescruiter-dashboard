@@ -55,6 +55,23 @@ type SupportRequestEmailParams = {
   attachmentContent?: string | null;
 };
 
+type BillingInvoiceEmailParams = {
+  to: string;
+  recruiterName?: string | null;
+  organizationName: string;
+  planName: string;
+  invoiceNumber: string;
+  invoiceDate: string;
+  finalAmountLabel: string;
+  interviewCredits: number;
+  screeningCredits: number;
+  razorpayOrderId?: string | null;
+  razorpayPaymentId?: string | null;
+  invoicePdfFileName: string;
+  invoicePdfBase64: string;
+  invoiceDownloadUrl?: string | null;
+};
+
 function escapeHtml(value: string) {
   return value
     .replace(/&/g, "&amp;")
@@ -634,6 +651,89 @@ export async function sendSupportConfirmationEmail(input: SupportRequestEmailPar
         ${supportRequestDetailsHtml(input)}
         <p style="color:#475569;">Our operations team will review it against the applicable support routing and SLA.</p>
         <p style="margin-top:24px;">Regards,<br />HireVeri Support</p>
+      </div>
+    `,
+  });
+}
+
+export async function sendBillingInvoiceEmail(input: BillingInvoiceEmailParams) {
+  const safeRecruiterName = escapeHtml(normalizeText(input.recruiterName, "Recruiter"));
+  const safeOrganizationName = escapeHtml(input.organizationName);
+  const safePlanName = escapeHtml(input.planName);
+  const supportEmail = process.env.BILLING_SUPPORT_EMAIL?.trim() || process.env.SUPPORT_EMAIL_TO?.trim() || "support@hireveri.com";
+  const rows = [
+    ["Organization", input.organizationName],
+    ["Plan", input.planName],
+    ["Invoice", input.invoiceNumber],
+    ["Invoice Date", input.invoiceDate],
+    ["Amount Paid", input.finalAmountLabel],
+    ["Interview Credits", String(input.interviewCredits)],
+    ["Screening Credits", String(input.screeningCredits)],
+    ["Razorpay Order", input.razorpayOrderId || "Not available"],
+    ["Razorpay Payment", input.razorpayPaymentId || "Not available"],
+  ];
+
+  return sendWithRetry({
+    from: getEmailFrom(),
+    to: input.to,
+    subject: `HireVeri Invoice & Subscription Activation - ${input.invoiceNumber}`,
+    attachments: [
+      {
+        filename: input.invoicePdfFileName,
+        content: input.invoicePdfBase64,
+      },
+    ],
+    text: [
+      `Hi ${input.recruiterName || "Recruiter"},`,
+      "",
+      `Your HireVeri subscription is active for ${input.organizationName}.`,
+      `Plan: ${input.planName}`,
+      `Invoice: ${input.invoiceNumber}`,
+      `Amount paid: ${input.finalAmountLabel}`,
+      `Interview credits: ${input.interviewCredits}`,
+      `Screening credits: ${input.screeningCredits}`,
+      `Razorpay order: ${input.razorpayOrderId || "Not available"}`,
+      `Razorpay payment: ${input.razorpayPaymentId || "Not available"}`,
+      input.invoiceDownloadUrl ? `Download invoice: ${input.invoiceDownloadUrl}` : "",
+      "",
+      `For billing support, contact ${supportEmail}.`,
+    ].filter(Boolean).join("\n"),
+    html: `
+      <div style="margin:0;padding:0;background:#f8fafc;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
+        <div style="max-width:640px;margin:0 auto;padding:28px 18px;">
+          <div style="border:1px solid #e2e8f0;border-radius:18px;background:#ffffff;overflow:hidden;">
+            <div style="padding:24px 26px;border-bottom:1px solid #e2e8f0;background:#0f172a;">
+              <div style="font-size:13px;letter-spacing:0.16em;text-transform:uppercase;color:#93c5fd;font-weight:700;">HireVeri Billing</div>
+              <h1 style="margin:10px 0 0;color:#ffffff;font-size:24px;line-height:1.25;">Invoice & subscription activation</h1>
+            </div>
+            <div style="padding:26px;">
+              <p style="margin:0 0 14px;font-size:15px;line-height:1.7;color:#334155;">Hi ${safeRecruiterName},</p>
+              <p style="margin:0 0 20px;font-size:15px;line-height:1.7;color:#334155;">
+                Your HireVeri subscription for <strong>${safeOrganizationName}</strong> is active. The GST invoice for <strong>${safePlanName}</strong> is attached for finance and procurement records.
+              </p>
+              <div style="border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;">
+                ${rows
+                  .map(
+                    ([label, value]) => `
+                      <div style="display:flex;gap:18px;padding:12px 14px;border-bottom:1px solid #e2e8f0;">
+                        <div style="min-width:140px;font-size:12px;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;">${escapeHtml(label)}</div>
+                        <div style="font-size:14px;font-weight:700;color:#0f172a;">${escapeHtml(value)}</div>
+                      </div>
+                    `
+                  )
+                  .join("")}
+              </div>
+              ${
+                input.invoiceDownloadUrl
+                  ? `<p style="margin:20px 0 0;"><a href="${escapeHtml(input.invoiceDownloadUrl)}" style="display:inline-block;border-radius:10px;background:#2563eb;color:#ffffff;text-decoration:none;padding:12px 16px;font-size:14px;font-weight:700;">Download invoice</a></p>`
+                  : ""
+              }
+              <p style="margin:22px 0 0;font-size:13px;line-height:1.7;color:#64748b;">
+                For billing, GST, or procurement questions, contact ${escapeHtml(supportEmail)}.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
     `,
   });

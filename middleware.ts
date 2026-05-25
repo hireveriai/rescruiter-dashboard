@@ -38,6 +38,7 @@ const PROTECTED_API_PREFIXES = [
   "/api/create-order",
   "/api/verify-payment",
   "/api/payment-failed",
+  "/api/billing",
 ]
 
 function hasSupabaseAuthCookie(request: NextRequest) {

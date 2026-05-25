@@ -6,6 +6,7 @@ import Razorpay from "razorpay"
 import type { RecruiterRequestContext } from "@/lib/server/auth-context"
 import { ApiError } from "@/lib/server/errors"
 import { prisma } from "@/lib/server/prisma"
+import { createAndSendInvoiceForPayment } from "@/lib/server/services/invoices"
 
 const PLAN_SLUG_REGEX = /^[a-z0-9][a-z0-9-]{1,80}$/
 const RAZORPAY_MINIMUM_AMOUNT_PAISE = 100
@@ -861,11 +862,21 @@ export async function verifyAndActivatePayment(input: {
       throw new ApiError(409, "PAYMENT_ALREADY_PAID", "Payment has already been verified")
     }
 
+    let invoice = null
+    try {
+      invoice = await createAndSendInvoiceForPayment({
+        paymentId: payment.id,
+      })
+    } catch (error) {
+      console.error("Billing invoice generation failed", error)
+    }
+
     return {
       alreadyVerified: true,
       paymentId: payment.id,
       plan: null,
       subscription: null,
+      invoice,
     }
   }
 
@@ -892,7 +903,7 @@ export async function verifyAndActivatePayment(input: {
   await validatePendingPaymentAgainstCurrentDb(payment)
   const razorpayPayment = await fetchAndCaptureRazorpayPayment(payment, input.razorpayPaymentId)
 
-  return prisma.$transaction(async (tx) => {
+  const activationResult = await prisma.$transaction(async (tx) => {
     const lockedPayment = await getPaymentByOrderForAuth({
       orderId: input.razorpayOrderId,
       auth: input.auth,
@@ -905,11 +916,21 @@ export async function verifyAndActivatePayment(input: {
     }
 
     if (lockedPayment.status === "success") {
+      let invoice = null
+      try {
+        invoice = await createAndSendInvoiceForPayment({
+          paymentId: lockedPayment.id,
+        })
+      } catch (error) {
+        console.error("Billing invoice generation failed", error)
+      }
+
       return {
         alreadyVerified: true,
         paymentId: lockedPayment.id,
         plan: null,
         subscription: null,
+        invoice,
       }
     }
 
@@ -1031,6 +1052,23 @@ export async function verifyAndActivatePayment(input: {
         : null,
     }
   })
+
+  if (!activationResult.alreadyVerified) {
+    try {
+      const invoice = await createAndSendInvoiceForPayment({
+        paymentId: activationResult.paymentId,
+      })
+
+      return {
+        ...activationResult,
+        invoice,
+      }
+    } catch (error) {
+      console.error("Billing invoice generation failed", error)
+    }
+  }
+
+  return activationResult
 }
 
 export async function markPaymentTerminal(input: {

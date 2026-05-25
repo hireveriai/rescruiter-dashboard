@@ -19,6 +19,7 @@ const navItems = [
   { href: "/candidates", label: "Candidates", disabled: false },
   { href: "/interviews", label: "Interviews", disabled: false },
   { href: "/reports", label: "Reports", disabled: false },
+  { href: "/billing", label: "Billing", disabled: false },
 ];
 
 const navLoadingMessages = {
@@ -27,6 +28,7 @@ const navLoadingMessages = {
   "/candidates": "Loading candidate pipeline...",
   "/interviews": "Syncing interview telemetry...",
   "/reports": "Updating forensic analytics...",
+  "/billing": "Loading billing records...",
   "/manage-team": "Syncing team workspace...",
   "/settings": "Loading workspace settings...",
   "/contact-us": "Preparing contact workspace...",
@@ -80,6 +82,29 @@ function TeamIcon() {
       <circle cx="9" cy="7" r="4" />
       <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
       <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  );
+}
+
+function BillingIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4" y="3" width="16" height="18" rx="2" />
+      <path d="M8 7h8" />
+      <path d="M8 11h8" />
+      <path d="M8 15h5" />
+    </svg>
+  );
+}
+
+function CreditsIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 19V5" />
+      <path d="M4 19h16" />
+      <path d="M8 16v-5" />
+      <path d="M12 16V8" />
+      <path d="M16 16v-3" />
     </svg>
   );
 }
@@ -526,6 +551,16 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
                     <Link href={buildAuthUrl("/manage-team", searchParams)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-200 transition hover:bg-slate-800/70 hover:text-white" onClick={() => { setProfileOpen(false); handleNavigationClick("/manage-team"); }}>
                       <TeamIcon />
                       <span>Manage Team</span>
+                    </Link>
+
+                    <Link href={buildAuthUrl("/billing", searchParams)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-200 transition hover:bg-slate-800/70 hover:text-white" onClick={() => { setProfileOpen(false); handleNavigationClick("/billing"); }}>
+                      <BillingIcon />
+                      <span>Billing & Orders</span>
+                    </Link>
+
+                    <Link href={buildAuthUrl("/billing#usage", searchParams)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-200 transition hover:bg-slate-800/70 hover:text-white" onClick={() => { setProfileOpen(false); handleNavigationClick("/billing"); }}>
+                      <CreditsIcon />
+                      <span>Usage & Credits</span>
                     </Link>
 
                     <Link href={buildAuthUrl("/settings", searchParams)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-200 transition hover:bg-slate-800/70 hover:text-white" onClick={() => { setProfileOpen(false); handleNavigationClick("/settings"); }}>
