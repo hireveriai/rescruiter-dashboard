@@ -12,10 +12,13 @@ export async function GET(request: Request) {
     const limit = rawLimit === "all" ? null : Math.min(Math.max(Number(rawLimit || 6) || 6, 1), 50)
     const cards = await getVerisSummaryCards(auth.organizationId, limit)
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       data: cards,
     })
+
+    response.headers.set("Cache-Control", "private, max-age=30, stale-while-revalidate=120")
+    return response
   } catch (error) {
     return errorResponse(error)
   }

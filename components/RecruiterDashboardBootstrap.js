@@ -4,10 +4,11 @@ import { useEffect, useState } from "react"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
 import { clearHireveriSessionCookie, getRecruiterLoginUrl } from "@/lib/client/auth-session"
+import { ACTION_FEEDBACK_EVENT } from "@/lib/client/action-feedback"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 import { useOrgTimezone } from "@/components/OrgTimezoneProvider"
 
-const DASHBOARD_AUTO_REFRESH_MS = 10000
+const DASHBOARD_AUTO_REFRESH_MS = 60000
 
 function WorkspaceShell({ tone = "loading", title, message, ctaLabel, onCtaClick }) {
   const isError = tone === "error"
@@ -97,7 +98,6 @@ export default function RecruiterDashboardBootstrap({ children }) {
   useEffect(() => {
     let active = true
     let cachedOverview = null
-    let profileReady = false
 
     if (typeof window !== "undefined") {
       try {
@@ -114,6 +114,10 @@ export default function RecruiterDashboardBootstrap({ children }) {
           return
         }
 
+        setTimezoneState({
+          timezone: cachedOverview?.profile?.timezone,
+          timezoneLabel: cachedOverview?.profile?.timezoneLabel,
+        })
         setState((current) => ({
           status: "ready",
           profile: cachedOverview?.profile ?? current.profile,
@@ -134,37 +138,25 @@ export default function RecruiterDashboardBootstrap({ children }) {
       }
 
       try {
-        const profilePromise = fetch(buildAuthUrl("/api/me", searchParams), {
-          credentials: "include",
-          cache: "no-store",
-        })
-
         const overviewPath = forceRefresh ? `/api/dashboard/overview?refresh=${Date.now()}` : "/api/dashboard/overview"
-        const overviewPromise = fetch(buildAuthUrl(overviewPath, searchParams), {
+        const overviewResponse = await fetch(buildAuthUrl(overviewPath, searchParams), {
           credentials: "include",
           cache: forceRefresh ? "no-store" : "default",
         })
-        const workflowPath = forceRefresh ? `/api/dashboard/workflow?refresh=${Date.now()}` : "/api/dashboard/workflow"
-        const workflowPromise = fetch(buildAuthUrl(workflowPath, searchParams), {
-          credentials: "include",
-          cache: "no-store",
-        })
-
-        const profileResponse = await profilePromise
-        const profileData = await profileResponse.json().catch(() => null)
+        const overviewData = await overviewResponse.json().catch(() => null)
 
         if (!active) {
           return
         }
 
-        if (profileResponse.status === 401) {
+        if (overviewResponse.status === 401) {
           clearHireveriSessionCookie()
           setState({
             status: "error",
             profile: null,
             overview: null,
-            message: profileData?.error?.code
-              ? `Session could not be validated (${profileData.error.code}). Please sign in again.`
+            message: overviewData?.error?.code
+              ? `Session could not be validated (${overviewData.error.code}). Please sign in again.`
               : "Session could not be validated. Please sign in again.",
           })
           if (typeof window !== "undefined") {
@@ -173,15 +165,17 @@ export default function RecruiterDashboardBootstrap({ children }) {
           return
         }
 
-        if (!profileResponse.ok || !profileData?.success) {
-          if (profileResponse.status === 401) {
-            clearHireveriSessionCookie()
+        if (!overviewResponse.ok || !overviewData?.success) {
+          if (cachedOverview || silent) {
+            console.warn("Dashboard overview refresh skipped", overviewData?.error?.message || overviewData?.message)
+            return
           }
+
           setState({
             status: "error",
             profile: null,
             overview: null,
-            message: profileData?.error?.message || profileData?.message || "Unable to load recruiter workspace.",
+            message: overviewData?.error?.message || overviewData?.message || "Unable to load recruiter workspace.",
           })
           if (typeof window !== "undefined") {
             window.sessionStorage.removeItem("hireveri-overview")
@@ -189,59 +183,8 @@ export default function RecruiterDashboardBootstrap({ children }) {
           return
         }
 
-        const profile = profileData.data ?? null
-        setTimezoneState({
-          timezone: profile?.timezone,
-          timezoneLabel: profile?.timezoneLabel,
-        })
-
-        setState((current) => ({
-          status: "ready",
-          profile,
-          overview: current.overview,
-          message: "",
-        }))
-        profileReady = true
-
-        workflowPromise
-          .then((response) => response.json().then((payload) => ({ ok: response.ok, payload })))
-          .then(({ ok, payload }) => {
-            if (!active || !ok || !payload?.success) {
-              return
-            }
-
-            setState((current) => {
-              const nextOverview = {
-                ...(current.overview ?? {}),
-                profile: current.overview?.profile ?? profile,
-                ...payload.data,
-              }
-
-              return {
-                status: "ready",
-                profile: current.profile ?? profile,
-                overview: nextOverview,
-                message: "",
-              }
-            })
-          })
-          .catch((error) => {
-            console.warn("Fast dashboard workflow bootstrap failed", error)
-          })
-
-        const overviewResponse = await overviewPromise
-        const overviewData = await overviewResponse.json().catch(() => null)
-
-        if (!active) {
-          return
-        }
-
-        if (!overviewResponse.ok || !overviewData?.success) {
-          console.warn("Dashboard overview refresh skipped", overviewData?.error?.message || overviewData?.message)
-          return
-        }
-
         const overview = overviewData.data ?? null
+        const profile = overview?.profile ?? null
 
         if (typeof window !== "undefined" && overview) {
           try {
@@ -269,8 +212,8 @@ export default function RecruiterDashboardBootstrap({ children }) {
           return
         }
 
-        if (profileReady) {
-          console.warn("Dashboard overview refresh failed after profile load", error)
+        if (cachedOverview || silent) {
+          console.warn("Dashboard overview refresh failed", error)
           return
         }
 
@@ -321,6 +264,40 @@ export default function RecruiterDashboardBootstrap({ children }) {
     }
   }, [searchParams, setTimezoneState])
 
+  useEffect(() => {
+    if (state.status !== "ready" || typeof window === "undefined") {
+      return
+    }
+
+    let payload = null
+
+    try {
+      const rawPayload = window.sessionStorage.getItem("hireveri-billing-success")
+      payload = rawPayload ? JSON.parse(rawPayload) : null
+      window.sessionStorage.removeItem("hireveri-billing-success")
+    } catch {
+      window.sessionStorage.removeItem("hireveri-billing-success")
+    }
+
+    if (!payload) {
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      window.dispatchEvent(
+        new CustomEvent(ACTION_FEEDBACK_EVENT, {
+          detail: {
+            title: payload.title || "Subscription activated",
+            message: payload.message || "Your organization subscription is active.",
+            tone: "success",
+          },
+        })
+      )
+    }, 250)
+
+    return () => window.clearTimeout(timer)
+  }, [state.status])
+
   if (state.status === "error") {
     return (
       <WorkspaceShell
@@ -329,6 +306,15 @@ export default function RecruiterDashboardBootstrap({ children }) {
         message={state.message}
         ctaLabel="Go to Recruiter Login"
         onCtaClick={() => window.location.replace(getRecruiterLoginUrl())}
+      />
+    )
+  }
+
+  if (state.status === "loading" && !state.overview && !state.profile) {
+    return (
+      <WorkspaceShell
+        title="Preparing recruiter workspace"
+        message="Loading your organization dashboard, interview pipeline, and hiring actions."
       />
     )
   }

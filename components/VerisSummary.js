@@ -52,38 +52,63 @@ function getInsightSummary(item) {
 export default function VerisSummary({ initialSummaries, isLoading = false }) {
   const searchParams = useAuthSearchParams()
   const [summaries, setSummaries] = useState([])
+  const [isFetching, setIsFetching] = useState(initialSummaries === undefined)
   const [expandedSummaryIds, setExpandedSummaryIds] = useState(() => new Set())
   const baseSummaries = initialSummaries !== undefined ? initialSummaries : summaries
   const displaySummaries = baseSummaries.slice(0, DASHBOARD_SUMMARY_LIMIT)
   const hasMoreSummaries = baseSummaries.length > DASHBOARD_SUMMARY_LIMIT
+  const isBusy = isLoading || isFetching
 
   useEffect(() => {
     if (initialSummaries !== undefined) {
+      setIsFetching(false)
       return
     }
 
     if (!hasAuthQuery(searchParams)) {
+      setIsFetching(false)
       return
     }
 
     let isMounted = true
+    let cancelScheduled = () => {}
 
-    fetch(buildAuthUrl("/api/dashboard/veris", searchParams), {
-      credentials: "include",
-      cache: "no-store",
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (isMounted && data.success) {
-          setSummaries(data.data ?? [])
-        }
+    setIsFetching(true)
+
+    const fetchSummaries = () => {
+      fetch(buildAuthUrl("/api/dashboard/veris", searchParams), {
+        credentials: "include",
+        cache: "no-store",
       })
-      .catch((error) => {
-        console.error("Failed to fetch VERIS summaries", error)
-      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (isMounted && data.success) {
+            setSummaries(data.data ?? [])
+          }
+        })
+        .catch((error) => {
+          console.error("Failed to fetch VERIS summaries", error)
+        })
+        .finally(() => {
+          if (isMounted) {
+            setIsFetching(false)
+          }
+        })
+    }
+
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      const idleId = window.requestIdleCallback(fetchSummaries, { timeout: 3000 })
+      cancelScheduled = () => window.cancelIdleCallback?.(idleId)
+    } else if (typeof window !== "undefined") {
+      const timeoutId = window.setTimeout(fetchSummaries, 1200)
+      cancelScheduled = () => window.clearTimeout(timeoutId)
+    } else {
+      fetchSummaries()
+    }
 
     return () => {
       isMounted = false
+      cancelScheduled()
     }
   }, [initialSummaries, searchParams])
 
@@ -111,7 +136,7 @@ export default function VerisSummary({ initialSummaries, isLoading = false }) {
               Recent
             </span>
           </h2>
-          {!isLoading ? (
+          {!isBusy ? (
             <p className="mt-1 text-sm text-slate-500">
               Showing {displaySummaries.length} of {baseSummaries.length} summaries
             </p>
@@ -128,7 +153,7 @@ export default function VerisSummary({ initialSummaries, isLoading = false }) {
         ) : null}
       </div>
 
-      {isLoading ? (
+      {isBusy ? (
         <div className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
           <TimelineSkeleton
             messages={[

@@ -2,13 +2,10 @@ import { NextResponse } from "next/server"
 
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
 import { errorResponse } from "@/lib/server/response"
-import { prisma } from "@/lib/server/prisma"
 import { getCandidatesDashboard } from "@/lib/server/services/dashboard.service"
 import { getDashboardPipelineData } from "@/lib/server/services/dashboard-pipeline"
-import { getDashboardRecordings } from "@/lib/server/services/dashboard-recordings"
 import { deriveDashboardState } from "@/lib/dashboard/dashboard-state-engine"
 import { getRecruiterProfile } from "@/lib/server/services/recruiter-profile"
-import { getVerisSummaryCards, type VerisSummaryCard } from "@/lib/server/services/reports.service"
 import { getDashboardAlerts, type DashboardAlert } from "@/lib/server/services/dashboard-alerts"
 import { getDashboardWorkflowSnapshot } from "@/lib/server/services/dashboard-workflow"
 
@@ -37,9 +34,9 @@ type OverviewPayload = {
   dashboardState: ReturnType<typeof deriveDashboardState>
   pendingInterviews: Array<Record<string, unknown>>
   pendingInterviewsTotal: number
-  recordedInterviews: Array<Record<string, unknown>>
+  recordedInterviews?: Array<Record<string, unknown>>
   candidates: Awaited<ReturnType<typeof getCandidatesDashboard>>
-  veris: VerisSummaryCard[]
+  veris?: Array<Record<string, unknown>>
   alerts: DashboardAlert[]
 }
 
@@ -48,79 +45,10 @@ type CacheEntry = {
   expiresAt: number
 }
 
-const CACHE_TTL_MS = 5000
+const CACHE_TTL_MS = 15000
 const CACHE_MAX = 50
 const overviewCache = new Map<string, CacheEntry>()
 const inFlight = new Map<string, Promise<OverviewPayload>>()
-
-async function tableExists(tableName: string) {
-  const rows = await prisma.$queryRaw<Array<{ exists: boolean }>>`
-    select exists (
-      select 1
-      from information_schema.tables
-      where table_schema = 'public'
-        and table_name = ${tableName}
-    ) as exists
-  `
-
-  return Boolean(rows[0]?.exists)
-}
-
-async function getScreeningWorkflowMetrics(organizationId: string) {
-  if (!(await tableExists("screening_runs"))) {
-    return {
-      screeningRuns: 0,
-      shortlistedCandidates: 0,
-    }
-  }
-
-  const rows = await prisma.$queryRaw<Array<{ screening_runs: number; shortlisted_candidates: number }>>`
-    select
-      count(*)::int as screening_runs,
-      coalesce(sum(strong_fit_count), 0)::int as shortlisted_candidates
-    from public.screening_runs
-    where organization_id = ${organizationId}::uuid
-  `
-
-  return {
-    screeningRuns: Number(rows[0]?.screening_runs ?? 0),
-    shortlistedCandidates: Number(rows[0]?.shortlisted_candidates ?? 0),
-  }
-}
-
-async function getReportAndDecisionMetrics(organizationId: string) {
-  const rows = await prisma.$queryRaw<Array<{ pending_reports: number; decisions_pending: number }>>`
-    with latest_attempts as (
-      select distinct on (ia.interview_id)
-        ia.attempt_id,
-        ia.interview_id,
-        ia.status,
-        ia.ended_at
-      from public.interview_attempts ia
-      inner join public.interviews i on i.interview_id = ia.interview_id
-      where i.organization_id = ${organizationId}::uuid
-      order by ia.interview_id, ia.started_at desc
-    )
-    select
-      count(*) filter (
-        where (upper(coalesce(la.status, '')) in ('COMPLETED', 'SUBMITTED', 'EVALUATED') or la.ended_at is not null)
-          and (ie.evaluation_id is null or ie.decision is null)
-      )::int as pending_reports,
-      count(*) filter (
-        where (upper(coalesce(la.status, '')) in ('COMPLETED', 'SUBMITTED', 'EVALUATED') or la.ended_at is not null)
-          and ie.decision is not null
-      )::int as decisions_pending
-    from latest_attempts la
-    left join public.interview_evaluations ie on ie.attempt_id = la.attempt_id
-  `
-
-  return {
-    pendingReports: Number(rows[0]?.pending_reports ?? 0),
-    decisionsPending: Number(rows[0]?.decisions_pending ?? 0),
-    completedInterviews: Number(rows[0]?.pending_reports ?? 0) + Number(rows[0]?.decisions_pending ?? 0),
-    reviewedReports: Number(rows[0]?.decisions_pending ?? 0),
-  }
-}
 
 async function buildOverview(
   auth: Awaited<ReturnType<typeof getRecruiterRequestContext>>
@@ -130,14 +58,13 @@ async function buildOverview(
     limit: 5,
   })
 
-  const [profile, veris, candidates, recordedInterviews, pipelineData, alerts] = await Promise.all([
+  const [profile, candidates, pipelineData, alerts] = await Promise.all([
     getRecruiterProfile(auth),
-    getVerisSummaryCards(auth.organizationId, 6),
     getCandidatesDashboard({
       organizationId: auth.organizationId,
       limit: 5,
+      finalizeStale: false,
     }),
-    getDashboardRecordings(auth.organizationId),
     pipelinePromise,
     getDashboardAlerts(auth.organizationId, 8),
   ])
@@ -153,9 +80,7 @@ async function buildOverview(
     dashboardState: workflowSnapshot.dashboardState,
     pendingInterviews: pipelineData.pendingInterviews,
     pendingInterviewsTotal: pipelineData.pendingTotal,
-    recordedInterviews,
     candidates: candidates ?? [],
-    veris,
     alerts,
   }
 }
@@ -200,7 +125,7 @@ export async function GET(request: Request) {
     const cached = forceRefresh ? null : getCachedOverview(cacheKey)
     if (cached) {
       const response = NextResponse.json({ success: true, data: cached })
-      response.headers.set("Cache-Control", "private, max-age=5, stale-while-revalidate=30")
+      response.headers.set("Cache-Control", "private, max-age=15, stale-while-revalidate=60")
       response.headers.set("X-HireVeri-Cache", "hit")
       return response
     }
@@ -219,7 +144,7 @@ export async function GET(request: Request) {
 
     const response = NextResponse.json({ success: true, data: overview })
 
-    response.headers.set("Cache-Control", forceRefresh ? "no-store" : "private, max-age=5, stale-while-revalidate=30")
+    response.headers.set("Cache-Control", forceRefresh ? "no-store" : "private, max-age=15, stale-while-revalidate=60")
     response.headers.set("X-HireVeri-Cache", forceRefresh ? "refresh" : "miss")
     return response
   } catch (error) {

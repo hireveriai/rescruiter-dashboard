@@ -188,6 +188,10 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
   }, [initialProfile]);
 
   useEffect(() => {
+    if (initialProfile?.name) {
+      return;
+    }
+
     if (!hasAuthQuery(searchParams)) {
       return;
     }
@@ -241,7 +245,7 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
     return () => {
       active = false;
     };
-  }, [searchParams]);
+  }, [initialProfile, searchParams]);
 
   const unreadAlerts = useMemo(
     () => alerts.filter((alert) => !readAlertIds.has(alert.id)),

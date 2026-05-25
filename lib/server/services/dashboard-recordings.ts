@@ -25,6 +25,12 @@ type StorageListItem = {
   name: string
 }
 
+const STORAGE_LIST_CACHE_TTL_MS = 30000
+let recordingColumnsPromise: Promise<Set<string>> | null = null
+let storageObjectPathsCache: { value: Set<string> | null; expiresAt: number } | null = null
+let storageObjectPathsPromise: Promise<Set<string> | null> | null = null
+const tableExistsCache = new Map<string, Promise<boolean>>()
+
 function quoteIdentifier(value: string) {
   return `"${value.replace(/"/g, "\"\"")}"`
 }
@@ -71,6 +77,14 @@ function extractStoragePath(value: string | null) {
 }
 
 async function listRecordingObjectPaths() {
+  if (storageObjectPathsCache && storageObjectPathsCache.expiresAt > Date.now()) {
+    return storageObjectPathsCache.value
+  }
+
+  if (storageObjectPathsPromise) {
+    return storageObjectPathsPromise
+  }
+
   const supabaseUrl = getSupabaseUrl()
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
   const bucket = getStorageBucket()
@@ -79,7 +93,7 @@ async function listRecordingObjectPaths() {
     return null
   }
 
-  const response = await fetch(`${supabaseUrl}/storage/v1/object/list/${encodeURIComponent(bucket)}`, {
+  storageObjectPathsPromise = fetch(`${supabaseUrl}/storage/v1/object/list/${encodeURIComponent(bucket)}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -96,21 +110,35 @@ async function listRecordingObjectPaths() {
       },
     }),
   })
+    .then(async (response) => {
+      if (!response.ok) {
+        return null
+      }
 
-  if (!response.ok) {
-    return null
-  }
+      const items = await response.json().catch(() => null) as StorageListItem[] | null
 
-  const items = await response.json().catch(() => null) as StorageListItem[] | null
+      if (!Array.isArray(items)) {
+        return null
+      }
 
-  if (!Array.isArray(items)) {
-    return null
-  }
+      return new Set(items.map((item) => `recordings/${item.name}`))
+    })
+    .then((value) => {
+      storageObjectPathsCache = {
+        value,
+        expiresAt: Date.now() + STORAGE_LIST_CACHE_TTL_MS,
+      }
+      return value
+    })
+    .catch(() => null)
+    .finally(() => {
+      storageObjectPathsPromise = null
+    })
 
-  return new Set(items.map((item) => `recordings/${item.name}`))
+  return storageObjectPathsPromise
 }
 
-async function getRecordingColumns() {
+async function loadRecordingColumns() {
   const rows = await prisma.$queryRaw<RecordingColumnRow[]>`
     select column_name
     from information_schema.columns
@@ -121,21 +149,45 @@ async function getRecordingColumns() {
   return new Set(rows.map((row) => row.column_name))
 }
 
-async function tableExists(tableName: string) {
-  const rows = await prisma.$queryRaw<Array<{ exists: boolean }>>`
-    select exists (
-      select 1
-      from information_schema.tables
-      where table_schema = 'public'
-        and table_name = ${tableName}
-    ) as "exists"
-  `
+async function getRecordingColumns() {
+  if (!recordingColumnsPromise) {
+    recordingColumnsPromise = loadRecordingColumns().catch((error) => {
+      recordingColumnsPromise = null
+      throw error
+    })
+  }
 
-  return Boolean(rows[0]?.exists)
+  return recordingColumnsPromise
 }
 
-export async function getDashboardRecordings(organizationId: string): Promise<DashboardRecordingRow[]> {
+async function tableExists(tableName: string) {
+  const cached = tableExistsCache.get(tableName)
+  if (cached) {
+    return cached
+  }
+
+  const promise = prisma.$queryRaw<Array<{ exists: boolean }>>`
+      select exists (
+        select 1
+        from information_schema.tables
+        where table_schema = 'public'
+          and table_name = ${tableName}
+      ) as "exists"
+    `
+    .then((rows) => Boolean(rows[0]?.exists))
+    .catch((error) => {
+      tableExistsCache.delete(tableName)
+      throw error
+    })
+
+  tableExistsCache.set(tableName, promise)
+
+  return promise
+}
+
+export async function getDashboardRecordings(organizationId: string, limit = 6): Promise<DashboardRecordingRow[]> {
   const columns = await getRecordingColumns()
+  const safeLimit = Math.max(1, Math.min(Math.trunc(limit) || 6, 50))
 
   if (columns.size === 0) {
     return []
@@ -254,6 +306,7 @@ export async function getDashboardRecordings(organizationId: string): Promise<Da
     left join public.job_positions jp on jp.job_id = i.job_id
     where i.organization_id = $1::uuid
     order by ${columns.has("created_at") ? "ir.created_at desc nulls last" : `ir.${quoteIdentifier(idColumn)} desc`}
+    limit ${safeLimit}
   `
 
   const rows = await prisma.$queryRawUnsafe<DashboardRecordingRow[]>(query, organizationId).catch(() => [])

@@ -61,36 +61,61 @@ function RecordedInterviewsModal({ isOpen, onClose, interviews, organizationId }
 export default function RecordedInterviews({ initialRecordedInterviews, organizationId = "", isLoading = false }) {
   const searchParams = useAuthSearchParams()
   const [interviews, setInterviews] = useState([])
+  const [isFetching, setIsFetching] = useState(initialRecordedInterviews === undefined)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const displayInterviews = initialRecordedInterviews !== undefined ? initialRecordedInterviews : interviews
+  const isBusy = isLoading || isFetching
 
   useEffect(() => {
     if (initialRecordedInterviews !== undefined) {
+      setIsFetching(false)
       return
     }
 
     if (!hasAuthQuery(searchParams)) {
+      setIsFetching(false)
       return
     }
 
     let isMounted = true
+    let cancelScheduled = () => {}
 
-    fetch(buildAuthUrl("/api/dashboard/pipeline", searchParams), {
-      credentials: "include",
-      cache: "no-store",
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (isMounted && data.success) {
-          setInterviews(data.data?.recordedInterviews ?? [])
-        }
+    setIsFetching(true)
+
+    const fetchRecordings = () => {
+      fetch(buildAuthUrl("/api/dashboard/pipeline?includeRecordings=1", searchParams), {
+        credentials: "include",
+        cache: "no-store",
       })
-      .catch((error) => {
-        console.error("Failed to fetch recorded interviews", error)
-      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (isMounted && data.success) {
+            setInterviews(data.data?.recordedInterviews ?? [])
+          }
+        })
+        .catch((error) => {
+          console.error("Failed to fetch recorded interviews", error)
+        })
+        .finally(() => {
+          if (isMounted) {
+            setIsFetching(false)
+          }
+        })
+    }
+
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      const idleId = window.requestIdleCallback(fetchRecordings, { timeout: 3000 })
+      cancelScheduled = () => window.cancelIdleCallback?.(idleId)
+    } else if (typeof window !== "undefined") {
+      const timeoutId = window.setTimeout(fetchRecordings, 1200)
+      cancelScheduled = () => window.clearTimeout(timeoutId)
+    } else {
+      fetchRecordings()
+    }
 
     return () => {
       isMounted = false
+      cancelScheduled()
     }
   }, [initialRecordedInterviews, searchParams])
 
@@ -129,7 +154,7 @@ export default function RecordedInterviews({ initialRecordedInterviews, organiza
           ) : null}
         </div>
 
-        {isLoading ? (
+        {isBusy ? (
           <CardSkeleton count={2} className="grid-cols-1 lg:grid-cols-2" />
         ) : (
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">

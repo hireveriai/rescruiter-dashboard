@@ -25,6 +25,10 @@ export default function Pipeline({ initialPipeline, isLoading = false }) {
   }, [initialPipeline])
 
   useEffect(() => {
+    if (initialPipeline) {
+      return
+    }
+
     if (!hasAuthQuery(searchParams)) {
       return
     }
@@ -48,7 +52,7 @@ export default function Pipeline({ initialPipeline, isLoading = false }) {
     return () => {
       isMounted = false
     }
-  }, [searchParams])
+  }, [initialPipeline, searchParams])
 
   const cards = [
     { title: "Invited", count: displayPipeline.pending, color: "bg-blue-500" },

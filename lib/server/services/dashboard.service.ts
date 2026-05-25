@@ -14,6 +14,7 @@ import {
 type CandidatesDashboardOptions = {
   organizationId: string
   limit?: number | "all"
+  finalizeStale?: boolean
 }
 
 type CandidatesDashboardItem = {
@@ -166,7 +167,9 @@ function hasVerisScreening(row: CandidateDashboardRow, hasInterview: boolean) {
 export async function getCandidatesDashboard(
   options: CandidatesDashboardOptions
 ): Promise<CandidatesDashboardItem[]> {
-  await finalizeStaleInterviewAttempts(options.organizationId)
+  if (options.finalizeStale !== false) {
+    await finalizeStaleInterviewAttempts(options.organizationId)
+  }
 
   const take = options.limit === "all" || options.limit === undefined ? undefined : options.limit
 

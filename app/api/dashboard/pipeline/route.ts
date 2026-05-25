@@ -19,13 +19,14 @@ export async function GET(request: Request) {
     const auth = await getRecruiterRequestContext(request)
     const { searchParams } = new URL(request.url)
     const limit = parseLimit(searchParams.get("limit"))
-    const [pipelineData, recordedInterviews] = await Promise.all([
-      getDashboardPipelineData({
-        organizationId: auth.organizationId,
-        limit,
-      }),
-      getDashboardRecordings(auth.organizationId),
-    ])
+    const includeRecordings =
+      searchParams.get("includeRecordings") === "1" ||
+      searchParams.get("includeRecordings") === "true"
+    const pipelineData = await getDashboardPipelineData({
+      organizationId: auth.organizationId,
+      limit,
+    })
+    const recordedInterviews = includeRecordings ? await getDashboardRecordings(auth.organizationId) : []
 
     return NextResponse.json({
       success: true,

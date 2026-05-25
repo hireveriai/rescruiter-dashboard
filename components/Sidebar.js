@@ -24,6 +24,10 @@ export default function Sidebar({ initialProfile = null, overview = null }) {
   }, [overview])
 
   useEffect(() => {
+    if (overview) {
+      return
+    }
+
     if (!hasAuthQuery(searchParams)) {
       return
     }
@@ -52,7 +56,7 @@ export default function Sidebar({ initialProfile = null, overview = null }) {
     return () => {
       isMounted = false
     }
-  }, [searchParams])
+  }, [overview, searchParams])
 
   useEffect(() => {
     let isMounted = true

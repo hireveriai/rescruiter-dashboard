@@ -254,6 +254,113 @@ model InterviewInvite {
   @@map("interview_invites")
 }
 
+model Plan {
+  id               String   @id
+  name             String
+  slug             String   @unique
+  price            Int
+  interviewLimit   Int
+  screeningCredits Int      @default(0)
+  planType         String   @default("INTERVIEW")
+  description      String?
+  features         Json     @default("[]")
+  order            Int
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(6)
+
+  @@index([isActive, order], map: "hireveri_plans_active_order_idx")
+  @@map("hireveri_plans")
+}
+
+model Coupon {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code               String    @unique
+  description        String?
+  discountPercentage Decimal   @db.Decimal(5, 2) @map("discount_percentage")
+  maxGlobalUses      Int?      @map("max_global_uses")
+  currentGlobalUses  Int       @default(0) @map("current_global_uses")
+  isActive           Boolean   @default(true) @map("is_active")
+  startsAt           DateTime? @db.Timestamptz(6) @map("starts_at")
+  expiresAt          DateTime? @db.Timestamptz(6) @map("expires_at")
+  applicablePlanIds  String[]  @default([]) @map("applicable_plan_ids")
+  minimumAmountPaise Int?      @map("minimum_amount_paise")
+  metadataJson       Json      @default("{}") @map("metadata_json")
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  @@index([isActive, startsAt, expiresAt], map: "coupons_active_window_idx")
+  @@map("coupons")
+}
+
+model CouponUsage {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  couponId       String   @db.Uuid @map("coupon_id")
+  organizationId String   @db.Uuid @map("organization_id")
+  paymentId      String?  @map("payment_id")
+  usedAt         DateTime @default(now()) @db.Timestamptz(6) @map("used_at")
+
+  @@unique([couponId, organizationId], map: "coupon_usages_coupon_org_key")
+  @@index([organizationId, usedAt], map: "coupon_usages_org_used_at_idx")
+  @@map("coupon_usages")
+}
+
+model Payment {
+  id                    String   @id
+  userId                String
+  subscriptionId        String
+  amount                Int
+  status                String
+  paymentRef            String?  @unique
+  createdAt             DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt             DateTime @default(now()) @db.Timestamptz(6)
+  organizationId        String?  @db.Uuid
+  planId                String?
+  couponId              String?  @db.Uuid
+  couponCode            String?
+  originalAmountPaise   Int?
+  discountPercentage    Decimal? @default(0) @db.Decimal(5, 2)
+  discountAmountPaise   Int?     @default(0)
+  gstPercentage         Decimal? @default(18) @db.Decimal(5, 2)
+  gstAmountPaise        Int?     @default(0)
+  finalAmountPaise      Int?
+  currency              String?  @default("INR")
+  razorpayOrderId       String?  @unique
+  razorpayPaymentId     String?  @unique
+  razorpaySignature     String?
+  razorpayPaymentStatus String?
+  razorpayPaymentPayload Json?
+  failureReason         String?
+
+  @@index([organizationId, createdAt], map: "hireveri_payments_org_created_at_idx")
+  @@index([userId, createdAt], map: "hireveri_payments_user_id_created_at_idx")
+  @@index([subscriptionId, createdAt], map: "hireveri_payments_subscription_id_created_at_idx")
+  @@map("hireveri_payments")
+}
+
+model Subscription {
+  id               String    @id
+  userId           String
+  organizationId   String    @unique @db.Uuid
+  planId           String
+  totalCredits     Int
+  usedCredits      Int       @default(0)
+  screeningCredits Int       @default(0)
+  status           String    @default("pending")
+  amountPaid       Int       @default(0)
+  currency         String    @default("INR")
+  razorpayOrderId  String?
+  razorpayPaymentId String?
+  activatedAt      DateTime? @db.Timestamptz(6)
+  expiresAt        DateTime? @db.Timestamptz(6)
+  startedAt        DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @db.Timestamptz(6)
+
+  @@index([planId], map: "hireveri_user_subscriptions_plan_id_idx")
+  @@index([status, expiresAt], map: "hireveri_user_subscriptions_status_expires_at_idx")
+  @@map("hireveri_user_subscriptions")
+}
+
 
 
 
