@@ -186,7 +186,7 @@ export async function getDashboardWorkflowSnapshot(
     }),
     getScreeningWorkflowMetrics(organizationId),
     getInterviewWorkflowMetrics(organizationId),
-    existingPipelineData ?? getDashboardPipelineData({ organizationId, limit: 5, finalizeStale: false }),
+    existingPipelineData ?? getDashboardPipelineData({ organizationId, limit: 5, finalizeStale: false, ensureRecoverySchema: false }),
   ])
 
   const workflowMetrics = {

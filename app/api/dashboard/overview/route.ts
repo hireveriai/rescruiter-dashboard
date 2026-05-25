@@ -10,6 +10,7 @@ import { getDashboardAlerts, type DashboardAlert } from "@/lib/server/services/d
 import { getDashboardWorkflowSnapshot } from "@/lib/server/services/dashboard-workflow"
 
 type OverviewPayload = {
+  partial?: boolean
   profile: Awaited<ReturnType<typeof getRecruiterProfile>>
   pipeline: {
     pending: number
@@ -50,12 +51,46 @@ const CACHE_MAX = 50
 const overviewCache = new Map<string, CacheEntry>()
 const inFlight = new Map<string, Promise<OverviewPayload>>()
 
+function emptyDashboardState() {
+  return deriveDashboardState({
+    jobs_count: 0,
+    active_jobs_count: 0,
+    veris_screening_count: 0,
+    interview_links_count: 0,
+    interviews_count: 0,
+    pending_reviews_count: 0,
+  })
+}
+
+async function buildFastOverview(
+  auth: Awaited<ReturnType<typeof getRecruiterRequestContext>>
+): Promise<OverviewPayload> {
+  const [profile, alerts] = await Promise.all([
+    getRecruiterProfile(auth),
+    getDashboardAlerts(auth.organizationId, 8).catch(() => []),
+  ])
+
+  return {
+    partial: true,
+    profile,
+    pipeline: undefined as unknown as OverviewPayload["pipeline"],
+    workflowMetrics: undefined as unknown as OverviewPayload["workflowMetrics"],
+    dashboardState: emptyDashboardState(),
+    pendingInterviews: undefined as unknown as OverviewPayload["pendingInterviews"],
+    pendingInterviewsTotal: undefined as unknown as OverviewPayload["pendingInterviewsTotal"],
+    candidates: undefined as unknown as Awaited<ReturnType<typeof getCandidatesDashboard>>,
+    alerts,
+  }
+}
+
 async function buildOverview(
   auth: Awaited<ReturnType<typeof getRecruiterRequestContext>>
 ): Promise<OverviewPayload> {
   const pipelinePromise = getDashboardPipelineData({
     organizationId: auth.organizationId,
     limit: 5,
+    finalizeStale: false,
+    ensureRecoverySchema: false,
   })
 
   const [profile, candidates, pipelineData, alerts] = await Promise.all([
@@ -121,12 +156,21 @@ export async function GET(request: Request) {
     const cacheKey = `overview:${auth.organizationId}`
     const { searchParams } = new URL(request.url)
     const forceRefresh = searchParams.has("refresh") || searchParams.get("cache") === "bust"
+    const fullOverview = searchParams.get("full") === "1"
 
     const cached = forceRefresh ? null : getCachedOverview(cacheKey)
     if (cached) {
       const response = NextResponse.json({ success: true, data: cached })
       response.headers.set("Cache-Control", "private, max-age=15, stale-while-revalidate=60")
       response.headers.set("X-HireVeri-Cache", "hit")
+      return response
+    }
+
+    if (!fullOverview && !forceRefresh) {
+      const overview = await buildFastOverview(auth)
+      const response = NextResponse.json({ success: true, data: overview })
+      response.headers.set("Cache-Control", "private, max-age=5, stale-while-revalidate=30")
+      response.headers.set("X-HireVeri-Cache", "fast")
       return response
     }
 

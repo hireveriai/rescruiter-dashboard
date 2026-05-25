@@ -22,11 +22,15 @@ export async function GET(request: Request) {
     const includeRecordings =
       searchParams.get("includeRecordings") === "1" ||
       searchParams.get("includeRecordings") === "true"
-    const pipelineData = await getDashboardPipelineData({
-      organizationId: auth.organizationId,
-      limit,
-    })
-    const recordedInterviews = includeRecordings ? await getDashboardRecordings(auth.organizationId) : []
+    const [pipelineData, recordedInterviews] = await Promise.all([
+      getDashboardPipelineData({
+        organizationId: auth.organizationId,
+        limit,
+        finalizeStale: false,
+        ensureRecoverySchema: false,
+      }),
+      includeRecordings ? getDashboardRecordings(auth.organizationId) : Promise.resolve([]),
+    ])
 
     return NextResponse.json({
       success: true,

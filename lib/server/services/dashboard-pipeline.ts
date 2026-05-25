@@ -8,6 +8,7 @@ type DashboardPipelineOptions = {
   organizationId: string
   limit?: number | "all"
   finalizeStale?: boolean
+  ensureRecoverySchema?: boolean
 }
 
 type DashboardPipelineItem = {
@@ -188,7 +189,9 @@ function buildPendingItem(row: PipelineRow, appUrl: string, displayStatus: strin
 export async function getDashboardPipelineData(
   options: DashboardPipelineOptions
 ): Promise<DashboardPipelineData> {
-  await ensureRecoverySchemaOnce()
+  if (options.ensureRecoverySchema !== false) {
+    await ensureRecoverySchemaOnce()
+  }
   if (options.finalizeStale !== false) {
     await finalizeStaleInterviewAttempts(options.organizationId)
   }

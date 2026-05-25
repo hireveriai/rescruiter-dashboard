@@ -17,10 +17,13 @@ import { CardSkeleton, MetricSkeleton, TableSkeleton, TimelineSkeleton } from ".
 
 function DashboardContent({ profile, overview, isLoading }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const isPartialOverview = Boolean(overview?.partial);
+  const fullOverview = isPartialOverview ? null : overview;
+  const displayProfile = profile ?? overview?.profile ?? null;
 
   return (
     <div className="hv-page-enter relative min-h-screen bg-[#0b1220] text-white">
-      <Navbar onSendInterviewClick={() => setIsModalOpen(true)} initialProfile={profile} initialAlerts={overview?.alerts} />
+      <Navbar onSendInterviewClick={() => setIsModalOpen(true)} initialProfile={displayProfile} initialAlerts={overview?.alerts} />
 
       <div className="grid grid-cols-1 gap-6 p-4 sm:p-6 lg:p-8 xl:grid-cols-[minmax(0,1fr)_minmax(280px,320px)] 2xl:grid-cols-[minmax(0,1fr)_minmax(320px,360px)]">
         <div className="min-w-0">
@@ -34,39 +37,39 @@ function DashboardContent({ profile, overview, isLoading }) {
           </div>
 
           <DashboardIntelligenceBanner
-            overview={overview}
+            overview={fullOverview}
             onCreateJob={() => window.dispatchEvent(new CustomEvent("hireveri:open-create-job"))}
             onSendInterview={() => setIsModalOpen(true)}
           />
 
           <Suspense fallback={<MetricSkeleton className="mt-8 grid-cols-2 lg:grid-cols-4" />}>
-            <Pipeline initialPipeline={overview?.pipeline} isLoading={isLoading} />
+            <Pipeline initialPipeline={fullOverview?.pipeline} isLoading={isLoading || isPartialOverview} />
           </Suspense>
           <Suspense fallback={<div className="mt-10 overflow-hidden rounded-lg bg-[#111a2e]"><table className="w-full text-sm"><TableSkeleton rows={3} columns={6} showAvatar /></table></div>}>
             <PendingInterviews
-              initialPendingInterviews={overview?.pendingInterviews}
-              initialPendingTotal={overview?.pendingInterviewsTotal}
+              initialPendingInterviews={fullOverview?.pendingInterviews}
+              initialPendingTotal={fullOverview?.pendingInterviewsTotal}
               isLoading={isLoading}
             />
           </Suspense>
           <Suspense fallback={<CardSkeleton count={3} className="mt-10 grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3" />}>
             <RecordedInterviews
-              initialRecordedInterviews={overview?.recordedInterviews}
-              organizationId={profile?.organizationId}
+              initialRecordedInterviews={fullOverview?.recordedInterviews}
+              organizationId={displayProfile?.organizationId}
               isLoading={isLoading}
             />
           </Suspense>
           <Suspense fallback={<div className="mt-10 overflow-hidden rounded-lg bg-[#111a2e]"><table className="w-full text-sm"><TableSkeleton rows={5} columns={5} showAvatar /></table></div>}>
-            <CandidateList initialCandidates={overview?.candidates} isLoading={isLoading} />
+            <CandidateList initialCandidates={fullOverview?.candidates} isLoading={isLoading} />
           </Suspense>
           <Suspense fallback={<TimelineSkeleton className="mt-10" messages={["Loading behavioral telemetry...", "Preparing cognitive analysis...", "Building forensic timeline..."]} />}>
-            <VerisSummary initialSummaries={overview?.veris} isLoading={isLoading} />
+            <VerisSummary initialSummaries={fullOverview?.veris} isLoading={isLoading} />
           </Suspense>
-          <WarRoomButton organizationId={profile?.organizationId} />
+          <WarRoomButton organizationId={displayProfile?.organizationId} />
         </div>
 
         <div className="min-w-0">
-          <Sidebar initialProfile={profile} overview={overview} />
+          <Sidebar initialProfile={displayProfile} overview={fullOverview} />
         </div>
       </div>
 
