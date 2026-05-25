@@ -15,7 +15,9 @@ type Plan = {
   currency: string
   interviewSessions: number
   screeningReviews: number
+  planType: string
   isPopular: boolean
+  displayOrder: number
   features: string[]
 }
 
@@ -56,6 +58,11 @@ type ApiResponse<T> = {
     code: string
     message: string
   }
+}
+
+type PlansResponse = {
+  plans: Plan[]
+  selectedPlan: Plan | null
 }
 
 type RazorpaySuccessResponse = {
@@ -144,8 +151,12 @@ export default function BillingCheckoutPage() {
   const router = useRouter()
   const routeSearchParams = useSearchParams()
   const authSearchParams = useAuthSearchParams()
-  const planSlug = routeSearchParams.get("plan")?.trim().toLowerCase() || ""
-  const addonPlanSlug = routeSearchParams.get("addon")?.trim().toLowerCase() || routeSearchParams.get("addon_plan")?.trim().toLowerCase() || ""
+  const initialPlanSlug = routeSearchParams.get("plan")?.trim().toLowerCase() || ""
+  const initialAddonPlanSlug = routeSearchParams.get("addon")?.trim().toLowerCase() || routeSearchParams.get("addon_plan")?.trim().toLowerCase() || ""
+  const [selectedPlanSlug, setSelectedPlanSlug] = useState(initialPlanSlug)
+  const [selectedAddonPlanSlug, setSelectedAddonPlanSlug] = useState(initialAddonPlanSlug)
+  const [plans, setPlans] = useState<Plan[]>([])
+  const [plansLoading, setPlansLoading] = useState(true)
   const [summary, setSummary] = useState<CheckoutSummary | null>(null)
   const [couponInput, setCouponInput] = useState("")
   const [appliedCouponCode, setAppliedCouponCode] = useState("")
@@ -156,6 +167,18 @@ export default function BillingCheckoutPage() {
 
   const isBusy = status === "loading" || status === "applying" || status === "paying" || status === "verifying"
   const appliedCoupon = useMemo(() => appliedCouponCode.trim().toUpperCase(), [appliedCouponCode])
+  const interviewPlans = useMemo(
+    () => plans.filter((plan) => plan.planType !== "SCREENING"),
+    [plans]
+  )
+  const screeningPlans = useMemo(
+    () => plans.filter((plan) => plan.planType === "SCREENING"),
+    [plans]
+  )
+  const selectedPlan = useMemo(
+    () => plans.find((plan) => plan.slug === selectedPlanSlug) ?? null,
+    [plans, selectedPlanSlug]
+  )
 
   const requestJson = useCallback(
     async <T,>(path: string, body: Record<string, unknown>) => {
@@ -179,9 +202,10 @@ export default function BillingCheckoutPage() {
 
   const loadSummary = useCallback(
     async (couponCode?: string | null) => {
-      if (!planSlug) {
+      if (!selectedPlanSlug) {
         setStatus("idle")
-        setError("Select a plan before opening checkout.")
+        setSummary(null)
+        setError("")
         return
       }
 
@@ -191,8 +215,8 @@ export default function BillingCheckoutPage() {
 
       try {
         const data = await requestJson<CheckoutSummary>("/api/validate-coupon", {
-          plan: planSlug,
-          addon_plan: addonPlanSlug || null,
+          plan: selectedPlanSlug,
+          addon_plan: selectedAddonPlanSlug || null,
           coupon_code: couponCode || null,
         })
 
@@ -208,8 +232,48 @@ export default function BillingCheckoutPage() {
         }
       }
     },
-    [addonPlanSlug, planSlug, requestJson]
+    [requestJson, selectedAddonPlanSlug, selectedPlanSlug]
   )
+
+  useEffect(() => {
+    let active = true
+
+    async function loadPlans() {
+      setPlansLoading(true)
+
+      try {
+        const response = await fetch(buildAuthUrl("/api/plans", authSearchParams), {
+          credentials: "include",
+          cache: "no-store",
+        })
+        const payload = (await response.json().catch(() => null)) as ApiResponse<PlansResponse> | null
+
+        if (!active) {
+          return
+        }
+
+        if (!response.ok || !payload?.success || !payload.data) {
+          throw new Error(getErrorMessage(payload, "Unable to load billing plans."))
+        }
+
+        setPlans(payload.data.plans ?? [])
+      } catch (plansError) {
+        if (active) {
+          setError(plansError instanceof Error ? plansError.message : "Unable to load billing plans.")
+        }
+      } finally {
+        if (active) {
+          setPlansLoading(false)
+        }
+      }
+    }
+
+    loadPlans()
+
+    return () => {
+      active = false
+    }
+  }, [authSearchParams])
 
   useEffect(() => {
     loadSummary(null)
@@ -314,8 +378,8 @@ export default function BillingCheckoutPage() {
           keyId: string
         }
       >("/api/create-order", {
-        plan: planSlug,
-        addon_plan: addonPlanSlug || null,
+        plan: selectedPlanSlug,
+        addon_plan: selectedAddonPlanSlug || null,
         coupon_code: appliedCoupon || null,
       })
 
@@ -398,6 +462,28 @@ export default function BillingCheckoutPage() {
     }
   }
 
+  function updateCheckoutSelection(nextPlanSlug: string, nextAddonPlanSlug = "") {
+    setSelectedPlanSlug(nextPlanSlug)
+    setSelectedAddonPlanSlug(nextAddonPlanSlug)
+    setCouponInput("")
+    setAppliedCouponCode("")
+    setSummary(null)
+    setError("")
+    setNotice("")
+
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href)
+      url.searchParams.set("plan", nextPlanSlug)
+      if (nextAddonPlanSlug) {
+        url.searchParams.set("addon", nextAddonPlanSlug)
+      } else {
+        url.searchParams.delete("addon")
+        url.searchParams.delete("addon_plan")
+      }
+      window.history.replaceState(null, "", url.toString())
+    }
+  }
+
   return (
     <main className="min-h-screen overflow-hidden bg-[#070c16] px-4 py-8 text-slate-100 sm:px-6 lg:px-8">
       <div className="pointer-events-none fixed inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.92),rgba(7,12,22,0.98)),radial-gradient(circle_at_50%_0%,rgba(37,99,235,0.12),transparent_34%)]" />
@@ -448,9 +534,9 @@ export default function BillingCheckoutPage() {
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <p className="text-sm font-semibold text-blue-200">Selected plan</p>
-                <h2 className="mt-2 text-3xl font-semibold text-slate-50">{summary?.plan.name || "Loading plan"}</h2>
+                <h2 className="mt-2 text-3xl font-semibold text-slate-50">{summary?.plan.name || selectedPlan?.name || "Choose a plan"}</h2>
                 <p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">
-                  {summary?.plan.description || "Fetching dynamic plan details from the billing database."}
+                  {summary?.plan.description || selectedPlan?.description || "Select a database-priced HireVeri plan to generate a secure billing quote."}
                 </p>
                 {summary?.addonPlan ? (
                   <p className="mt-3 inline-flex rounded-full border border-blue-400/25 bg-blue-500/10 px-3 py-1 text-xs font-semibold text-blue-100">
@@ -474,6 +560,122 @@ export default function BillingCheckoutPage() {
                   </div>
                 ))}
               </div>
+            ) : null}
+          </div>
+
+          <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-950/35 p-5">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-slate-100">Available plans</p>
+                <p className="mt-1 text-xs text-slate-500">Plans are loaded from HireVeri billing records.</p>
+              </div>
+              {plansLoading ? <span className="text-xs text-slate-500">Loading plans...</span> : null}
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {interviewPlans.map((plan) => {
+                const isSelected = selectedPlanSlug === plan.slug
+                return (
+                  <button
+                    key={plan.id}
+                    type="button"
+                    onClick={() => updateCheckoutSelection(plan.slug, "")}
+                    className={`rounded-xl border p-4 text-left transition ${
+                      isSelected
+                        ? "border-blue-400/45 bg-blue-500/10"
+                        : "border-slate-800 bg-[#0b1220] hover:border-slate-600"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-white">{plan.name}</p>
+                        <p className="mt-1 text-xs leading-5 text-slate-400">{plan.description}</p>
+                      </div>
+                      <p className="shrink-0 text-sm font-semibold text-slate-100">{formatPaise(plan.amountPaise, plan.currency)}</p>
+                    </div>
+                    <p className="mt-3 text-xs text-slate-500">
+                      {plan.interviewSessions} interviews · {plan.screeningReviews} screening reviews
+                    </p>
+                  </button>
+                )
+              })}
+            </div>
+
+            {screeningPlans.length > 0 ? (
+              <div className="mt-5 border-t border-slate-800 pt-5">
+                <p className="text-sm font-semibold text-slate-100">Standalone VERIS Screening</p>
+                <p className="mt-1 text-xs text-slate-500">Buy screening capacity independently without changing interview credits.</p>
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  {screeningPlans.map((plan) => {
+                    const isSelected = selectedPlanSlug === plan.slug
+                    return (
+                      <button
+                        key={plan.id}
+                        type="button"
+                        onClick={() => updateCheckoutSelection(plan.slug, "")}
+                        className={`rounded-xl border p-4 text-left transition ${
+                          isSelected
+                            ? "border-blue-400/45 bg-blue-500/10"
+                            : "border-slate-800 bg-[#0b1220] hover:border-slate-600"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-white">{plan.name}</p>
+                            <p className="mt-1 text-xs text-slate-400">{plan.screeningReviews} screening reviews</p>
+                          </div>
+                          <p className="shrink-0 text-sm font-semibold text-slate-100">{formatPaise(plan.amountPaise, plan.currency)}</p>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : null}
+
+            {selectedPlan && selectedPlan.planType !== "SCREENING" && screeningPlans.length > 0 ? (
+              <div className="mt-5 border-t border-slate-800 pt-5">
+                <p className="text-sm font-semibold text-slate-100">Optional VERIS Screening add-on</p>
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => updateCheckoutSelection(selectedPlan.slug, "")}
+                    className={`rounded-xl border p-4 text-left text-sm transition ${
+                      !selectedAddonPlanSlug
+                        ? "border-blue-400/45 bg-blue-500/10 text-white"
+                        : "border-slate-800 bg-[#0b1220] text-slate-300 hover:border-slate-600"
+                    }`}
+                  >
+                    No add-on
+                  </button>
+                  {screeningPlans.map((plan) => (
+                    <button
+                      key={plan.id}
+                      type="button"
+                      onClick={() => updateCheckoutSelection(selectedPlan.slug, plan.slug)}
+                      className={`rounded-xl border p-4 text-left transition ${
+                        selectedAddonPlanSlug === plan.slug
+                          ? "border-blue-400/45 bg-blue-500/10"
+                          : "border-slate-800 bg-[#0b1220] hover:border-slate-600"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-white">{plan.name}</p>
+                          <p className="mt-1 text-xs text-slate-400">+{plan.screeningReviews} screening reviews</p>
+                        </div>
+                        <p className="shrink-0 text-sm font-semibold text-slate-100">{formatPaise(plan.amountPaise, plan.currency)}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {!plansLoading && plans.length === 0 ? (
+              <p className="mt-4 rounded-xl border border-amber-400/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                No active billing plans are available. Please contact HireVeri support.
+              </p>
             ) : null}
           </div>
         </div>
