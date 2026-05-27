@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
 import { clearHireveriSessionCookie, getRecruiterLoginUrl } from "@/lib/client/auth-session"
@@ -9,6 +9,49 @@ import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 import { useOrgTimezone } from "@/components/OrgTimezoneProvider"
 
 const DASHBOARD_AUTO_REFRESH_MS = 60000
+const DASHBOARD_CACHE_KEY = "hireveri-overview"
+
+function getOverviewSignature(overview) {
+  if (!overview) {
+    return ""
+  }
+
+  return JSON.stringify({
+    profile: overview.profile,
+    pipeline: overview.pipeline,
+    workflowMetrics: overview.workflowMetrics,
+    pendingInterviewsTotal: overview.pendingInterviewsTotal,
+    pendingInterviews: overview.pendingInterviews,
+    candidates: overview.candidates,
+    alerts: overview.alerts,
+  })
+}
+
+function readCachedOverview() {
+  if (typeof window === "undefined") {
+    return null
+  }
+
+  try {
+    const cached = window.sessionStorage.getItem(DASHBOARD_CACHE_KEY)
+    return cached ? JSON.parse(cached) : null
+  } catch (error) {
+    console.warn("Failed to read cached recruiter overview", error)
+    return null
+  }
+}
+
+function writeCachedOverview(overview) {
+  if (typeof window === "undefined" || !overview) {
+    return
+  }
+
+  try {
+    window.sessionStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify(overview))
+  } catch (error) {
+    console.warn("Failed to cache recruiter overview", error)
+  }
+}
 
 function WorkspaceShell({ tone = "loading", title, message, ctaLabel, onCtaClick }) {
   const isError = tone === "error"
@@ -88,6 +131,8 @@ function WorkspaceShell({ tone = "loading", title, message, ctaLabel, onCtaClick
 export default function RecruiterDashboardBootstrap({ children }) {
   const searchParams = useAuthSearchParams()
   const { setTimezoneState } = useOrgTimezone()
+  const overviewSignatureRef = useRef("")
+  const [updateAvailable, setUpdateAvailable] = useState(false)
   const [state, setState] = useState({
     status: "loading",
     profile: null,
@@ -97,16 +142,7 @@ export default function RecruiterDashboardBootstrap({ children }) {
 
   useEffect(() => {
     let active = true
-    let cachedOverview = null
-
-    if (typeof window !== "undefined") {
-      try {
-        const cached = window.sessionStorage.getItem("hireveri-overview")
-        cachedOverview = cached ? JSON.parse(cached) : null
-      } catch (error) {
-        console.warn("Failed to read cached recruiter overview", error)
-      }
-    }
+    let cachedOverview = readCachedOverview()
 
     if (cachedOverview) {
       window.queueMicrotask(() => {
@@ -114,6 +150,7 @@ export default function RecruiterDashboardBootstrap({ children }) {
           return
         }
 
+        overviewSignatureRef.current = getOverviewSignature(cachedOverview)
         setTimezoneState({
           timezone: cachedOverview?.profile?.timezone,
           timezoneLabel: cachedOverview?.profile?.timezoneLabel,
@@ -138,7 +175,7 @@ export default function RecruiterDashboardBootstrap({ children }) {
       }
 
       try {
-        const overviewPath = forceRefresh ? `/api/dashboard/overview?refresh=${Date.now()}` : "/api/dashboard/overview"
+        const overviewPath = forceRefresh ? `/api/dashboard/overview?refresh=${Date.now()}&full=1` : "/api/dashboard/overview"
         const overviewResponse = await fetch(buildAuthUrl(overviewPath, searchParams), {
           credentials: "include",
           cache: forceRefresh ? "no-store" : "default",
@@ -160,7 +197,7 @@ export default function RecruiterDashboardBootstrap({ children }) {
               : "Session could not be validated. Please sign in again.",
           })
           if (typeof window !== "undefined") {
-            window.sessionStorage.removeItem("hireveri-overview")
+            window.sessionStorage.removeItem(DASHBOARD_CACHE_KEY)
           }
           return
         }
@@ -178,25 +215,26 @@ export default function RecruiterDashboardBootstrap({ children }) {
             message: overviewData?.error?.message || overviewData?.message || "Unable to load recruiter workspace.",
           })
           if (typeof window !== "undefined") {
-            window.sessionStorage.removeItem("hireveri-overview")
+            window.sessionStorage.removeItem(DASHBOARD_CACHE_KEY)
           }
           return
         }
 
         const overview = overviewData.data ?? null
         const profile = overview?.profile ?? null
+        const nextSignature = getOverviewSignature(overview)
 
-        if (typeof window !== "undefined" && overview) {
-          try {
-            if (forceRefresh) {
-              window.sessionStorage.removeItem("hireveri-overview")
-            }
-            window.sessionStorage.setItem("hireveri-overview", JSON.stringify(overview))
-          } catch (error) {
-            console.warn("Failed to cache recruiter overview", error)
-          }
+        if (silent && !overview?.partial && overviewSignatureRef.current && nextSignature && overviewSignatureRef.current !== nextSignature) {
+          writeCachedOverview(overview)
+          setUpdateAvailable(true)
+          return
         }
 
+        if (!overview?.partial) {
+          writeCachedOverview(overview)
+          overviewSignatureRef.current = nextSignature
+        }
+        setUpdateAvailable(false)
         setState({
           status: "ready",
           profile: overview?.profile ?? profile,
@@ -207,6 +245,10 @@ export default function RecruiterDashboardBootstrap({ children }) {
           timezone: overview?.profile?.timezone ?? profile?.timezone,
           timezoneLabel: overview?.profile?.timezoneLabel ?? profile?.timezoneLabel,
         })
+
+        if (overview?.partial && !forceRefresh) {
+          bootstrap({ forceRefresh: true, silent: false })
+        }
       } catch (error) {
         if (!active) {
           return
@@ -226,7 +268,7 @@ export default function RecruiterDashboardBootstrap({ children }) {
       }
     }
 
-    bootstrap()
+    bootstrap({ forceRefresh: Boolean(cachedOverview), silent: Boolean(cachedOverview) })
 
     let refreshInFlight = false
     const refreshTimer = window.setInterval(() => {
@@ -246,7 +288,7 @@ export default function RecruiterDashboardBootstrap({ children }) {
       }
 
       if (typeof window !== "undefined") {
-        window.sessionStorage.removeItem("hireveri-overview")
+        window.sessionStorage.removeItem(DASHBOARD_CACHE_KEY)
       }
       bootstrap({ forceRefresh: true })
     }
@@ -263,6 +305,14 @@ export default function RecruiterDashboardBootstrap({ children }) {
       }
     }
   }, [searchParams, setTimezoneState])
+
+  function reloadDashboard() {
+    if (typeof window === "undefined") {
+      return
+    }
+
+    window.location.reload()
+  }
 
   useEffect(() => {
     if (state.status !== "ready" || typeof window === "undefined") {
@@ -319,11 +369,39 @@ export default function RecruiterDashboardBootstrap({ children }) {
     })
   }
 
-  return children({
-    profile: state.profile,
-    overview: state.overview,
-    restoreStatus: state.status,
-    showRestoreOverlay: false,
-  })
+  return (
+    <>
+      {children({
+        profile: state.profile,
+        overview: state.overview,
+        restoreStatus: state.status,
+        showRestoreOverlay: false,
+      })}
+      {updateAvailable ? (
+        <div className="fixed bottom-5 right-5 z-[100] w-[min(420px,calc(100vw-2rem))] rounded-2xl border border-cyan-400/25 bg-slate-950/95 p-4 text-white shadow-[0_24px_70px_rgba(2,6,23,0.55)] backdrop-blur-xl">
+          <p className="text-sm font-semibold">New dashboard data is available</p>
+          <p className="mt-1 text-sm leading-5 text-slate-300">
+            Your current view is cached for speed. Reload to refresh the full dashboard.
+          </p>
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setUpdateAvailable(false)}
+              className="rounded-xl border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
+            >
+              Later
+            </button>
+            <button
+              type="button"
+              onClick={reloadDashboard}
+              className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-slate-100"
+            >
+              Reload
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </>
+  )
 }
 
