@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -10,7 +11,9 @@ import { logoutRecruiter } from "@/lib/client/logout";
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params";
 import { useAmbientLoading } from "@/components/system/loading";
 
-import CreateJobModal from "./CreateJobModal";
+const CreateJobModal = dynamic(() => import("./CreateJobModal"), {
+  ssr: false,
+});
 
 const navItems = [
   { href: "/", label: "Dashboard", disabled: false },
@@ -625,7 +628,7 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
         </div>
       ) : null}
 
-      <CreateJobModal open={openCreateJob} setOpen={setOpenCreateJob} />
+      {openCreateJob ? <CreateJobModal open={openCreateJob} setOpen={setOpenCreateJob} /> : null}
     </>
   );
 }

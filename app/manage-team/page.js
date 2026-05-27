@@ -552,8 +552,8 @@ export default function ManageTeamPage() {
             <div className="flex flex-col items-end gap-3">
               <div className="rounded-2xl border border-slate-800 bg-slate-950/35 px-5 py-4 text-right">
                 <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Organization</p>
-                <p className="mt-2 text-lg font-semibold text-white">
-                  {data?.organization || "Loading workspace"}
+                <p className="mt-2 text-sm font-medium text-slate-300" aria-live="polite">
+                  {data?.organization || "Workspace"}
                 </p>
               </div>
               {canManageUsers ? (

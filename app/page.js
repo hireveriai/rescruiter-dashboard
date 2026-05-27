@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { Suspense, useState } from "react";
 
 import Navbar from "../components/Navbar";
@@ -11,9 +12,12 @@ import DashboardIntelligenceBanner from "../components/DashboardIntelligenceBann
 import Sidebar from "../components/Sidebar";
 import VerisSummary from "../components/VerisSummary";
 import WarRoomButton from "../components/WarRoomButton";
-import SendInterviewModal from "../components/SendInterviewModal";
 import RecruiterDashboardBootstrap from "../components/RecruiterDashboardBootstrap";
 import { CardSkeleton, MetricSkeleton, TableSkeleton, TimelineSkeleton } from "../components/system/skeletons";
+
+const SendInterviewModal = dynamic(() => import("../components/SendInterviewModal"), {
+  ssr: false,
+});
 
 function DashboardContent({ profile, overview, isLoading }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -73,7 +77,7 @@ function DashboardContent({ profile, overview, isLoading }) {
         </div>
       </div>
 
-      <SendInterviewModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+      {isModalOpen ? <SendInterviewModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} /> : null}
     </div>
   );
 }
