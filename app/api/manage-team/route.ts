@@ -250,6 +250,11 @@ async function getRoleOrThrow(roleId: number) {
       on rrp.recruiter_role_id = hrr.legacy_role_id
     where hrr.legacy_role_id = ${roleId}::smallint
       and hrr.is_active = true
+      and exists (
+        select 1
+        from public.recruiter_role_pool mapped_role
+        where mapped_role.recruiter_role_id = hrr.legacy_role_id
+      )
     limit 1
   `)
 
@@ -483,7 +488,7 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
             '[]'::jsonb
           ) as permission_details
         from public.hireveri_recruiter_roles hrr
-        inner join public.recruiter_role_pool rrp
+        left join public.recruiter_role_pool rrp
           on rrp.recruiter_role_id = hrr.legacy_role_id
         left join public.role_permissions perms
           on perms.recruiter_role_id = hrr.legacy_role_id
