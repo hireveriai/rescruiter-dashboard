@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useOrgTimezone } from "@/components/OrgTimezoneProvider";
 import { buildAuthUrl } from "@/lib/client/auth-query";
+import { readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache";
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params";
 import {
   DEFAULT_ORG_TIMEZONE,
@@ -23,6 +24,17 @@ export default function SettingsPage() {
 
   useEffect(() => {
     let active = true;
+    const cacheKey = `settings:${searchParams.toString()}`;
+    const cached = readSessionJsonCache(cacheKey);
+
+    if (cached) {
+      const cachedTimezone = cached.timezone ?? timezone ?? DEFAULT_ORG_TIMEZONE;
+      const cachedLabel = cached.timezoneLabel ?? timezoneLabel ?? DEFAULT_ORG_TIMEZONE_LABEL;
+      setSelectedTimezone(cachedTimezone);
+      setSelectedLabel(cachedLabel);
+      setTimezoneState({ timezone: cachedTimezone, timezoneLabel: cachedLabel });
+      setStatus({ loading: false, saving: false, error: "", notice: "" });
+    }
 
     async function loadSettings() {
       try {
@@ -39,6 +51,10 @@ export default function SettingsPage() {
         setSelectedTimezone(nextTimezone);
         setSelectedLabel(nextLabel);
         setTimezoneState({ timezone: nextTimezone, timezoneLabel: nextLabel });
+        writeSessionJsonCache(cacheKey, {
+          timezone: nextTimezone,
+          timezoneLabel: nextLabel,
+        });
         setStatus({ loading: false, saving: false, error: "", notice: "" });
       } catch {
         if (!active) return;

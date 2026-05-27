@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
+import { readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 type Invoice = {
@@ -226,6 +227,19 @@ export default function BillingPage() {
 
   useEffect(() => {
     let active = true
+    const cacheKey = `billing:${searchParams.toString()}`
+    const cached = readSessionJsonCache(cacheKey) as BillingData | null
+
+    if (cached) {
+      setData(cached)
+      setSettings({
+        gstNumber: cached.organization?.gstNumber ?? "",
+        billingAddress: cached.organization?.billingAddress ?? "",
+        financeEmail: cached.organization?.financeEmail ?? "",
+        invoiceRecipientEmail: cached.organization?.invoiceRecipientEmail ?? "",
+      })
+      setLoading(false)
+    }
 
     async function loadBilling() {
       try {
@@ -244,6 +258,7 @@ export default function BillingPage() {
         }
 
         setData(payload.data)
+        writeSessionJsonCache(cacheKey, payload.data)
         setSettings({
           gstNumber: payload.data.organization?.gstNumber ?? "",
           billingAddress: payload.data.organization?.billingAddress ?? "",

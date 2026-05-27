@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
+import { readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache"
 
 import Navbar from "../../components/Navbar"
 import SendInterviewModal from "../../components/SendInterviewModal"
@@ -164,6 +165,13 @@ export default function JobsPage() {
 
   useEffect(() => {
     let isMounted = true
+    const cacheKey = `jobs:${searchParams.toString()}`
+    const cached = readSessionJsonCache(cacheKey)
+
+    if (cached) {
+      setJobs(cached.jobs ?? [])
+      setSupportsJobActiveState(Boolean(cached.supportsJobActiveState))
+    }
 
     async function loadJobs() {
       try {
@@ -179,6 +187,10 @@ export default function JobsPage() {
 
         setJobs(data.jobs ?? [])
         setSupportsJobActiveState(Boolean(data.meta?.supportsJobActiveState))
+        writeSessionJsonCache(cacheKey, {
+          jobs: data.jobs ?? [],
+          supportsJobActiveState: Boolean(data.meta?.supportsJobActiveState),
+        })
       } catch (error) {
         console.error("Failed to fetch jobs page data", error)
       }

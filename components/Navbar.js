@@ -217,7 +217,7 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
   }, [initialProfile]);
 
   useEffect(() => {
-    if (!hasAuthQuery(searchParams)) {
+    if (!hasAuthQuery(searchParams) || initialAlerts !== undefined) {
       return;
     }
 
@@ -238,10 +238,10 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
     return () => {
       active = false;
     };
-  }, [searchParams]);
+  }, [initialAlerts, searchParams]);
 
   useEffect(() => {
-    if (!hasAuthQuery(searchParams)) {
+    if (!hasAuthQuery(searchParams) || initialProfile?.name) {
       return;
     }
 

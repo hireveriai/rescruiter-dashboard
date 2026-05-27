@@ -8,6 +8,7 @@ import SendInterviewModal from "@/components/SendInterviewModal"
 import { ChartSkeleton, MetricSkeleton, TableSkeleton, TimelineSkeleton } from "@/components/system/skeletons"
 import { buildAuthUrl } from "@/lib/client/auth-query"
 import { formatDate, formatDateTime, formatTime } from "@/lib/client/date-format"
+import { readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 function formatPercent(value) {
@@ -120,6 +121,13 @@ export default function ReportsPage() {
 
   useEffect(() => {
     let active = true
+    const cacheKey = `reports:${searchParams.toString()}`
+    const cached = readSessionJsonCache(cacheKey)
+
+    if (cached) {
+      setReport(cached)
+      setLoading(false)
+    }
 
     fetch(buildAuthUrl("/api/reports/overview", searchParams), {
       credentials: "include",
@@ -137,6 +145,7 @@ export default function ReportsPage() {
 
         setError("")
         setReport(data.data ?? null)
+        writeSessionJsonCache(cacheKey, data.data ?? null)
       })
       .catch((fetchError) => {
         if (!active) {

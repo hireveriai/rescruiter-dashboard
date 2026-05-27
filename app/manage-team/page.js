@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { buildAuthUrl } from "@/lib/client/auth-query";
 import { formatDate } from "@/lib/client/date-format";
+import { readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache";
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params";
 
 function getPlatformRoleTone(role) {
@@ -364,6 +365,14 @@ export default function ManageTeamPage() {
 
   useEffect(() => {
     let active = true;
+    const cacheKey = `manage-team:${searchParams.toString()}`;
+    const cached = readSessionJsonCache(cacheKey);
+
+    if (cached) {
+      setData(cached);
+      setError("");
+      setLoading(false);
+    }
 
     fetch(buildAuthUrl("/api/manage-team", searchParams))
       .then((res) => res.json())
@@ -374,6 +383,7 @@ export default function ManageTeamPage() {
 
         if (payload.success) {
           setData(payload.data);
+          writeSessionJsonCache(cacheKey, payload.data);
           setError("");
           return;
         }

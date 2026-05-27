@@ -6,6 +6,7 @@ import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
 import { formatDateTime } from "@/lib/client/date-format"
+import { readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache"
 
 import Navbar from "../../components/Navbar"
 import SendInterviewModal from "../../components/SendInterviewModal"
@@ -322,8 +323,15 @@ export default function CandidatesPage() {
 
   useEffect(() => {
     let isMounted = true
+    const cacheKey = `candidates:${searchParams.toString()}`
+    const cached = readSessionJsonCache(cacheKey)
 
-    setLoading(true)
+    if (cached) {
+      setCandidates(cached)
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
 
     setLoadError("")
 
@@ -335,7 +343,9 @@ export default function CandidatesPage() {
       .then((data) => {
         if (isMounted && data.success) {
           const rows = Array.isArray(data.data) ? data.data : data.data?.candidates
-          setCandidates(Array.isArray(rows) ? rows : [])
+          const nextRows = Array.isArray(rows) ? rows : []
+          setCandidates(nextRows)
+          writeSessionJsonCache(cacheKey, nextRows)
           return
         }
 

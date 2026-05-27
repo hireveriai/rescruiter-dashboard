@@ -7,6 +7,7 @@ import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 import { buildAuthUrl } from "@/lib/client/auth-query"
 import { copyText } from "@/lib/client/copy-to-clipboard"
 import { formatDateTime } from "@/lib/client/date-format"
+import { readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache"
 
 import Navbar from "../../components/Navbar"
 import SendInterviewModal from "../../components/SendInterviewModal"
@@ -300,6 +301,7 @@ export default function InterviewsPage() {
   const [evaluationFilter, setEvaluationFilter] = useState("ALL")
 
   async function loadInterviews() {
+    const cacheKey = `interviews:${searchParams.toString()}`
     const response = await fetch(buildAuthUrl("/api/dashboard/interviews", searchParams), {
       credentials: "include",
       cache: "no-store",
@@ -307,14 +309,22 @@ export default function InterviewsPage() {
     const data = await response.json()
     if (data.success) {
       setInterviews(data.data ?? [])
+      writeSessionJsonCache(cacheKey, data.data ?? [])
     }
     setLoading(false)
   }
 
   useEffect(() => {
     let isMounted = true
+    const cacheKey = `interviews:${searchParams.toString()}`
+    const cached = readSessionJsonCache(cacheKey)
 
-    setLoading(true)
+    if (cached) {
+      setInterviews(cached)
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
 
     fetch(buildAuthUrl("/api/dashboard/interviews", searchParams), {
       credentials: "include",
@@ -324,6 +334,7 @@ export default function InterviewsPage() {
       .then((data) => {
         if (isMounted && data.success) {
           setInterviews(data.data ?? [])
+          writeSessionJsonCache(cacheKey, data.data ?? [])
         }
       })
       .catch((error) => {
