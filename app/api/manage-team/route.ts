@@ -241,9 +241,15 @@ async function ensureTeamInviteTables() {
 
 async function getRoleOrThrow(roleId: number) {
   const rows = await prisma.$queryRaw<RoleLookupRow[]>(Prisma.sql`
-    select recruiter_role_id, code, description
-    from public.recruiter_role_pool
-    where recruiter_role_id = ${roleId}::smallint
+    select
+      hrr.legacy_role_id as recruiter_role_id,
+      hrr.name as code,
+      rrp.description
+    from public.hireveri_recruiter_roles hrr
+    left join public.recruiter_role_pool rrp
+      on rrp.recruiter_role_id = hrr.legacy_role_id
+    where hrr.legacy_role_id = ${roleId}::smallint
+      and hrr.is_active = true
     limit 1
   `)
 
@@ -306,10 +312,11 @@ async function getExistingUserByEmail(email: string) {
 }
 
 async function getTeamWorkspace(auth: RecruiterAuth) {
-  const [hasEnsureProfileFn, hasRecruiterProfiles, hasRecruiterRolePool, hasRolePermissions, hasPermissions] =
+  const [hasEnsureProfileFn, hasRecruiterProfiles, hasRecruiterRoles, hasRecruiterRolePool, hasRolePermissions, hasPermissions] =
     await Promise.all([
       functionExists("fn_ensure_default_recruiter_profile"),
       tableExists("recruiter_profiles"),
+      tableExists("hireveri_recruiter_roles"),
       tableExists("recruiter_role_pool"),
       tableExists("role_permissions"),
       tableExists("permissions"),
@@ -329,13 +336,9 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
   }
 
   const hasRoleSystem =
-    hasRecruiterProfiles && hasRecruiterRolePool && hasRolePermissions && hasPermissions
+    hasRecruiterProfiles && hasRecruiterRoles && hasRecruiterRolePool && hasRolePermissions && hasPermissions
 
-  if (hasRoleSystem) {
-    await ensureTeamInviteTables()
-  }
-
-  const summaryRows = await prisma.$queryRaw<TeamSummaryRow[]>(Prisma.sql`
+  const summaryRowsPromise = prisma.$queryRaw<TeamSummaryRow[]>(Prisma.sql`
     select
       o.organization_name,
       count(u.user_id)::int as total_members,
@@ -346,8 +349,8 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
             count(*) filter (
               where rp.recruiter_role_id is not null
                 and (
-                  lower(coalesce(rrp.code, '')) like '%founder%'
-                  or lower(coalesce(rrp.code, '')) like '%super%'
+                  lower(coalesce(hrr.name, rrp.code, '')) like '%founder%'
+                  or lower(coalesce(hrr.name, rrp.code, '')) like '%super%'
                   or exists (
                     select 1
                     from public.role_permissions perms_admin
@@ -368,13 +371,16 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
     ${hasRecruiterProfiles && hasRecruiterRolePool
       ? Prisma.sql`left join public.recruiter_role_pool rrp on rrp.recruiter_role_id = rp.recruiter_role_id`
       : Prisma.sql``}
+    ${hasRecruiterProfiles && hasRecruiterRoles
+      ? Prisma.sql`left join public.hireveri_recruiter_roles hrr on hrr.legacy_role_id = rp.recruiter_role_id`
+      : Prisma.sql``}
     where o.organization_id = ${auth.organizationId}::uuid
     group by o.organization_name
     limit 1
   `)
 
-  const teamRows = hasRoleSystem
-    ? await prisma.$queryRaw<TeamMemberRow[]>(Prisma.sql`
+  const teamRowsPromise = hasRoleSystem
+    ? prisma.$queryRaw<TeamMemberRow[]>(Prisma.sql`
         select
           u.user_id,
           u.full_name,
@@ -383,7 +389,7 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
           u.is_active,
           u.created_at::text,
           rp.recruiter_role_id,
-          rrp.code as recruiter_role_code,
+          coalesce(hrr.name, rrp.code) as recruiter_role_code,
           rrp.description as recruiter_role_description,
           latest_invite.status as invite_status,
           latest_invite.expires_at::text as invite_expires_at,
@@ -401,6 +407,8 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
           on rp.recruiter_id = u.user_id
         left join public.recruiter_role_pool rrp
           on rrp.recruiter_role_id = rp.recruiter_role_id
+        left join public.hireveri_recruiter_roles hrr
+          on hrr.legacy_role_id = rp.recruiter_role_id
         left join public.role_permissions perms
           on perms.recruiter_role_id = rp.recruiter_role_id
         left join public.permissions pd
@@ -429,7 +437,7 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
           u.is_active,
           u.created_at,
           rp.recruiter_role_id,
-          rrp.code,
+          coalesce(hrr.name, rrp.code),
           rrp.description,
           latest_invite.status,
           latest_invite.expires_at
@@ -437,7 +445,7 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
           case when u.user_id = ${auth.userId}::uuid then 0 else 1 end,
           u.created_at desc
       `)
-    : await prisma.$queryRaw<TeamMemberRow[]>(Prisma.sql`
+    : prisma.$queryRaw<TeamMemberRow[]>(Prisma.sql`
         select
           u.user_id,
           u.full_name,
@@ -459,11 +467,11 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
           u.created_at desc
       `)
 
-  const availableRoleRows = hasRoleSystem
-    ? await prisma.$queryRaw<AvailableRoleRow[]>(Prisma.sql`
+  const availableRoleRowsPromise = hasRoleSystem
+    ? prisma.$queryRaw<AvailableRoleRow[]>(Prisma.sql`
         select
-          rrp.recruiter_role_id,
-          rrp.code,
+          hrr.legacy_role_id as recruiter_role_id,
+          hrr.name as code,
           rrp.description,
           coalesce(
             jsonb_agg(
@@ -474,15 +482,25 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
             ) filter (where perms.permission is not null),
             '[]'::jsonb
           ) as permission_details
-        from public.recruiter_role_pool rrp
+        from public.hireveri_recruiter_roles hrr
+        inner join public.recruiter_role_pool rrp
+          on rrp.recruiter_role_id = hrr.legacy_role_id
         left join public.role_permissions perms
-          on perms.recruiter_role_id = rrp.recruiter_role_id
+          on perms.recruiter_role_id = hrr.legacy_role_id
         left join public.permissions pd
           on pd.permission_code = perms.permission
-        group by rrp.recruiter_role_id, rrp.code, rrp.description
-        order by rrp.recruiter_role_id asc
+        where hrr.is_active = true
+          and hrr.legacy_role_id is not null
+        group by hrr.legacy_role_id, hrr.name, rrp.description, hrr.sort_order
+        order by hrr.sort_order asc, hrr.name asc
       `)
     : []
+
+  const [summaryRows, teamRows, availableRoleRows] = await Promise.all([
+    summaryRowsPromise,
+    teamRowsPromise,
+    availableRoleRowsPromise,
+  ])
 
   const summary = summaryRows[0] ?? {
     organization_name: null,
@@ -540,7 +558,7 @@ async function getTeamMemberForAccessEmail(auth: RecruiterAuth, targetUserId: st
       u.email,
       o.organization_name,
       rp.recruiter_role_id,
-      rrp.code as recruiter_role_code,
+      coalesce(hrr.name, rrp.code) as recruiter_role_code,
       rrp.description as recruiter_role_description,
       latest_invite.status as invite_status,
       latest_invite.expires_at::text as invite_expires_at
@@ -552,6 +570,8 @@ async function getTeamMemberForAccessEmail(auth: RecruiterAuth, targetUserId: st
       and rp.organization_id = u.organization_id
     left join public.recruiter_role_pool rrp
       on rrp.recruiter_role_id = rp.recruiter_role_id
+    left join public.hireveri_recruiter_roles hrr
+      on hrr.legacy_role_id = rp.recruiter_role_id
     left join lateral (
       select
         case
