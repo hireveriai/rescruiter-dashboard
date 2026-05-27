@@ -1,5 +1,6 @@
 import "./globals.css";
 
+import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { OrgTimezoneProvider } from "@/components/OrgTimezoneProvider";
 import SessionInactivityGuard from "@/components/SessionInactivityGuard";
@@ -26,6 +27,7 @@ export default function RootLayout({ children }) {
             <ModalScrollLock />
             <SessionInactivityGuard />
             {children}
+            <Analytics />
             <SpeedInsights />
           </AmbientLoadingProvider>
         </OrgTimezoneProvider>
