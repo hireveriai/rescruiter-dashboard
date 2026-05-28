@@ -7,7 +7,6 @@ import {
   BrainCircuit,
   BriefcaseBusiness,
   ClipboardList,
-  FileText,
   Link2,
   Loader2,
   Search,
@@ -25,6 +24,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { buildAuthUrl } from "@/lib/client/auth-query";
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params";
 import DockItem from "./DockItem";
+import DockSection from "./DockSection";
 
 type DashboardAlert = {
   id?: string;
@@ -335,28 +335,43 @@ export default function CognitiveDock({
     return { priorities, metrics };
   }, [workspace, overview, activeInterviewCount, candidateCount, flaggedCount]);
 
-  const items = [
-    { label: "Create Job", icon: SquarePlus, onClick: openCreateJob, active: false },
-    { label: "Send Interview Link", icon: Link2, onClick: openSendInterview, active: false },
+  const dockSections = [
     {
-      label: "Active Interviews",
-      icon: ClipboardList,
-      href: href("/interviews"),
-      badge: activeInterviewCount,
-      active: pathname.startsWith("/interviews"),
+      label: "Quick Actions",
+      items: [
+        { label: "Create Job", icon: SquarePlus, onClick: openCreateJob, active: false },
+        { label: "Send Interview Link", icon: Link2, onClick: openSendInterview, active: false },
+      ],
     },
-    { label: "Candidates Queue", icon: Users, href: href("/candidates"), active: pathname.startsWith("/candidates") },
     {
-      label: "Fraud Alerts",
-      icon: ShieldAlert,
-      onClick: () => setPanel("alerts"),
-      badge: flaggedCount,
-      alert: hasFlaggedCandidates,
-      active: panel === "alerts",
+      label: "Operations",
+      items: [
+        {
+          label: "Active Interviews",
+          icon: ClipboardList,
+          href: href("/interviews"),
+          badge: activeInterviewCount,
+          active: pathname.startsWith("/interviews"),
+        },
+        { label: "Candidates Queue", icon: Users, href: href("/candidates"), active: pathname.startsWith("/candidates") },
+        {
+          label: "Fraud Alerts",
+          icon: ShieldAlert,
+          onClick: () => setPanel("alerts"),
+          badge: flaggedCount,
+          alert: hasFlaggedCandidates,
+          active: panel === "alerts",
+        },
+        { label: "Reports Snapshot", icon: BarChart3, href: href("/reports"), active: pathname.startsWith("/reports") },
+        { label: "Universal Search", icon: Search, onClick: () => setPanel("search"), active: panel === "search" },
+      ],
     },
-    { label: "Reports Snapshot", icon: BarChart3, href: href("/reports"), active: pathname.startsWith("/reports") },
-    { label: "Universal Search", icon: Search, onClick: () => setPanel("search"), active: panel === "search" },
-    { label: "VERIS Copilot", icon: BrainCircuit, onClick: () => setPanel("copilot"), active: panel === "copilot" },
+    {
+      label: "Intelligence",
+      items: [
+        { label: "VERIS Copilot", icon: BrainCircuit, onClick: () => setPanel("copilot"), active: panel === "copilot", featured: true },
+      ],
+    },
   ];
 
   return (
@@ -368,21 +383,29 @@ export default function CognitiveDock({
         className="fixed bottom-4 left-1/2 z-30 -translate-x-1/2 md:bottom-auto md:left-4 md:top-[calc(50%+44px)] md:-translate-x-0 md:-translate-y-1/2 lg:left-5 xl:left-6"
         aria-label="Cognitive Operations Dock"
       >
-        <div className="relative rounded-[30px] border border-cyan-500/10 bg-[#071226]/58 p-1 shadow-[0_18px_60px_rgba(2,6,23,0.42),0_0_30px_rgba(34,211,238,0.06)] backdrop-blur-xl">
-          <div className="pointer-events-none absolute inset-0 rounded-[30px] bg-[linear-gradient(180deg,rgba(255,255,255,0.055),transparent_32%),radial-gradient(circle_at_50%_0%,rgba(34,211,238,0.09),transparent_44%)]" />
+        <div className="relative rounded-[32px] border border-white/5 bg-[#081120]/55 p-1.5 shadow-[0_18px_60px_rgba(2,6,23,0.36),0_0_34px_rgba(34,211,238,0.055)] backdrop-blur-2xl">
+          <div className="pointer-events-none absolute inset-0 rounded-[32px] bg-[linear-gradient(180deg,rgba(255,255,255,0.07),rgba(255,255,255,0.01)_38%,transparent),radial-gradient(circle_at_50%_0%,rgba(34,211,238,0.105),transparent_46%)]" />
           <motion.nav
-            className="relative flex max-w-[calc(100vw-2rem)] items-center gap-1 overflow-x-auto md:max-h-[calc(100dvh-10rem)] md:w-[52px] md:max-w-none md:flex-col md:gap-1 md:overflow-visible xl:w-14 xl:gap-1.5"
+            className="relative flex max-w-[calc(100vw-2rem)] items-center gap-1.5 overflow-x-auto md:max-h-[calc(100dvh-10rem)] md:w-[52px] md:max-w-none md:flex-col md:gap-2 md:overflow-visible xl:w-14"
             initial="hidden"
             animate="visible"
             variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.045, delayChildren: 0.12 } } }}
           >
-            {items.map((item) => (
+            {dockSections.map((section, sectionIndex) => (
               <motion.div
-                key={item.label}
-                variants={{ hidden: { opacity: 0, y: 8, scale: 0.92 }, visible: { opacity: 1, y: 0, scale: 1 } }}
-                transition={{ duration: 0.24, ease: "easeOut" }}
+                key={section.label}
+                className="flex items-center gap-1.5 md:flex-col md:gap-2"
+                variants={{ hidden: { opacity: 0, y: 8, scale: 0.96 }, visible: { opacity: 1, y: 0, scale: 1 } }}
+                transition={{ duration: 0.22, ease: "easeOut" }}
               >
-                <DockItem {...item} />
+                {sectionIndex > 0 ? (
+                  <span className="h-7 w-px shrink-0 rounded-full bg-white/8 md:h-px md:w-8" aria-hidden="true" />
+                ) : null}
+                <DockSection label={section.label}>
+                  {section.items.map((item) => (
+                    <DockItem key={item.label} {...item} />
+                  ))}
+                </DockSection>
               </motion.div>
             ))}
           </motion.nav>

@@ -3,7 +3,7 @@
 import type { LucideIcon } from "lucide-react";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { useState } from "react";
+import { memo, useState } from "react";
 
 import DockTooltip from "./DockTooltip";
 
@@ -14,6 +14,7 @@ type DockItemProps = {
   alert?: boolean;
   badge?: number;
   href?: string;
+  featured?: boolean;
   onClick?: () => void;
 };
 
@@ -25,13 +26,14 @@ function formatBadge(value?: number) {
   return value > 99 ? "99+" : String(value);
 }
 
-export default function DockItem({
+function DockItem({
   icon: Icon,
   label,
   active = false,
   alert = false,
   badge,
   href,
+  featured = false,
   onClick,
 }: DockItemProps) {
   const [hovered, setHovered] = useState(false);
@@ -40,18 +42,24 @@ export default function DockItem({
   const content = (
     <motion.span
       className={[
-        "group relative flex h-10 w-10 items-center justify-center rounded-[18px] border transition-colors duration-200 xl:h-11 xl:w-11",
+        "group relative flex h-10 w-10 translate-z-0 items-center justify-center rounded-[18px] border transition-colors duration-200 will-change-transform xl:h-11 xl:w-11",
         active
-          ? "border-cyan-300/25 bg-cyan-400/14 text-cyan-100 shadow-[0_0_22px_rgba(34,211,238,0.16)]"
-          : "border-transparent bg-transparent text-slate-300",
+          ? "border-cyan-300/25 bg-cyan-400/10 text-cyan-50 shadow-[0_0_18px_rgba(34,211,238,0.18),inset_0_1px_0_rgba(255,255,255,0.08)]"
+          : "border-transparent bg-white/[0.015] text-slate-300/95",
         alert
-          ? "border-rose-300/20 bg-rose-500/9 text-rose-100 shadow-[0_0_22px_rgba(244,63,94,0.14)]"
-          : "hover:border-cyan-300/18 hover:bg-cyan-400/9 hover:text-white hover:shadow-[0_0_18px_rgba(34,211,238,0.12)]",
+          ? "border-rose-300/24 bg-rose-500/10 text-rose-50 shadow-[0_0_22px_rgba(244,63,94,0.16)]"
+          : "hover:border-cyan-300/18 hover:bg-cyan-400/10 hover:text-white hover:shadow-[0_0_18px_rgba(34,211,238,0.14),inset_0_1px_0_rgba(255,255,255,0.07)]",
+        featured && !active ? "text-cyan-100/95 shadow-[0_0_22px_rgba(34,211,238,0.10)]" : "",
+        featured ? "motion-safe:animate-[hv-dock-breathe_3.8s_ease-in-out_infinite]" : "",
       ].join(" ")}
-      whileHover={{ scale: 1.11, x: 5, y: -1 }}
+      whileHover={{ scale: 1.12, x: 3 }}
       whileTap={{ scale: 0.96 }}
-      transition={{ type: "spring", stiffness: 360, damping: 24 }}
+      transition={{ type: "spring", stiffness: 320, damping: 26, mass: 0.7 }}
     >
+      {featured ? (
+        <span className="pointer-events-none absolute inset-0 rounded-[18px] bg-[radial-gradient(circle_at_50%_20%,rgba(34,211,238,0.18),transparent_58%)] opacity-80" />
+      ) : null}
+
       {active ? (
         <span className="absolute -left-2.5 top-1/2 hidden h-6 w-1 -translate-y-1/2 rounded-full bg-cyan-300 shadow-[0_0_14px_rgba(34,211,238,0.85)] md:block" />
       ) : null}
@@ -64,10 +72,10 @@ export default function DockItem({
 
       <Icon
         aria-hidden="true"
-        strokeWidth={1.8}
+        strokeWidth={featured ? 1.9 : 1.75}
         className={[
-          "h-[19px] w-[19px] transition duration-200 xl:h-5 xl:w-5",
-          hovered ? "drop-shadow-[0_0_10px_rgba(103,232,249,0.42)]" : "",
+          "relative h-[19px] w-[19px] transition duration-200 xl:h-5 xl:w-5",
+          hovered || featured ? "drop-shadow-[0_0_10px_rgba(103,232,249,0.42)]" : "",
         ].join(" ")}
       />
 
@@ -103,3 +111,5 @@ export default function DockItem({
     </div>
   );
 }
+
+export default memo(DockItem);
