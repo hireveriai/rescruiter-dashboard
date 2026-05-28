@@ -4,17 +4,47 @@ import dynamic from "next/dynamic";
 import { Suspense, useState } from "react";
 
 import Navbar from "../components/Navbar";
-import Pipeline from "../components/Pipeline";
-import PendingInterviews from "../components/PendingInterviews";
-import RecordedInterviews from "../components/RecordedInterviews";
-import CandidateList from "../components/CandidateList";
 import DashboardIntelligenceBanner from "../components/DashboardIntelligenceBanner";
-import Sidebar from "../components/Sidebar";
-import VerisSummary from "../components/VerisSummary";
-import WarRoomButton from "../components/WarRoomButton";
 import RecruiterDashboardBootstrap from "../components/RecruiterDashboardBootstrap";
-import CognitiveDock from "../components/dashboard/CognitiveDock";
 import { CardSkeleton, MetricSkeleton, TableSkeleton, TimelineSkeleton } from "../components/system/skeletons";
+
+const CognitiveDock = dynamic(() => import("../components/dashboard/CognitiveDock"), {
+  ssr: false,
+});
+
+const Pipeline = dynamic(() => import("../components/Pipeline"), {
+  ssr: false,
+  loading: () => <MetricSkeleton className="mt-8 grid-cols-2 lg:grid-cols-4" />,
+});
+
+const PendingInterviews = dynamic(() => import("../components/PendingInterviews"), {
+  ssr: false,
+  loading: () => <div className="mt-10 overflow-hidden rounded-lg bg-[#111a2e]"><table className="w-full text-sm"><TableSkeleton rows={3} columns={6} showAvatar /></table></div>,
+});
+
+const RecordedInterviews = dynamic(() => import("../components/RecordedInterviews"), {
+  ssr: false,
+  loading: () => <CardSkeleton count={3} className="mt-10 grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3" />,
+});
+
+const CandidateList = dynamic(() => import("../components/CandidateList"), {
+  ssr: false,
+  loading: () => <div className="mt-10 overflow-hidden rounded-lg bg-[#111a2e]"><table className="w-full text-sm"><TableSkeleton rows={5} columns={5} showAvatar /></table></div>,
+});
+
+const Sidebar = dynamic(() => import("../components/Sidebar"), {
+  ssr: false,
+  loading: () => <div className="min-h-[360px] rounded-[28px] border border-slate-800 bg-slate-900/40" />,
+});
+
+const VerisSummary = dynamic(() => import("../components/VerisSummary"), {
+  ssr: false,
+  loading: () => <TimelineSkeleton className="mt-10" messages={["Loading behavioral telemetry...", "Preparing cognitive analysis...", "Building forensic timeline..."]} />,
+});
+
+const WarRoomButton = dynamic(() => import("../components/WarRoomButton"), {
+  ssr: false,
+});
 
 const SendInterviewModal = dynamic(() => import("../components/SendInterviewModal"), {
   ssr: false,
@@ -33,7 +63,7 @@ function DashboardContent({ profile, overview, isLoading }) {
   });
 
   return (
-    <div className="hv-page-enter relative min-h-screen bg-[#0b1220] text-white">
+    <div className="relative min-h-screen bg-[#0b1220] text-white">
       <Navbar onSendInterviewClick={() => setIsModalOpen(true)} initialProfile={displayProfile} initialAlerts={overview?.alerts} />
       <CognitiveDock
         activeInterviewCount={activeInterviewCount}
@@ -61,27 +91,27 @@ function DashboardContent({ profile, overview, isLoading }) {
             onSendInterview={() => setIsModalOpen(true)}
           />
 
-          <Suspense fallback={<MetricSkeleton className="mt-8 grid-cols-2 lg:grid-cols-4" />}>
+          <Suspense fallback={null}>
             <Pipeline initialPipeline={fullOverview?.pipeline} isLoading={isLoading || isPartialOverview} />
           </Suspense>
-          <Suspense fallback={<div className="mt-10 overflow-hidden rounded-lg bg-[#111a2e]"><table className="w-full text-sm"><TableSkeleton rows={3} columns={6} showAvatar /></table></div>}>
+          <Suspense fallback={null}>
             <PendingInterviews
               initialPendingInterviews={fullOverview?.pendingInterviews}
               initialPendingTotal={fullOverview?.pendingInterviewsTotal}
               isLoading={isLoading}
             />
           </Suspense>
-          <Suspense fallback={<CardSkeleton count={3} className="mt-10 grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3" />}>
+          <Suspense fallback={null}>
             <RecordedInterviews
               initialRecordedInterviews={fullOverview?.recordedInterviews}
               organizationId={displayProfile?.organizationId}
               isLoading={isLoading}
             />
           </Suspense>
-          <Suspense fallback={<div className="mt-10 overflow-hidden rounded-lg bg-[#111a2e]"><table className="w-full text-sm"><TableSkeleton rows={5} columns={5} showAvatar /></table></div>}>
+          <Suspense fallback={null}>
             <CandidateList initialCandidates={fullOverview?.candidates} isLoading={isLoading} />
           </Suspense>
-          <Suspense fallback={<TimelineSkeleton className="mt-10" messages={["Loading behavioral telemetry...", "Preparing cognitive analysis...", "Building forensic timeline..."]} />}>
+          <Suspense fallback={null}>
             <VerisSummary initialSummaries={fullOverview?.veris} isLoading={isLoading} />
           </Suspense>
           <WarRoomButton organizationId={displayProfile?.organizationId} />

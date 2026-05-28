@@ -371,7 +371,7 @@ export default function CognitiveDock({
         <div className="relative rounded-[30px] border border-cyan-500/10 bg-[#071226]/58 p-1 shadow-[0_18px_60px_rgba(2,6,23,0.42),0_0_30px_rgba(34,211,238,0.06)] backdrop-blur-xl">
           <div className="pointer-events-none absolute inset-0 rounded-[30px] bg-[linear-gradient(180deg,rgba(255,255,255,0.055),transparent_32%),radial-gradient(circle_at_50%_0%,rgba(34,211,238,0.09),transparent_44%)]" />
           <motion.nav
-            className="relative flex max-w-[calc(100vw-2rem)] items-center gap-1 overflow-x-auto md:max-h-[calc(100dvh-10rem)] md:max-w-none md:flex-col md:gap-1 md:overflow-visible xl:gap-1.5"
+            className="relative flex max-w-[calc(100vw-2rem)] items-center gap-1 overflow-x-auto md:max-h-[calc(100dvh-10rem)] md:w-[52px] md:max-w-none md:flex-col md:gap-1 md:overflow-visible xl:w-14 xl:gap-1.5"
             initial="hidden"
             animate="visible"
             variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.045, delayChildren: 0.12 } } }}

@@ -442,7 +442,7 @@ export default function Navbar({ onSendInterviewClick: _onSendInterviewClick, in
               </span>
             </Link>
 
-            <nav className="hidden min-w-0 flex-1 flex-nowrap items-center justify-start gap-0.5 overflow-visible md:flex xl:gap-1">
+            <nav className="hidden min-w-0 flex-1 flex-nowrap items-center justify-center gap-1 overflow-visible md:flex xl:gap-1.5">
               {navItems.map((item) => {
                 const active = isActivePath(pathname, item.href);
 
@@ -463,7 +463,7 @@ export default function Navbar({ onSendInterviewClick: _onSendInterviewClick, in
                 );
               })}
 
-              <div className="relative mr-3 shrink-0" ref={alertsRef}>
+              <div className="relative shrink-0" ref={alertsRef}>
                 <button
                   type="button"
                   onClick={() => setAlertsOpen((value) => !value)}

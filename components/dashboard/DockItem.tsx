@@ -40,7 +40,7 @@ export default function DockItem({
   const content = (
     <motion.span
       className={[
-        "group relative flex h-10 w-10 items-center justify-center rounded-[18px] border transition-colors duration-200 md:h-10 md:w-10 xl:h-11 xl:w-11",
+        "group relative flex h-10 w-10 items-center justify-center rounded-[18px] border transition-colors duration-200 xl:h-11 xl:w-11",
         active
           ? "border-cyan-300/25 bg-cyan-400/14 text-cyan-100 shadow-[0_0_22px_rgba(34,211,238,0.16)]"
           : "border-transparent bg-transparent text-slate-300",
@@ -85,7 +85,7 @@ export default function DockItem({
     onMouseLeave: () => setHovered(false),
     onFocus: () => setHovered(true),
     onBlur: () => setHovered(false),
-    className: "relative flex items-center justify-center outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#071226]",
+    className: "relative flex h-10 w-[52px] items-center justify-center outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#071226] xl:h-11 xl:w-14",
   };
 
   return (

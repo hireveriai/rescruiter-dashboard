@@ -29,6 +29,20 @@ function ActionButton({ href, onClick, children, tone = "primary" }) {
 }
 
 export default function DashboardIntelligenceBanner({ overview, onCreateJob, onSendInterview }) {
+  if (!overview) {
+    return (
+      <section className="mb-4 overflow-hidden rounded-2xl border border-cyan-400/10 bg-[linear-gradient(135deg,rgba(15,23,42,0.88),rgba(2,6,23,0.78))] px-5 py-4 shadow-[0_12px_34px_rgba(2,6,23,0.18)]">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-cyan-300/80 shadow-[0_0_14px_rgba(34,211,238,0.65)]" />
+            <p className="text-sm font-medium text-slate-100">Preparing recruiter workflow snapshot</p>
+          </div>
+          <span className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-200/70">Syncing</span>
+        </div>
+      </section>
+    );
+  }
+
   const state = deriveDashboardState(overview?.dashboardState ?? {});
 
   if (state.heroState === "WORKFLOW_ACTIVE") {
