@@ -435,18 +435,18 @@ export default function Navbar({ onSendInterviewClick: _onSendInterviewClick, in
             <Link
               href={buildAuthUrl("/", searchParams)}
               onClick={() => handleNavigationClick("/")}
-              className="group flex w-[96px] shrink-0 items-center gap-2.5 leading-none sm:w-[208px] xl:w-[232px]"
+              className="group flex w-[108px] shrink-0 items-center gap-3 leading-none sm:w-[220px] xl:w-[244px]"
               aria-label="HireVeri home"
             >
-              <span className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-cyan-300/10 bg-white/[0.035] shadow-[0_0_20px_rgba(34,211,238,0.08),inset_0_1px_0_rgba(255,255,255,0.05)] transition-all duration-200 group-hover:-translate-y-px group-hover:border-cyan-300/20 group-hover:bg-white/[0.055]">
+              <span className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-cyan-300/14 bg-cyan-400/[0.045] shadow-[0_0_24px_rgba(34,211,238,0.12),inset_0_1px_0_rgba(255,255,255,0.06)] transition-all duration-200 group-hover:-translate-y-px group-hover:border-cyan-300/25 group-hover:bg-cyan-400/[0.07]">
                 <Image
                   src="/hireveri_logo.png"
                   alt=""
-                  width={32}
-                  height={32}
+                  width={88}
+                  height={88}
                   priority
-                  className="h-8 w-8 object-contain"
-                  sizes="32px"
+                  className="h-[5.5rem] w-[5.5rem] max-w-none object-contain drop-shadow-[0_0_10px_rgba(125,211,252,0.42)]"
+                  sizes="48px"
                 />
               </span>
               <span className="min-w-0">
