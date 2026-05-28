@@ -242,6 +242,19 @@ a {
   }
 }
 
+@keyframes hv-alert-badge-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.92);
+  }
+
+  50% {
+    opacity: 0.82;
+    transform: scale(1.08);
+  }
+}
+
 .hv-ai-panel {
   position: relative;
   overflow: hidden;
@@ -328,6 +341,7 @@ a {
   .hv-ai-stream,
   .hv-ai-fade,
   .motion-safe\:animate-\[hv-dock-breathe_3\.8s_ease-in-out_infinite\],
+  .motion-safe\:animate-\[hv-alert-badge-pulse_2\.8s_ease-in-out_infinite\],
   .hv-page-enter {
     animation-duration: 1ms !important;
     animation-iteration-count: 1 !important;

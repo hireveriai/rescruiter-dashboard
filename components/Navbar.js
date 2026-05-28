@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -427,22 +428,36 @@ export default function Navbar({ onSendInterviewClick: _onSendInterviewClick, in
 
   return (
     <>
-      <header className="sticky top-0 z-40 border-b border-slate-800/80 bg-[#0c1424]/95 text-white backdrop-blur-xl">
-        <div className="mx-auto flex w-full max-w-[1840px] flex-nowrap items-center justify-between gap-3 px-3 py-4 sm:px-4 xl:px-6">
+      <header className="sticky top-0 z-40 border-b border-cyan-300/10 bg-[linear-gradient(180deg,rgba(12,20,36,0.96),rgba(8,15,29,0.92))] text-white shadow-[0_10px_34px_rgba(2,6,23,0.18)] backdrop-blur-xl">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-[linear-gradient(90deg,transparent,rgba(34,211,238,0.22),transparent)]" />
+        <div className="relative mx-auto flex w-full max-w-[1840px] flex-nowrap items-center justify-between gap-3 px-3 py-4 sm:px-4 xl:px-6">
           <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-2 xl:gap-3">
             <Link
               href={buildAuthUrl("/", searchParams)}
               onClick={() => handleNavigationClick("/")}
-              className="flex w-[72px] shrink-0 flex-col justify-center leading-none sm:w-[180px] xl:w-[210px]"
+              className="group flex w-[96px] shrink-0 items-center gap-2.5 leading-none sm:w-[208px] xl:w-[232px]"
               aria-label="HireVeri home"
             >
-              <span className="text-lg font-semibold tracking-tight text-white xl:text-xl">HireVeri</span>
-              <span className="mt-1 hidden whitespace-nowrap text-[10px] font-medium uppercase tracking-[0.14em] text-blue-300/80 sm:block xl:tracking-[0.18em]">
-                Cognitive Hiring System
+              <span className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-cyan-300/10 bg-white/[0.035] shadow-[0_0_20px_rgba(34,211,238,0.08),inset_0_1px_0_rgba(255,255,255,0.05)] transition-all duration-200 group-hover:-translate-y-px group-hover:border-cyan-300/20 group-hover:bg-white/[0.055]">
+                <Image
+                  src="/hireveri_logo.png"
+                  alt=""
+                  width={32}
+                  height={32}
+                  priority
+                  className="h-8 w-8 object-contain"
+                  sizes="32px"
+                />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-lg font-semibold tracking-tight text-white xl:text-xl">HireVeri</span>
+                <span className="mt-1 hidden whitespace-nowrap text-[10px] font-medium uppercase tracking-[0.14em] text-blue-300/80 sm:block xl:tracking-[0.18em]">
+                  Cognitive Hiring System
+                </span>
               </span>
             </Link>
 
-            <nav className="hidden min-w-0 flex-1 flex-nowrap items-center justify-center gap-1 overflow-visible md:flex xl:gap-1.5">
+            <nav className="hidden min-w-0 flex-1 flex-nowrap items-center justify-center gap-0.5 overflow-visible md:flex xl:gap-1">
               {navItems.map((item) => {
                 const active = isActivePath(pathname, item.href);
 
@@ -452,13 +467,21 @@ export default function Navbar({ onSendInterviewClick: _onSendInterviewClick, in
                     href={buildAuthUrl(item.href, searchParams)}
                     onClick={() => handleNavigationClick(item.href)}
                     className={[
-                      "whitespace-nowrap rounded-xl px-2 py-2 text-[13px] font-medium transition xl:px-2.5 xl:text-sm",
+                      "group relative inline-flex transform-gpu whitespace-nowrap rounded-xl border px-2.5 py-2 text-[13px] tracking-[0.005em] transition-all duration-200 will-change-transform xl:px-3 xl:text-sm",
                       active
-                        ? "border border-slate-700 bg-slate-800/90 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
-                        : "border border-transparent text-slate-300 hover:border-slate-800 hover:bg-slate-900/60 hover:text-white",
+                        ? "border-cyan-300/15 bg-white/[0.055] font-semibold text-white shadow-[0_0_20px_rgba(34,211,238,0.08),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xl"
+                        : "border-transparent text-slate-300/90 hover:-translate-y-px hover:border-cyan-300/10 hover:bg-white/[0.035] hover:text-white",
                     ].join(" ")}
                   >
-                    {item.label}
+                    <span className="relative z-10">{item.label}</span>
+                    <span
+                      className={[
+                        "pointer-events-none absolute inset-x-2 -bottom-px h-px rounded-full bg-cyan-300 transition-all duration-200",
+                        active
+                          ? "opacity-100 shadow-[0_0_12px_rgba(34,211,238,0.72)]"
+                          : "scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-60 group-hover:shadow-[0_0_10px_rgba(34,211,238,0.34)]",
+                      ].join(" ")}
+                    />
                   </Link>
                 );
               })}
@@ -468,18 +491,20 @@ export default function Navbar({ onSendInterviewClick: _onSendInterviewClick, in
                   type="button"
                   onClick={() => setAlertsOpen((value) => !value)}
                   className={[
-                    "inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl border px-2 py-2 text-[13px] font-medium transition xl:px-2.5 xl:text-sm",
+                    "group relative inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl border px-2.5 py-2 text-[13px] font-medium tracking-[0.005em] transition-all duration-200 will-change-transform xl:px-3 xl:text-sm",
                     alertsOpen
-                      ? "border-cyan-400/30 bg-cyan-500/10 text-cyan-100"
-                      : "border border-transparent text-slate-300 hover:border-slate-800 hover:bg-slate-900/60 hover:text-white",
+                      ? "border-cyan-300/20 bg-cyan-400/10 text-cyan-50 shadow-[0_0_18px_rgba(34,211,238,0.08)]"
+                      : "border-transparent text-slate-300/90 hover:-translate-y-px hover:border-cyan-300/10 hover:bg-white/[0.035] hover:text-white",
                   ].join(" ")}
                 >
                   Alerts
                   {unreadAlerts.length > 0 ? (
-                    <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-cyan-300/40 bg-cyan-400/20 px-1 text-[10px] font-semibold leading-none text-cyan-100">
+                    <span className="relative inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-cyan-300/35 bg-cyan-400/18 px-1 text-[10px] font-semibold leading-none text-cyan-50 shadow-[0_0_14px_rgba(34,211,238,0.18)]">
+                      <span className="absolute inset-0 rounded-full border border-cyan-300/20 motion-safe:animate-[hv-alert-badge-pulse_2.8s_ease-in-out_infinite]" />
                       {unreadAlerts.length > 9 ? "9+" : unreadAlerts.length}
                     </span>
                   ) : null}
+                  <span className={["pointer-events-none absolute inset-x-2 -bottom-px h-px rounded-full bg-cyan-300 transition-all duration-200", alertsOpen ? "opacity-100 shadow-[0_0_12px_rgba(34,211,238,0.62)]" : "scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-55"].join(" ")} />
                 </button>
 
                 {alertsOpen ? (
@@ -539,9 +564,9 @@ export default function Navbar({ onSendInterviewClick: _onSendInterviewClick, in
               <button
                 type="button"
                 onClick={() => setProfileOpen((value) => !value)}
-                className="flex items-center gap-2 rounded-2xl border border-slate-700/80 bg-slate-900/85 px-2.5 py-2 transition hover:border-blue-400/40 hover:bg-slate-900 lg:gap-3 lg:px-3"
+                className="flex transform-gpu items-center gap-2 rounded-2xl border border-cyan-300/10 bg-white/[0.035] px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition-all duration-200 hover:-translate-y-px hover:border-cyan-300/20 hover:bg-white/[0.055] lg:gap-3 lg:px-3"
               >
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-500/15 text-sm font-semibold text-blue-300 lg:h-10 lg:w-10">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-400/10 text-sm font-semibold text-cyan-100 shadow-[0_0_18px_rgba(34,211,238,0.08)] lg:h-10 lg:w-10">
                   {initials}
                 </div>
                 <div className="hidden min-w-0 text-left 2xl:block">
