@@ -78,7 +78,7 @@ export default function VerisSummary({ initialSummaries, isLoading = false }) {
     const fetchSummaries = () => {
       fetch(buildAuthUrl("/api/dashboard/veris", searchParams), {
         credentials: "include",
-        cache: "no-store",
+        cache: "default",
       })
         .then((res) => res.json())
         .then((data) => {
@@ -96,11 +96,8 @@ export default function VerisSummary({ initialSummaries, isLoading = false }) {
         })
     }
 
-    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
-      const idleId = window.requestIdleCallback(fetchSummaries, { timeout: 3000 })
-      cancelScheduled = () => window.cancelIdleCallback?.(idleId)
-    } else if (typeof window !== "undefined") {
-      const timeoutId = window.setTimeout(fetchSummaries, 1200)
+    if (typeof window !== "undefined") {
+      const timeoutId = window.setTimeout(fetchSummaries, 160)
       cancelScheduled = () => window.clearTimeout(timeoutId)
     } else {
       fetchSummaries()

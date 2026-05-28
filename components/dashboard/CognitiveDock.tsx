@@ -347,7 +347,7 @@ export default function CognitiveDock({
       label: "Operations",
       items: [
         {
-          label: "Active Interviews",
+          label: "Interview Queue",
           icon: ClipboardList,
           href: href("/interviews"),
           badge: activeInterviewCount,

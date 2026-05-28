@@ -25,6 +25,10 @@ type StorageListItem = {
   name: string
 }
 
+type DashboardRecordingsOptions = {
+  verifyStorage?: boolean
+}
+
 const STORAGE_LIST_CACHE_TTL_MS = 30000
 let recordingColumnsPromise: Promise<Set<string>> | null = null
 let storageObjectPathsCache: { value: Set<string> | null; expiresAt: number } | null = null
@@ -185,7 +189,7 @@ async function tableExists(tableName: string) {
   return promise
 }
 
-export async function getDashboardRecordings(organizationId: string, limit = 6): Promise<DashboardRecordingRow[]> {
+export async function getDashboardRecordings(organizationId: string, limit = 6, options: DashboardRecordingsOptions = {}): Promise<DashboardRecordingRow[]> {
   const columns = await getRecordingColumns()
   const safeLimit = Math.max(1, Math.min(Math.trunc(limit) || 6, 50))
 
@@ -310,7 +314,7 @@ export async function getDashboardRecordings(organizationId: string, limit = 6):
   `
 
   const rows = await prisma.$queryRawUnsafe<DashboardRecordingRow[]>(query, organizationId).catch(() => [])
-  const existingObjectPaths = await listRecordingObjectPaths()
+  const existingObjectPaths = options.verifyStorage === true ? await listRecordingObjectPaths() : null
 
   return rows.map((row) => ({
     ...row,

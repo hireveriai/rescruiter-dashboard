@@ -168,6 +168,23 @@ export type VerisSummaryCard = {
   createdAt: string | null
 }
 
+type RecentVerisAttemptRow = {
+  organization_id: string
+  job_id: string
+  job_title: string
+  core_skills: unknown
+  candidate_id: string
+  candidate_name: string
+  interview_id: string
+  interview_status: string | null
+  attempt_id: string
+  attempt_status: string | null
+  started_at: string | null
+  ended_at: string | null
+  final_score: Prisma.Decimal | number | string | null
+  decision: string | null
+}
+
 type SkillProfileRow = {
   attempt_id: string
   skill_scores: Record<string, { average?: number; bucket?: string; samples?: number }>
@@ -812,6 +829,39 @@ async function fetchInterviewSummaries(organizationId: string) {
   return new Map(rows.filter((row) => row.attempt_id).map((row) => [row.attempt_id, row]))
 }
 
+async function fetchInterviewSummariesForAttempts(attemptIds: string[]) {
+  if (attemptIds.length === 0 || !(await tableExists("interview_summaries"))) {
+    return new Map<string, SummaryRow>()
+  }
+
+  const columns = await getTableColumns("interview_summaries")
+  if (!columns.has("attempt_id")) {
+    return new Map<string, SummaryRow>()
+  }
+
+  const selectParts = [
+    `attempt_id::text as attempt_id`,
+    columns.has("overall_score") ? `overall_score` : `null::numeric as overall_score`,
+    columns.has("risk_level") ? `risk_level` : `null::text as risk_level`,
+    columns.has("hire_recommendation") ? `hire_recommendation` : columns.has("recommendation") ? `recommendation as hire_recommendation` : `null::text as hire_recommendation`,
+    columns.has("confidence_score") ? `confidence_score` : `null::numeric as confidence_score`,
+    columns.has("strengths") ? `strengths` : `null::text as strengths`,
+    columns.has("weaknesses") ? `weaknesses` : `null::text as weaknesses`,
+    columns.has("created_at") ? `created_at::text as created_at` : `null::text as created_at`,
+  ]
+
+  const rows = await prisma.$queryRawUnsafe<SummaryRow[]>(
+    `
+      select ${selectParts.join(", ")}
+      from public.interview_summaries
+      where attempt_id = any($1::uuid[])
+    `,
+    attemptIds
+  ).catch(() => [] as SummaryRow[])
+
+  return new Map(rows.filter((row) => row.attempt_id).map((row) => [row.attempt_id, row]))
+}
+
 async function fetchRecordingRows(organizationId: string) {
   if (!(await tableExists("interview_recordings"))) {
     return [] as RecordingRow[]
@@ -872,6 +922,56 @@ async function fetchSignalRows(organizationId: string) {
   return columns.has("organization_id")
     ? prisma.$queryRawUnsafe<SignalAggRow[]>(query, organizationId).catch(() => [] as SignalAggRow[])
     : prisma.$queryRawUnsafe<SignalAggRow[]>(query).catch(() => [] as SignalAggRow[])
+}
+
+async function fetchSignalRowsForAttempts(organizationId: string, attemptIds: string[], interviewIds: string[]) {
+  if ((attemptIds.length === 0 && interviewIds.length === 0) || !(await tableExists("interview_signals"))) {
+    return [] as SignalAggRow[]
+  }
+
+  const columns = await getTableColumns("interview_signals")
+  const selectParts = [
+    columns.has("attempt_id") ? `attempt_id::text as attempt_id` : `null::text as attempt_id`,
+    columns.has("interview_id") ? `interview_id::text as interview_id` : `null::text as interview_id`,
+    buildAggregateExpr(columns, "multi_face_count", "sum(coalesce(multi_face_count, 0))::int", "0::int"),
+    buildAggregateExpr(columns, "tab_switch_count", "sum(coalesce(tab_switch_count, 0))::int", "0::int"),
+    buildAggregateExpr(columns, "attention_loss_count", "sum(coalesce(attention_loss_count, 0))::int", "0::int"),
+    buildAggregateExpr(columns, "long_gaze_away_count", "sum(coalesce(long_gaze_away_count, 0))::int", "0::int"),
+    buildAggregateExpr(columns, "no_face_count", "sum(coalesce(no_face_count, 0))::int", "0::int"),
+    buildAggregateExpr(columns, "focus_metrics_count", "sum(coalesce(focus_metrics_count, 0))::int", "0::int"),
+    columns.has("focus_ratio") ? `avg(coalesce(focus_ratio, 0))::numeric as avg_focus_ratio` : columns.has("avg_focus_ratio") ? `avg(coalesce(avg_focus_ratio, 0))::numeric as avg_focus_ratio` : `null::numeric as avg_focus_ratio`,
+    columns.has("look_away_duration") ? `max(coalesce(look_away_duration, 0))::numeric as max_look_away_duration` : columns.has("max_look_away_duration") ? `max(coalesce(max_look_away_duration, 0))::numeric as max_look_away_duration` : `null::numeric as max_look_away_duration`,
+    columns.has("look_away_events") ? `avg(coalesce(look_away_events, 0))::numeric as avg_look_away_events` : columns.has("avg_look_away_events") ? `avg(coalesce(avg_look_away_events, 0))::numeric as avg_look_away_events` : `null::numeric as avg_look_away_events`,
+  ]
+  const filters = []
+
+  if (columns.has("organization_id")) {
+    filters.push(`organization_id = $1::uuid`)
+  }
+  if (columns.has("attempt_id") && attemptIds.length > 0) {
+    filters.push(`attempt_id = any($2::uuid[])`)
+  }
+  if (columns.has("interview_id") && interviewIds.length > 0) {
+    filters.push(`interview_id = any($3::uuid[])`)
+  }
+
+  const orgFilter = columns.has("organization_id") ? filters.shift() : null
+  const idFilters = filters.length > 0 ? `(${filters.join(" or ")})` : ""
+  const whereClause = [orgFilter, idFilters].filter(Boolean).join(" and ")
+
+  if (!whereClause) {
+    return []
+  }
+
+  const query = `
+    select
+      ${selectParts.join(",\n      ")}
+    from public.interview_signals
+    where ${whereClause}
+    group by 1, 2
+  `
+
+  return prisma.$queryRawUnsafe<SignalAggRow[]>(query, organizationId, attemptIds, interviewIds).catch(() => [] as SignalAggRow[])
 }
 
 function buildRecordingMap(rows: RecordingRow[]) {
@@ -1533,14 +1633,145 @@ export async function getReportsOverview(organizationId: string) {
   return payload
 }
 
-export async function getVerisSummaryCards(organizationId: string, limit: number | null = 6) {
-  const rows = await getNormalizedReportRows(organizationId)
+async function getRecentVerisAttemptRows(organizationId: string, limit: number | null, offset: number) {
+  const safeLimit = limit === null ? 200 : Math.max(1, Math.min(Math.trunc(limit) || 6, 100))
+  const safeOffset = Math.max(0, Math.trunc(offset) || 0)
 
-  const cards = rows
-    .filter((row) => row.attemptId)
-    .sort((left, right) => new Date(right.endedAt ?? right.startedAt ?? 0).getTime() - new Date(left.endedAt ?? left.startedAt ?? 0).getTime())
+  return prisma.$queryRaw<RecentVerisAttemptRow[]>(Prisma.sql`
+    select
+      i.organization_id::text,
+      jp.job_id::text,
+      jp.job_title,
+      jp.core_skills,
+      c.candidate_id::text,
+      c.full_name as candidate_name,
+      i.interview_id::text,
+      i.status as interview_status,
+      ia.attempt_id::text,
+      ia.status as attempt_status,
+      ia.started_at::text,
+      ia.ended_at::text,
+      iev.final_score,
+      iev.decision
+    from public.interview_attempts ia
+    inner join public.interviews i on i.interview_id = ia.interview_id
+    inner join public.candidates c on c.candidate_id = i.candidate_id
+    inner join public.job_positions jp on jp.job_id = i.job_id
+    left join public.interview_evaluations iev on iev.attempt_id = ia.attempt_id
+    where i.organization_id = ${organizationId}::uuid
+    order by coalesce(ia.ended_at, ia.started_at, i.created_at) desc nulls last
+    limit ${safeLimit}
+    offset ${safeOffset}
+  `).catch(() => [] as RecentVerisAttemptRow[])
+}
+
+export async function getVerisSummaryCards(organizationId: string, limit: number | null = 6, offset = 0) {
+  const recentAttempts = await getRecentVerisAttemptRows(organizationId, limit, offset)
+  const attemptIds = recentAttempts.map((row) => row.attempt_id).filter(Boolean)
+  const interviewIds = recentAttempts.map((row) => row.interview_id).filter(Boolean)
+
+  if (attemptIds.length === 0) {
+    return []
+  }
+
+  const [skillProfiles, skillStates, summaries, signalRows, answerSummaryMap] = await Promise.all([
+    fetchSkillProfiles(attemptIds),
+    fetchSkillStates(attemptIds),
+    fetchInterviewSummariesForAttempts(attemptIds),
+    fetchSignalRowsForAttempts(organizationId, attemptIds, interviewIds),
+    fetchAnswerSummaries(attemptIds),
+  ])
+  const signalMap = buildSignalMap(signalRows)
+
+  return recentAttempts
+    .map((attempt): NormalizedReportRow => {
+      const skillProfile = skillProfiles.get(attempt.attempt_id)
+      const skillState = skillStates.get(attempt.attempt_id)
+      const summary = summaries.get(attempt.attempt_id)
+      const answerSummaries = answerSummaryMap.get(attempt.attempt_id) ?? []
+      const calculatedResult = deriveResultFromAnswerSummaries(answerSummaries)
+      const signal = signalMap.byAttempt.get(attempt.attempt_id) ?? signalMap.byInterview.get(attempt.interview_id)
+      const responseAverages = buildResponseMetricAverages(skillState)
+      const requiredSkills = normalizeStringArray(attempt.core_skills)
+      const skillScores = skillProfile?.skill_scores ?? {}
+      const weakSkills =
+        normalizeStringArray(skillProfile?.weaknesses).length > 0
+          ? normalizeStringArray(skillProfile?.weaknesses)
+          : Object.entries(skillScores)
+              .filter(([, item]) => toNumber(item?.average) !== null && Number(item.average) < 3.2)
+              .map(([skill]) => skill)
+      const missingSkills =
+        normalizeStringArray(skillState?.skills_remaining).length > 0
+          ? normalizeStringArray(skillState?.skills_remaining)
+          : requiredSkills.filter((skill) => !(skill in skillScores))
+      const avgSkillScore = toNumber(skillProfile?.overall_weighted_score)
+      const evaluationScore = toNumber(attempt.final_score)
+      const summaryOverallScore = toNumber(summary?.overall_score)
+      const overallScore = summaryOverallScore ?? evaluationScore ?? calculatedResult.score ?? (avgSkillScore !== null ? Number((avgSkillScore * 20).toFixed(1)) : null)
+      const hireRecommendation = normalizeRecommendation(summary?.hire_recommendation ?? attempt.decision ?? calculatedResult.decision)
+      const riskLevel = normalizeRiskLevel(summary?.risk_level) ?? (
+        (signal?.multi_face_count ?? 0) > 0 ||
+        (signal?.tab_switch_count ?? 0) >= 2 ||
+        (responseAverages.avg_fraud_score ?? 0) >= 0.6
+          ? "HIGH"
+          : "LOW"
+      )
+
+      return {
+        organizationId,
+        jobId: attempt.job_id,
+        jobTitle: attempt.job_title,
+        candidateId: attempt.candidate_id,
+        candidateName: attempt.candidate_name,
+        interviewId: attempt.interview_id,
+        attemptId: attempt.attempt_id,
+        inviteId: null,
+        inviteStatus: null,
+        interviewStatus: attempt.interview_status,
+        attemptStatus: attempt.attempt_status,
+        startedAt: attempt.started_at,
+        endedAt: attempt.ended_at,
+        inviteCreatedAt: null,
+        inviteExpiresAt: null,
+        latestRecordingUrl: null,
+        avg_confidence_score: responseAverages.avg_confidence_score,
+        avg_clarity_score: responseAverages.avg_clarity_score,
+        avg_depth_score: responseAverages.avg_depth_score,
+        avg_fraud_score: responseAverages.avg_fraud_score,
+        multi_face_count: signal?.multi_face_count ?? 0,
+        tab_switch_count: signal?.tab_switch_count ?? 0,
+        attention_loss_count: signal?.attention_loss_count ?? 0,
+        long_gaze_away_count: signal?.long_gaze_away_count ?? 0,
+        no_face_count: signal?.no_face_count ?? 0,
+        focus_metrics_count: signal?.focus_metrics_count ?? 0,
+        avg_focus_ratio: toNumber(signal?.avg_focus_ratio),
+        max_look_away_duration: toNumber(signal?.max_look_away_duration),
+        avg_look_away_events: toNumber(signal?.avg_look_away_events),
+        skills_tested_count: Object.keys(skillScores).length,
+        skills_low_score_count: weakSkills.length,
+        skills_missing_count: missingSkills.length,
+        avg_skill_score: avgSkillScore,
+        missingSkills,
+        weakSkills,
+        summaryStrengths: splitInsightText(summary?.strengths),
+        summaryWeaknesses: splitInsightText(summary?.weaknesses),
+        normalized_score: overallScore,
+        overall_score: overallScore,
+        hire_recommendation: hireRecommendation,
+        result_status: normalizeStatus(attempt.attempt_status) === "COMPLETED" || attempt.ended_at ? "COMPLETED" : normalizeStatus(attempt.attempt_status),
+        risk_level: riskLevel,
+        suspicious_index: deriveSuspiciousIndex({
+          avgFraudScore: responseAverages.avg_fraud_score,
+          multiFaceCount: signal?.multi_face_count ?? 0,
+          tabSwitchCount: signal?.tab_switch_count ?? 0,
+          attentionLossCount: signal?.attention_loss_count ?? 0,
+          longGazeAwayCount: signal?.long_gaze_away_count ?? 0,
+          noFaceCount: signal?.no_face_count ?? 0,
+          avgFocusRatio: toNumber(signal?.avg_focus_ratio),
+        }),
+        is_flagged: false,
+      }
+    })
     .map((row) => buildVerisSummaryCard(row))
     .filter((card): card is VerisSummaryCard => Boolean(card))
-
-  return limit === null ? cards : cards.slice(0, limit)
 }

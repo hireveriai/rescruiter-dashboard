@@ -8,6 +8,8 @@ import RouteLoadingShell from "@/components/system/skeletons/RouteLoadingShell"
 import { buildAuthUrl } from "@/lib/client/auth-query"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
+const PAGE_SIZE = 24
+
 function getRecommendationColor(value) {
   const normalized = String(value ?? "").toUpperCase()
 
@@ -53,19 +55,25 @@ export default function VerisInsightsPage() {
   const [summaries, setSummaries] = useState([])
   const [expandedIds, setExpandedIds] = useState(() => new Set())
   const [isLoading, setIsLoading] = useState(true)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
   const [error, setError] = useState("")
 
   useEffect(() => {
     let active = true
 
-    async function loadSummaries() {
+    async function loadSummaries(offset = 0) {
       try {
-        setIsLoading(true)
+        if (offset === 0) {
+          setIsLoading(true)
+        } else {
+          setIsLoadingMore(true)
+        }
         setError("")
 
-        const response = await fetch(buildAuthUrl("/api/dashboard/veris?limit=all", searchParams), {
+        const response = await fetch(buildAuthUrl(`/api/dashboard/veris?limit=${PAGE_SIZE + 1}&offset=${offset}`, searchParams), {
           credentials: "include",
-          cache: "no-store",
+          cache: "default",
         })
         const payload = await response.json()
 
@@ -74,7 +82,9 @@ export default function VerisInsightsPage() {
         }
 
         if (active) {
-          setSummaries(Array.isArray(payload.data) ? payload.data : [])
+          const nextSummaries = Array.isArray(payload.data) ? payload.data : []
+          setHasMore(nextSummaries.length > PAGE_SIZE)
+          setSummaries((current) => offset === 0 ? nextSummaries.slice(0, PAGE_SIZE) : [...current, ...nextSummaries.slice(0, PAGE_SIZE)])
         }
       } catch (loadError) {
         if (active) {
@@ -83,6 +93,7 @@ export default function VerisInsightsPage() {
       } finally {
         if (active) {
           setIsLoading(false)
+          setIsLoadingMore(false)
         }
       }
     }
@@ -93,6 +104,31 @@ export default function VerisInsightsPage() {
       active = false
     }
   }, [searchParams])
+
+  async function loadMoreSummaries() {
+    try {
+      setIsLoadingMore(true)
+      setError("")
+
+      const response = await fetch(buildAuthUrl(`/api/dashboard/veris?limit=${PAGE_SIZE + 1}&offset=${summaries.length}`, searchParams), {
+        credentials: "include",
+        cache: "default",
+      })
+      const payload = await response.json()
+
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.error?.message || payload?.message || "Unable to load more VERIS insights")
+      }
+
+      const nextSummaries = Array.isArray(payload.data) ? payload.data : []
+      setHasMore(nextSummaries.length > PAGE_SIZE)
+      setSummaries((current) => [...current, ...nextSummaries.slice(0, PAGE_SIZE)])
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Unable to load more VERIS insights")
+    } finally {
+      setIsLoadingMore(false)
+    }
+  }
 
   const counts = useMemo(() => {
     return summaries.reduce(
@@ -154,7 +190,7 @@ export default function VerisInsightsPage() {
           <>
             <div className="mb-5 grid gap-3 md:grid-cols-4">
               {[
-                ["Total Summaries", counts.total],
+                ["Loaded Summaries", counts.total],
                 ["Recommended", counts.recommended],
                 ["Review Queue", counts.review],
                 ["High Risk", counts.highRisk],
@@ -171,6 +207,7 @@ export default function VerisInsightsPage() {
                 No VERIS insights available yet.
               </div>
             ) : (
+              <>
               <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                 {summaries.map((item) => {
                   const isExpanded = expandedIds.has(item.attemptId)
@@ -226,6 +263,19 @@ export default function VerisInsightsPage() {
                   )
                 })}
               </div>
+              {hasMore ? (
+                <div className="mt-6 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={loadMoreSummaries}
+                    disabled={isLoadingMore}
+                    className="rounded-xl border border-cyan-400/25 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300/45 hover:bg-cyan-500/15 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isLoadingMore ? "Loading more insights..." : "Load more insights"}
+                  </button>
+                </div>
+              ) : null}
+              </>
             )}
           </>
         )}

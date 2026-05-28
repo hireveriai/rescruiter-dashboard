@@ -83,14 +83,14 @@ export default function RecordedInterviews({ initialRecordedInterviews, organiza
     setIsFetching(true)
 
     const fetchRecordings = () => {
-      fetch(buildAuthUrl("/api/dashboard/pipeline?includeRecordings=1", searchParams), {
+      fetch(buildAuthUrl("/api/dashboard/recordings?limit=6", searchParams), {
         credentials: "include",
-        cache: "no-store",
+        cache: "default",
       })
         .then((res) => res.json())
         .then((data) => {
           if (isMounted && data.success) {
-            setInterviews(data.data?.recordedInterviews ?? [])
+            setInterviews(data.data ?? [])
           }
         })
         .catch((error) => {
@@ -103,11 +103,8 @@ export default function RecordedInterviews({ initialRecordedInterviews, organiza
         })
     }
 
-    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
-      const idleId = window.requestIdleCallback(fetchRecordings, { timeout: 3000 })
-      cancelScheduled = () => window.cancelIdleCallback?.(idleId)
-    } else if (typeof window !== "undefined") {
-      const timeoutId = window.setTimeout(fetchRecordings, 1200)
+    if (typeof window !== "undefined") {
+      const timeoutId = window.setTimeout(fetchRecordings, 120)
       cancelScheduled = () => window.clearTimeout(timeoutId)
     } else {
       fetchRecordings()
