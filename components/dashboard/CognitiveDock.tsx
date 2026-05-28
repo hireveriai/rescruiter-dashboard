@@ -149,7 +149,7 @@ export default function CognitiveDock({
         initial={{ opacity: 0, x: -18, scale: 0.96 }}
         animate={{ opacity: 1, x: 0, scale: 1 }}
         transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
-        className="fixed bottom-4 left-1/2 z-30 -translate-x-1/2 md:bottom-auto md:left-4 md:top-1/2 md:-translate-x-0 md:-translate-y-1/2 lg:left-6"
+        className="fixed bottom-4 left-1/2 z-30 -translate-x-1/2 md:bottom-auto md:left-4 md:top-[calc(50%+64px)] md:-translate-x-0 md:-translate-y-1/2 lg:left-5 xl:left-6"
         aria-label="Cognitive Operations Dock"
       >
         <div className="relative overflow-hidden rounded-[28px] border border-cyan-500/10 bg-[#071226]/70 p-2 shadow-[0_24px_80px_rgba(2,6,23,0.55),0_0_42px_rgba(34,211,238,0.08)] backdrop-blur-xl">
