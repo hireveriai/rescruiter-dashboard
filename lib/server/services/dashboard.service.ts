@@ -15,6 +15,7 @@ type CandidatesDashboardOptions = {
   organizationId: string
   limit?: number | "all"
   finalizeStale?: boolean
+  includeAnswerSummaries?: boolean
 }
 
 type CandidatesDashboardItem = {
@@ -255,7 +256,9 @@ export async function getCandidatesDashboard(
   const attemptIds = rows
     .map((row) => row.attempt_id)
     .filter((attemptId): attemptId is string => Boolean(attemptId))
-  const answerSummaryMap = await fetchAnswerSummaries(attemptIds)
+  const answerSummaryMap = options.includeAnswerSummaries === false
+    ? new Map<string, InterviewAnswerSummary[]>()
+    : await fetchAnswerSummaries(attemptIds)
 
   return rows.map((row): CandidatesDashboardItem => {
     const hasInterview = Boolean(row.interview_id)

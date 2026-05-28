@@ -18,6 +18,7 @@ export async function GET(request: Request) {
     const data = await getCandidatesDashboard({
       organizationId: auth.organizationId,
       limit: parseLimit(searchParams.get("limit")),
+      includeAnswerSummaries: searchParams.get("includeAnswerSummaries") === "1",
     })
 
     return Response.json({

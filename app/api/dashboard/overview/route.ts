@@ -48,8 +48,27 @@ type CacheEntry = {
 
 const CACHE_TTL_MS = 15000
 const CACHE_MAX = 50
+const SLOW_DASHBOARD_ROUTE_MS = 1200
+const SLOW_DASHBOARD_STEP_MS = 750
 const overviewCache = new Map<string, CacheEntry>()
 const inFlight = new Map<string, Promise<OverviewPayload>>()
+
+async function timedStep<T>(name: string, operation: () => Promise<T>) {
+  const startedAt = Date.now()
+  const result = await operation()
+  const durationMs = Date.now() - startedAt
+
+  if (durationMs >= SLOW_DASHBOARD_STEP_MS) {
+    console.warn(JSON.stringify({
+      level: "warn",
+      msg: "slow_dashboard_step",
+      step: name,
+      durationMs,
+    }))
+  }
+
+  return { result, durationMs }
+}
 
 function emptyDashboardState() {
   return deriveDashboardState({
@@ -65,10 +84,12 @@ function emptyDashboardState() {
 async function buildFastOverview(
   auth: Awaited<ReturnType<typeof getRecruiterRequestContext>>
 ): Promise<OverviewPayload> {
-  const [profile, alerts] = await Promise.all([
-    getRecruiterProfile(auth),
-    getDashboardAlerts(auth.organizationId, 8, auth.userId).catch(() => []),
+  const [profileStep, alertsStep] = await Promise.all([
+    timedStep("profile", () => getRecruiterProfile(auth)),
+    timedStep("alerts", () => getDashboardAlerts(auth.organizationId, 8, auth.userId).catch(() => [])),
   ])
+  const profile = profileStep.result
+  const alerts = alertsStep.result
 
   return {
     partial: true,
@@ -86,24 +107,30 @@ async function buildFastOverview(
 async function buildOverview(
   auth: Awaited<ReturnType<typeof getRecruiterRequestContext>>
 ): Promise<OverviewPayload> {
-  const pipelinePromise = getDashboardPipelineData({
+  const pipelinePromise = timedStep("pipeline", () => getDashboardPipelineData({
     organizationId: auth.organizationId,
     limit: 5,
     finalizeStale: false,
     ensureRecoverySchema: false,
-  })
+  }))
 
-  const [profile, candidates, pipelineData, alerts] = await Promise.all([
-    getRecruiterProfile(auth),
-    getCandidatesDashboard({
+  const [profileStep, candidatesStep, pipelineStep, alertsStep] = await Promise.all([
+    timedStep("profile", () => getRecruiterProfile(auth)),
+    timedStep("candidates", () => getCandidatesDashboard({
       organizationId: auth.organizationId,
       limit: 5,
       finalizeStale: false,
-    }),
+      includeAnswerSummaries: false,
+    })),
     pipelinePromise,
-    getDashboardAlerts(auth.organizationId, 8, auth.userId),
+    timedStep("alerts", () => getDashboardAlerts(auth.organizationId, 8, auth.userId)),
   ])
-  const workflowSnapshot = await getDashboardWorkflowSnapshot(auth.organizationId, pipelineData)
+  const profile = profileStep.result
+  const candidates = candidatesStep.result
+  const pipelineData = pipelineStep.result
+  const alerts = alertsStep.result
+  const workflowStep = await timedStep("workflow", () => getDashboardWorkflowSnapshot(auth.organizationId, pipelineData))
+  const workflowSnapshot = workflowStep.result
 
   return {
     profile,
@@ -151,8 +178,12 @@ function setCachedOverview(cacheKey: string, value: OverviewPayload) {
 }
 
 export async function GET(request: Request) {
+  const routeStartedAt = Date.now()
+
   try {
+    const authStartedAt = Date.now()
     const auth = await getRecruiterRequestContext(request)
+    const authMs = Date.now() - authStartedAt
     const cacheKey = `overview:${auth.organizationId}:${auth.userId}`
     const { searchParams } = new URL(request.url)
     const forceRefresh = searchParams.has("refresh") || searchParams.get("cache") === "bust"
@@ -161,16 +192,22 @@ export async function GET(request: Request) {
     const cached = forceRefresh ? null : getCachedOverview(cacheKey)
     if (cached) {
       const response = NextResponse.json({ success: true, data: cached })
+      const durationMs = Date.now() - routeStartedAt
       response.headers.set("Cache-Control", "private, max-age=15, stale-while-revalidate=60")
       response.headers.set("X-HireVeri-Cache", "hit")
+      response.headers.set("Server-Timing", `auth;dur=${authMs}, total;dur=${durationMs}`)
       return response
     }
 
     if (!fullOverview && !forceRefresh) {
+      const dataStartedAt = Date.now()
       const overview = await buildFastOverview(auth)
+      const dataMs = Date.now() - dataStartedAt
+      const durationMs = Date.now() - routeStartedAt
       const response = NextResponse.json({ success: true, data: overview })
       response.headers.set("Cache-Control", "private, max-age=5, stale-while-revalidate=30")
       response.headers.set("X-HireVeri-Cache", "fast")
+      response.headers.set("Server-Timing", `auth;dur=${authMs}, data;dur=${dataMs}, total;dur=${durationMs}`)
       return response
     }
 
@@ -180,18 +217,40 @@ export async function GET(request: Request) {
       inFlight.set(cacheKey, overviewPromise)
     }
 
+    const dataStartedAt = Date.now()
     const overview = await overviewPromise.finally(() => {
       inFlight.delete(cacheKey)
     })
+    const dataMs = Date.now() - dataStartedAt
 
     setCachedOverview(cacheKey, overview)
 
     const response = NextResponse.json({ success: true, data: overview })
+    const durationMs = Date.now() - routeStartedAt
 
     response.headers.set("Cache-Control", forceRefresh ? "no-store" : "private, max-age=15, stale-while-revalidate=60")
     response.headers.set("X-HireVeri-Cache", forceRefresh ? "refresh" : "miss")
+    response.headers.set("Server-Timing", `auth;dur=${authMs}, data;dur=${dataMs}, total;dur=${durationMs}`)
+
+    if (durationMs >= SLOW_DASHBOARD_ROUTE_MS) {
+      console.warn(JSON.stringify({
+        level: "warn",
+        msg: "slow_dashboard_overview",
+        cache: forceRefresh ? "refresh" : "miss",
+        authMs,
+        dataMs,
+        durationMs,
+      }))
+    }
+
     return response
   } catch (error) {
+    console.error(JSON.stringify({
+      level: "error",
+      msg: "dashboard_overview_failed",
+      durationMs: Date.now() - routeStartedAt,
+      error: error instanceof Error ? error.message : String(error),
+    }))
     return errorResponse(error)
   }
 }

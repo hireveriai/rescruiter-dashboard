@@ -86,7 +86,6 @@ function getNormalizedDatabaseUrl() {
 }
 
 const normalizedDatabaseUrl = getNormalizedDatabaseUrl()
-
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
