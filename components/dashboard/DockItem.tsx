@@ -40,15 +40,15 @@ export default function DockItem({
   const content = (
     <motion.span
       className={[
-        "group relative flex h-11 w-11 items-center justify-center rounded-2xl border transition-colors duration-200 md:h-11 md:w-11 xl:h-12 xl:w-12",
+        "group relative flex h-10 w-10 items-center justify-center rounded-[18px] border transition-colors duration-200 md:h-10 md:w-10 xl:h-11 xl:w-11",
         active
-          ? "border-cyan-300/35 bg-cyan-400/15 text-cyan-100 shadow-[0_0_28px_rgba(34,211,238,0.18)]"
-          : "border-white/5 bg-white/[0.035] text-slate-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]",
+          ? "border-cyan-300/25 bg-cyan-400/14 text-cyan-100 shadow-[0_0_22px_rgba(34,211,238,0.16)]"
+          : "border-transparent bg-transparent text-slate-300",
         alert
-          ? "border-rose-300/25 bg-rose-500/10 text-rose-100 shadow-[0_0_28px_rgba(244,63,94,0.15)]"
-          : "hover:border-cyan-300/25 hover:bg-cyan-400/10 hover:text-white hover:shadow-[0_0_24px_rgba(34,211,238,0.14)]",
+          ? "border-rose-300/20 bg-rose-500/9 text-rose-100 shadow-[0_0_22px_rgba(244,63,94,0.14)]"
+          : "hover:border-cyan-300/18 hover:bg-cyan-400/9 hover:text-white hover:shadow-[0_0_18px_rgba(34,211,238,0.12)]",
       ].join(" ")}
-      whileHover={{ scale: 1.12, x: 6, y: -1 }}
+      whileHover={{ scale: 1.11, x: 5, y: -1 }}
       whileTap={{ scale: 0.96 }}
       transition={{ type: "spring", stiffness: 360, damping: 24 }}
     >
@@ -66,7 +66,7 @@ export default function DockItem({
         aria-hidden="true"
         strokeWidth={1.8}
         className={[
-          "h-5 w-5 transition duration-200 xl:h-[21px] xl:w-[21px]",
+          "h-[19px] w-[19px] transition duration-200 xl:h-5 xl:w-5",
           hovered ? "drop-shadow-[0_0_10px_rgba(103,232,249,0.42)]" : "",
         ].join(" ")}
       />
