@@ -13,6 +13,7 @@ import Sidebar from "../components/Sidebar";
 import VerisSummary from "../components/VerisSummary";
 import WarRoomButton from "../components/WarRoomButton";
 import RecruiterDashboardBootstrap from "../components/RecruiterDashboardBootstrap";
+import CognitiveDock from "../components/dashboard/CognitiveDock";
 import { CardSkeleton, MetricSkeleton, TableSkeleton, TimelineSkeleton } from "../components/system/skeletons";
 
 const SendInterviewModal = dynamic(() => import("../components/SendInterviewModal"), {
@@ -24,10 +25,23 @@ function DashboardContent({ profile, overview, isLoading }) {
   const isPartialOverview = Boolean(overview?.partial);
   const fullOverview = isPartialOverview ? null : overview;
   const displayProfile = profile ?? overview?.profile ?? null;
+  const activeInterviewCount = fullOverview?.pendingInterviewsTotal ?? fullOverview?.pendingInterviews?.length ?? 0;
+  const candidateCount = fullOverview?.candidates?.length ?? 0;
+  const fraudAlerts = (overview?.alerts ?? []).filter((alert) => {
+    const text = `${alert?.tone ?? ""} ${alert?.type ?? ""} ${alert?.title ?? ""} ${alert?.message ?? ""}`.toLowerCase();
+    return text.includes("danger") || text.includes("fraud") || text.includes("flag") || text.includes("suspicion") || text.includes("anomaly");
+  });
 
   return (
     <div className="hv-page-enter relative min-h-screen bg-[#0b1220] text-white">
       <Navbar onSendInterviewClick={() => setIsModalOpen(true)} initialProfile={displayProfile} initialAlerts={overview?.alerts} />
+      <CognitiveDock
+        activeInterviewCount={activeInterviewCount}
+        candidateCount={candidateCount}
+        flaggedCount={fraudAlerts.length}
+        alerts={fraudAlerts}
+        onSendInterviewClick={() => setIsModalOpen(true)}
+      />
 
       <div className="grid grid-cols-1 gap-6 p-4 sm:p-6 lg:p-8 xl:grid-cols-[minmax(0,1fr)_minmax(280px,320px)] 2xl:grid-cols-[minmax(0,1fr)_minmax(320px,360px)]">
         <div className="min-w-0">

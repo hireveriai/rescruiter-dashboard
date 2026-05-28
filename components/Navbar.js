@@ -442,7 +442,7 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
               </span>
             </Link>
 
-            <nav className="hidden min-w-0 flex-1 flex-nowrap items-center justify-start gap-0.5 overflow-hidden md:flex xl:gap-1">
+            <nav className="hidden min-w-0 flex-1 flex-nowrap items-center justify-start gap-0.5 overflow-visible md:flex xl:gap-1">
               {navItems.map((item) => {
                 const active = isActivePath(pathname, item.href);
 
@@ -562,7 +562,7 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
               </button>
 
               {profileOpen ? (
-                <div className="absolute right-0 top-[calc(100%+12px)] w-[260px] overflow-hidden rounded-2xl border border-slate-800 bg-[#10192c]/98 p-2 shadow-[0_20px_60px_rgba(2,6,23,0.45)]">
+                <div className="absolute right-0 top-[calc(100%+12px)] z-50 w-[260px] overflow-hidden rounded-2xl border border-slate-800 bg-[#10192c]/98 p-2 shadow-[0_20px_60px_rgba(2,6,23,0.45)]">
                   <div className="rounded-2xl border border-slate-800 bg-slate-950/35 px-4 py-3">
                     <div className="text-sm font-semibold text-white">{displayProfile?.name || "Recruiter"}</div>
                     <div className="mt-1 text-xs text-slate-400">{displayProfile?.organization || "Authenticated workspace"}</div>

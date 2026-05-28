@@ -580,17 +580,27 @@ export default function InterviewsPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1220px] text-sm">
+            <table className="w-full table-fixed text-sm">
+              <colgroup>
+                <col className="w-[11%]" />
+                <col className="w-[19%]" />
+                <col className="w-[13%]" />
+                <col className="w-[12%]" />
+                <col className="w-[7%]" />
+                <col className="w-[9%]" />
+                <col className="w-[18%]" />
+                <col className="w-[11%]" />
+              </colgroup>
               <thead className="bg-slate-950/20 text-slate-400">
                 <tr>
                   <th className="p-5 text-left font-medium">Candidate</th>
                   <th className="p-5 text-left font-medium">Job</th>
                   <th className="p-5 text-left font-medium">Status</th>
-                  <th className="p-5 text-left font-medium">Interview Type</th>
+                  <th className="px-4 py-5 text-left font-medium">Interview Type</th>
                   <th className="p-5 text-left font-medium">Score</th>
                   <th className="p-5 text-left font-medium">Decision</th>
                   <th className="p-5 text-left font-medium">Created</th>
-                  <th className="p-5 text-right font-medium">Action</th>
+                  <th className="p-5 text-center font-medium">Action</th>
                 </tr>
               </thead>
               {loading ? (
@@ -609,18 +619,18 @@ export default function InterviewsPage() {
                   filteredInterviews.map((interview) => (
                     <Fragment key={interview.interviewId}>
                     <tr className="border-t border-slate-800/80 text-slate-200">
-                      <td className="p-5 font-medium text-white">{interview.candidateName}</td>
-                      <td className="p-5 text-slate-300">{interview.jobTitle}</td>
+                      <td className="p-5 font-medium text-white"><span className="block truncate">{interview.candidateName}</span></td>
+                      <td className="p-5 text-slate-300"><span className="block truncate">{interview.jobTitle}</span></td>
                       <td className="p-5">
                         <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium tracking-[0.12em] ${getStatusBadge(interview.status)}`}>
                           {formatStatusText(interview.status)}
                         </span>
                       </td>
-                      <td className="p-5 text-slate-300">{getAccessLabel(interview)}</td>
+                      <td className="px-4 py-5 text-slate-300"><span className="block truncate">{getAccessLabel(interview)}</span></td>
                       <td className="p-5 text-slate-300">{formatScore(interview.score)}</td>
-                      <td className="p-5 text-slate-300">{interview.decision ?? "-"}</td>
-                      <td className="p-5 text-slate-400">{formatDateTime(interview.createdAt)}</td>
-                      <td className="p-5 text-right">
+                      <td className="p-5 text-slate-300"><span className="block truncate">{interview.decision ?? "-"}</span></td>
+                      <td className="p-5 text-slate-400"><span className="block truncate">{formatDateTime(interview.createdAt)}</span></td>
+                      <td className="p-4 text-center">
                         {isCompletedInterview(interview) ? (
                           <button
                             type="button"
@@ -640,7 +650,7 @@ export default function InterviewsPage() {
                             {actionBusyId === interview.interviewId ? "Retrying..." : "Retry Prep"}
                           </button>
                         ) : String(interview.status).toUpperCase() === "EMAIL_FAILED" ? (
-                          <div className="flex justify-end gap-2">
+                          <div className="flex flex-col items-stretch gap-2 2xl:flex-row 2xl:justify-center">
                             <button
                               type="button"
                               onClick={() => copyLink(interview)}
