@@ -40,6 +40,7 @@ function DashboardContent({ profile, overview, isLoading }) {
         candidateCount={candidateCount}
         flaggedCount={fraudAlerts.length}
         alerts={fraudAlerts}
+        overview={fullOverview}
         onSendInterviewClick={() => setIsModalOpen(true)}
       />
 

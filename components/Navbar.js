@@ -164,7 +164,7 @@ function formatAlertTime(value) {
   })
 }
 
-export default function Navbar({ onSendInterviewClick, initialProfile = null, initialAlerts = undefined }) {
+export default function Navbar({ onSendInterviewClick: _onSendInterviewClick, initialProfile = null, initialAlerts = undefined }) {
   const pathname = usePathname();
   const searchParams = useAuthSearchParams();
   const { startLoading } = useAmbientLoading();
@@ -535,17 +535,6 @@ export default function Navbar({ onSendInterviewClick, initialProfile = null, in
           </div>
 
           <div className="ml-1 flex shrink-0 flex-nowrap items-center gap-2">
-            <button onClick={() => setOpenCreateJob(true)} className="whitespace-nowrap rounded-lg border border-slate-700 bg-slate-900/80 px-2.5 py-1.5 text-xs font-medium text-slate-200 transition hover:border-slate-500 hover:bg-slate-800 hover:text-white xl:px-3 xl:py-2">
-              Create Job
-            </button>
-
-            <button
-              onClick={() => onSendInterviewClick?.()}
-              className="hidden whitespace-nowrap rounded-lg border border-blue-400/25 bg-transparent px-2.5 py-1.5 text-xs font-medium text-blue-300/90 transition hover:border-blue-300/60 hover:bg-blue-500/10 hover:text-white min-[380px]:inline-flex xl:px-3 xl:py-2"
-            >
-              Send Interview Link
-            </button>
-
             <div className="relative" ref={menuRef}>
               <button
                 type="button"

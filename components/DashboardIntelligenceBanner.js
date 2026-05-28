@@ -10,8 +10,8 @@ function ActionButton({ href, onClick, children, tone = "primary" }) {
   const searchParams = useAuthSearchParams();
   const className =
     tone === "secondary"
-      ? "inline-flex items-center justify-center rounded-xl border border-slate-700 bg-slate-950/45 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:border-slate-500 hover:bg-slate-900 hover:text-white"
-      : "inline-flex items-center justify-center rounded-xl border border-cyan-400/25 bg-cyan-400/12 px-4 py-2.5 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300/45 hover:bg-cyan-400/18 hover:text-white";
+      ? "inline-flex min-w-max items-center justify-center whitespace-nowrap rounded-xl border border-slate-700 bg-slate-950/45 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:border-slate-500 hover:bg-slate-900 hover:text-white"
+      : "inline-flex min-w-max items-center justify-center whitespace-nowrap rounded-xl border border-cyan-400/25 bg-cyan-400/12 px-4 py-2.5 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300/45 hover:bg-cyan-400/18 hover:text-white";
 
   if (onClick) {
     return (
@@ -62,7 +62,7 @@ export default function DashboardIntelligenceBanner({ overview, onCreateJob, onS
               Verify resumes against job requirements and surface skill alignment, early risk indicators, and shortlist guidance.
             </p>
           </div>
-          <div className="flex flex-wrap gap-3">
+          <div className="flex shrink-0 flex-wrap gap-3">
             <ActionButton href="/ai-screening">Start VERIS Screening</ActionButton>
             <ActionButton tone="secondary" onClick={onSendInterview}>Skip & Continue Interviews</ActionButton>
           </div>
@@ -81,7 +81,7 @@ export default function DashboardIntelligenceBanner({ overview, onCreateJob, onS
             Create a job and begin candidate evaluation.
           </p>
         </div>
-        <div className="flex flex-wrap gap-3">
+        <div className="flex shrink-0 flex-wrap gap-3">
           <ActionButton onClick={onCreateJob}>Create Job</ActionButton>
         </div>
       </div>
