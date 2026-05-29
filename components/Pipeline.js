@@ -11,18 +11,14 @@ const FALLBACK_PIPELINE = {
   inProgress: 0,
   completed: 0,
   flagged: 0,
+  reviewed: 0,
+  reviewRequired: 0,
 }
 
 export default function Pipeline({ initialPipeline, isLoading = false }) {
   const searchParams = useAuthSearchParams()
-  const [pipeline, setPipeline] = useState(initialPipeline ?? null)
-  const displayPipeline = pipeline ?? initialPipeline ?? FALLBACK_PIPELINE
-
-  useEffect(() => {
-    if (initialPipeline) {
-      setPipeline(initialPipeline)
-    }
-  }, [initialPipeline])
+  const [pipeline, setPipeline] = useState(null)
+  const displayPipeline = initialPipeline ?? pipeline ?? FALLBACK_PIPELINE
 
   useEffect(() => {
     if (initialPipeline) {
@@ -58,6 +54,8 @@ export default function Pipeline({ initialPipeline, isLoading = false }) {
     { title: "Invited", count: displayPipeline.pending, color: "bg-blue-500" },
     { title: "Started", count: displayPipeline.inProgress, color: "bg-indigo-500" },
     { title: "Completed", count: displayPipeline.completed, color: "bg-green-500" },
+    { title: "Reviewed", count: displayPipeline.reviewed, color: "bg-cyan-400" },
+    { title: "Review Required", count: displayPipeline.reviewRequired, color: "bg-amber-400" },
     { title: "Flagged", count: displayPipeline.flagged, color: "bg-red-500" },
   ]
 
@@ -68,9 +66,9 @@ export default function Pipeline({ initialPipeline, isLoading = false }) {
       </h2>
 
       {isLoading && !pipeline && !initialPipeline ? (
-        <MetricSkeleton className="grid-cols-2 lg:grid-cols-4" />
+        <MetricSkeleton className="grid-cols-2 lg:grid-cols-3" />
       ) : (
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
           {cards.map((item) => (
           <div
             key={item.title}

@@ -17,6 +17,8 @@ type OverviewPayload = {
     inProgress: number
     completed: number
     flagged: number
+    reviewed: number
+    reviewRequired: number
   }
   workflowMetrics: {
     jobs: number

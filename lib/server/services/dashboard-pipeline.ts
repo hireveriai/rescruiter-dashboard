@@ -3,6 +3,7 @@ import { prisma } from "@/lib/server/prisma"
 import { deriveInterviewStatus, isInviteUsable } from "@/lib/server/services/interview-status"
 import { ensureInterviewRecoverySchema } from "@/lib/server/services/interview-recovery"
 import { finalizeStaleInterviewAttempts } from "@/lib/server/services/interview-stale-finalizer"
+import { ensureRecruiterDecisionsTable } from "@/lib/server/services/recruiter-decisions"
 
 type DashboardPipelineOptions = {
   organizationId: string
@@ -42,6 +43,8 @@ type DashboardPipelineData = {
     inProgress: number
     completed: number
     flagged: number
+    reviewed: number
+    reviewRequired: number
   }
   pendingInterviews: DashboardPipelineItem[]
   pendingTotal: number
@@ -77,6 +80,7 @@ type PipelineRow = {
   interruption_reason: string | null
   completion_percentage: string | number | null
   timer_remaining_seconds: number | null
+  recruiter_decision_status: string | null
 }
 
 let recoverySchemaReady: Promise<void> | null = null
@@ -195,6 +199,7 @@ export async function getDashboardPipelineData(
   if (options.finalizeStale !== false) {
     await finalizeStaleInterviewAttempts(options.organizationId)
   }
+  await ensureRecruiterDecisionsTable()
   const appUrl = getInterviewAppUrl().replace(/\/$/, "")
   const take = options.limit === "all" || options.limit === undefined ? undefined : options.limit
 
@@ -228,7 +233,8 @@ export async function getDashboardPipelineData(
       ia.attempt_number as recovery_attempt_number,
       ia.interruption_reason,
       ia.completion_percentage,
-      ia.timer_remaining_seconds
+      ia.timer_remaining_seconds,
+      rd.status as recruiter_decision_status
     from public.interviews i
     left join public.candidates c on c.candidate_id = i.candidate_id
     left join public.job_positions jp on jp.job_id = i.job_id
@@ -246,6 +252,10 @@ export async function getDashboardPipelineData(
       order by latest.attempt_number desc, latest.started_at desc
       limit 1
     ) ia on true
+    left join public.candidate_recruiter_decisions rd
+      on rd.organization_id = i.organization_id
+      and rd.candidate_id = i.candidate_id
+      and rd.interview_id = i.interview_id
     where i.organization_id = ${options.organizationId}::uuid
     order by i.created_at desc
   `
@@ -255,6 +265,8 @@ export async function getDashboardPipelineData(
   let inProgress = 0
   let completed = 0
   let flagged = 0
+  let reviewed = 0
+  let reviewRequired = 0
 
   rows.forEach((row) => {
     const displayStatus = getDisplayStatus(row)
@@ -285,6 +297,11 @@ export async function getDashboardPipelineData(
 
     if (normalizedDisplayStatus === "COMPLETED") {
       completed += 1
+      if (row.recruiter_decision_status) {
+        reviewed += 1
+      } else {
+        reviewRequired += 1
+      }
       return
     }
 
@@ -307,6 +324,8 @@ export async function getDashboardPipelineData(
       inProgress,
       completed,
       flagged,
+      reviewed,
+      reviewRequired,
     },
     pendingInterviews,
     pendingTotal: pending,

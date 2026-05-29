@@ -155,17 +155,26 @@ export default function CandidateList({ initialCandidates, isLoading = false }) 
           </Link>
         </div>
 
-        <div className="overflow-x-auto rounded-lg bg-[#111a2e]">
-          <table className="w-full min-w-[1080px] text-sm">
+        <div className="overflow-hidden rounded-lg bg-[#111a2e]">
+          <table className="w-full table-fixed text-[13px] sm:text-sm">
+            <colgroup>
+              <col className="w-[16%]" />
+              <col className="w-[27%]" />
+              <col className="w-[13%]" />
+              <col className="w-[8%]" />
+              <col className="w-[12%]" />
+              <col className="w-[14%]" />
+              <col className="w-[10%]" />
+            </colgroup>
             <thead className="text-gray-400 border-b border-gray-700">
               <tr>
-                <th className="text-left p-4">Candidate</th>
-                <th className="text-left p-4">Job</th>
-                <th className="text-left p-4">Status</th>
-                <th className="text-left p-4">Score</th>
-                <th className="text-left p-4">VERIS Screening Score</th>
-                <th className="text-left p-4">VERIS Insight</th>
-                <th className="text-left p-4">Hiring Action</th>
+                <th className="px-3 py-4 text-left">Candidate</th>
+                <th className="px-3 py-4 text-left">Job</th>
+                <th className="px-3 py-4 text-left">Status</th>
+                <th className="px-3 py-4 text-left">Score</th>
+                <th className="px-3 py-4 text-left">VERIS Score</th>
+                <th className="px-3 py-4 text-left">Insight</th>
+                <th className="px-3 py-4 text-left">Action</th>
               </tr>
             </thead>
 
@@ -182,17 +191,18 @@ export default function CandidateList({ initialCandidates, isLoading = false }) 
               ) : (
                 previewCandidates.map((candidate, index) => (
                   <tr key={`${candidate.candidateName}-${index}`} className="border-b border-gray-800">
-                    <td className="p-4">{candidate.candidateName}</td>
-                    <td className="p-4 text-gray-300">{candidate.jobTitle}</td>
-                    <td className={`p-4 ${getStatusColor(candidate.status)}`}>{formatStatusLabel(candidate.status)}</td>
-                    <td className={`p-4 ${getScoreColor(candidate.score)}`}>{formatScore(candidate.score)}</td>
-                    <td className={`p-4 ${getScoreColor(candidate.verisScreeningScore)}`}>{formatScore(candidate.verisScreeningScore)}</td>
-                    <td className="p-4">
+                    <td className="px-3 py-4 font-medium text-white"><span className="block truncate">{candidate.candidateName}</span></td>
+                    <td className="px-3 py-4 text-gray-300"><span className="block truncate">{candidate.jobTitle}</span></td>
+                    <td className={`px-3 py-4 ${getStatusColor(candidate.status)}`}><span className="block truncate">{formatStatusLabel(candidate.status)}</span></td>
+                    <td className={`px-3 py-4 ${getScoreColor(candidate.score)}`}>{formatScore(candidate.score)}</td>
+                    <td className={`px-3 py-4 ${getScoreColor(candidate.verisScreeningScore)}`}>{formatScore(candidate.verisScreeningScore)}</td>
+                    <td className="px-3 py-4">
                       {candidate.aiSummaryFull ? (
                         <button
                           type="button"
-                          className="text-blue-400 text-left"
+                          className="block max-w-full truncate text-left text-blue-400"
                           onClick={() => setSelectedCandidate(candidate)}
+                          title={candidate.aiSummaryShort}
                         >
                           {candidate.aiSummaryShort}
                         </button>
@@ -200,7 +210,7 @@ export default function CandidateList({ initialCandidates, isLoading = false }) 
                         <span className="text-gray-400">-</span>
                       )}
                     </td>
-                    <td className="p-4 align-middle">
+                    <td className="px-3 py-4 align-middle">
                       {candidate.interviewId && isDecisionReady(candidate) ? (
                         candidate.recruiterDecisionStatus ? (
                           <DecisionPill status={candidate.recruiterDecisionStatus} />
@@ -208,7 +218,7 @@ export default function CandidateList({ initialCandidates, isLoading = false }) 
                           <button
                             type="button"
                             onClick={() => setReviewCandidate(candidate)}
-                            className="inline-flex h-10 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-400/10 px-4 text-sm font-semibold text-cyan-100 transition hover:border-cyan-200/45 hover:bg-cyan-400/15 hover:text-white"
+                            className="inline-flex h-9 max-w-full items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-400/10 px-3 text-xs font-semibold text-cyan-100 transition hover:border-cyan-200/45 hover:bg-cyan-400/15 hover:text-white"
                             aria-label={`Take hiring action for ${candidate.candidateName}`}
                           >
                             Take Action

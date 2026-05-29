@@ -12,6 +12,8 @@ export type DashboardWorkflowSnapshot = {
     inProgress: number
     completed: number
     flagged: number
+    reviewed: number
+    reviewRequired: number
   }
   workflowMetrics: {
     jobs: number
@@ -36,6 +38,8 @@ type DashboardPipelineSnapshot = {
     inProgress: number
     completed: number
     flagged: number
+    reviewed?: number
+    reviewRequired?: number
   }
 }
 
@@ -218,7 +222,7 @@ export async function getDashboardWorkflowSnapshot(
     veris_screening_count: screeningMetrics.screeningRuns,
     interview_links_count: invites,
     interviews_count: pipelineData.pipeline.completed + pipelineData.pipeline.inProgress,
-    pending_reviews_count: interviewMetrics.pendingReports + interviewMetrics.decisionsPending,
+    pending_reviews_count: interviewMetrics.decisionsPending,
   })
 
   return {
@@ -227,6 +231,8 @@ export async function getDashboardWorkflowSnapshot(
       inProgress: pipelineData.pipeline.inProgress,
       completed: pipelineData.pipeline.completed,
       flagged: pipelineData.pipeline.flagged,
+      reviewed: pipelineData.pipeline.reviewed ?? 0,
+      reviewRequired: pipelineData.pipeline.reviewRequired ?? 0,
     },
     workflowMetrics,
     dashboardState,

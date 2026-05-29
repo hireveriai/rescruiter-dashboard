@@ -14,7 +14,7 @@ const CognitiveDock = dynamic(() => import("../components/dashboard/CognitiveDoc
 
 const Pipeline = dynamic(() => import("../components/Pipeline"), {
   ssr: false,
-  loading: () => <MetricSkeleton className="mt-8 grid-cols-2 lg:grid-cols-4" />,
+  loading: () => <MetricSkeleton className="mt-8 grid-cols-2 lg:grid-cols-3" />,
 });
 
 const PendingInterviews = dynamic(() => import("../components/PendingInterviews"), {

@@ -45,11 +45,6 @@ export function deriveDashboardState(input: DashboardStateMetricsInput): Dashboa
     return snapshot
   }
 
-  if (snapshot.veris_screening_count === 0) {
-    snapshot.heroState = "VERIS_OPTIONAL"
-    return snapshot
-  }
-
-  snapshot.heroState = "WORKFLOW_ACTIVE"
+  snapshot.heroState = "VERIS_OPTIONAL"
   return snapshot
 }
