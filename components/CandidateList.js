@@ -159,30 +159,28 @@ export default function CandidateList({ initialCandidates, isLoading = false }) 
           <table className="w-full table-fixed text-[13px] sm:text-sm">
             <colgroup>
               <col className="w-[16%]" />
-              <col className="w-[29%]" />
-              <col className="w-[14%]" />
-              <col className="w-[8%]" />
-              <col className="w-[12%]" />
-              <col className="w-[21%]" />
+              <col className="w-[32%]" />
+              <col className="w-[15%]" />
+              <col className="w-[13%]" />
+              <col className="w-[24%]" />
             </colgroup>
             <thead className="text-gray-400 border-b border-gray-700">
               <tr>
                 <th className="px-4 py-4 text-left align-middle">Candidate</th>
                 <th className="px-4 py-4 text-left align-middle">Job</th>
                 <th className="px-4 py-4 text-left align-middle">Status</th>
-                <th className="px-3 py-4 text-left align-middle">Score</th>
-                <th className="px-3 py-4 text-left align-middle">VERIS Score</th>
+                <th className="whitespace-nowrap px-4 py-4 text-left align-middle">VERIS Score</th>
                 <th className="px-4 py-4 text-left align-middle">Action</th>
               </tr>
             </thead>
 
             {isLoading ? (
-              <TableSkeleton rows={5} columns={6} showAvatar />
+              <TableSkeleton rows={5} columns={5} showAvatar />
             ) : (
               <tbody>
                 {displayCandidates.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-4 text-gray-400 text-center">
+                  <td colSpan={5} className="p-4 text-gray-400 text-center">
                     No candidates available
                   </td>
                 </tr>
@@ -204,8 +202,9 @@ export default function CandidateList({ initialCandidates, isLoading = false }) 
                     </td>
                     <td className="px-4 py-4 align-middle text-gray-300"><span className="block truncate">{candidate.jobTitle}</span></td>
                     <td className={`px-4 py-4 align-middle ${getStatusColor(candidate.status)}`}><span className="block truncate">{formatStatusLabel(candidate.status)}</span></td>
-                    <td className={`px-3 py-4 align-middle ${getScoreColor(candidate.score)}`}>{formatScore(candidate.score)}</td>
-                    <td className={`px-3 py-4 align-middle ${getScoreColor(candidate.verisScreeningScore)}`}>{formatScore(candidate.verisScreeningScore)}</td>
+                    <td className={`px-4 py-4 align-middle ${getScoreColor(candidate.score ?? candidate.verisScreeningScore)}`}>
+                      {formatScore(candidate.score ?? candidate.verisScreeningScore)}
+                    </td>
                     <td className="px-4 py-4 align-middle">
                       {candidate.interviewId && isDecisionReady(candidate) ? (
                         candidate.recruiterDecisionStatus ? (
