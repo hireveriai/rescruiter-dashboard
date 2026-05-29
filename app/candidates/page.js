@@ -10,6 +10,8 @@ import { readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/sessio
 
 import Navbar from "../../components/Navbar"
 import SendInterviewModal from "../../components/SendInterviewModal"
+import { CandidateActionModal } from "../../components/dashboard/CandidateActionModal"
+import { DecisionPill } from "../../components/dashboard/DecisionPill"
 import { MetricSkeleton, TableSkeleton } from "../../components/system/skeletons"
 
 function getStatusBadge(status) {
@@ -169,6 +171,36 @@ function isCompletedCandidate(candidate) {
   return String(candidate?.status ?? "").toUpperCase() === "COMPLETED"
 }
 
+function isDecisionReady(candidate) {
+  const status = String(candidate?.status ?? "").toUpperCase()
+  return Boolean(
+    candidate?.endedAt ||
+    (candidate?.score !== null && candidate?.score !== undefined) ||
+    candidate?.decision ||
+    ["COMPLETED", "SUBMITTED", "EVALUATED"].includes(status)
+  )
+}
+
+function getHiringActionValue(candidate) {
+  if (candidate?.recruiterDecisionStatus) {
+    return candidate.recruiterDecisionStatus
+  }
+
+  return isDecisionReady(candidate) ? "PENDING_REVIEW" : "AFTER_COMPLETION"
+}
+
+function formatHiringActionText(value) {
+  if (value === "PENDING_REVIEW") {
+    return "Pending Review"
+  }
+
+  if (value === "AFTER_COMPLETION") {
+    return "After Completion"
+  }
+
+  return formatStatusText(value)
+}
+
 function CompletedCandidateDetails({ candidate, onClose }) {
   if (!candidate) {
     return null
@@ -314,6 +346,7 @@ export default function CandidatesPage() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
   const [expandedCandidateId, setExpandedCandidateId] = useState("")
+  const [reviewCandidate, setReviewCandidate] = useState(null)
   const [openSendInterview, setOpenSendInterview] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("ALL")
@@ -384,7 +417,7 @@ export default function CandidatesPage() {
     return {
       statuses: uniqueSorted(candidates.map((candidate) => candidate.status)),
       jobs: uniqueSorted(candidates.map((candidate) => candidate.jobTitle)),
-      decisions: uniqueSorted(candidates.map((candidate) => candidate.decision)),
+      decisions: uniqueSorted(candidates.map(getHiringActionValue)),
     }
   }, [candidates])
 
@@ -394,13 +427,15 @@ export default function CandidatesPage() {
     return candidates.filter((candidate) => {
       const status = String(candidate.status ?? "").toUpperCase()
       const jobTitle = String(candidate.jobTitle ?? "")
-      const decision = String(candidate.decision ?? "")
+      const hiringAction = getHiringActionValue(candidate)
       const scoreBand = getScoreBand(candidate.score)
       const searchable = [
         candidate.candidateName,
         candidate.jobTitle,
         candidate.status,
         candidate.decision,
+        formatHiringActionText(hiringAction),
+        candidate.recruiterDecisionStatus,
         candidate.aiSummaryShort,
         candidate.aiSummaryFull,
       ]
@@ -410,7 +445,7 @@ export default function CandidatesPage() {
       const matchesSearch = !query || searchable.includes(query)
       const matchesStatus = statusFilter === "ALL" || status === statusFilter
       const matchesJob = jobFilter === "ALL" || jobTitle === jobFilter
-      const matchesDecision = decisionFilter === "ALL" || decision === decisionFilter
+      const matchesDecision = decisionFilter === "ALL" || hiringAction === decisionFilter
       const matchesScore = scoreFilter === "ALL" || scoreBand === scoreFilter
 
       return matchesSearch && matchesStatus && matchesJob && matchesDecision && matchesScore
@@ -426,6 +461,24 @@ export default function CandidatesPage() {
     setJobFilter("ALL")
     setDecisionFilter("ALL")
     setScoreFilter("ALL")
+  }
+
+  function handleDecisionSaved(candidate, decision) {
+    const key = candidate.interviewId || candidate.candidateId
+    const nextRows = candidates.map((item) => {
+      const itemKey = item.interviewId || item.candidateId
+      return itemKey === key
+        ? {
+            ...item,
+            recruiterDecisionStatus: decision.status,
+            recruiterDecisionAt: decision.decidedAt,
+            recruiterDecisionNotes: decision.notes ?? item.recruiterDecisionNotes ?? null,
+          }
+        : item
+    })
+
+    setCandidates(nextRows)
+    writeSessionJsonCache(`candidates:${searchParams.toString()}`, nextRows)
   }
 
   return (
@@ -485,7 +538,7 @@ export default function CandidatesPage() {
                 <input
                   value={searchTerm}
                   onChange={(event) => setSearchTerm(event.target.value)}
-                  placeholder="Search candidate, job, decision"
+                  placeholder="Search candidate, job, hiring action"
                   className="h-11 min-w-0 rounded-xl border border-slate-700 bg-slate-950/70 px-3 text-sm font-medium normal-case tracking-normal text-slate-200 outline-none transition placeholder:text-slate-600 focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/10"
                 />
               </label>
@@ -502,17 +555,17 @@ export default function CandidatesPage() {
                 options={[{ value: "ALL", label: "All Jobs" }, ...filterOptions.jobs.map((value) => ({ value, label: value }))]}
               />
               <FilterSelect
-                label="Decision"
+                label="Hiring Action"
                 value={decisionFilter}
                 onChange={setDecisionFilter}
-                options={[{ value: "ALL", label: "All Decisions" }, ...filterOptions.decisions.map((value) => ({ value, label: value }))]}
+                options={[{ value: "ALL", label: "All Actions" }, ...filterOptions.decisions.map((value) => ({ value, label: formatHiringActionText(value) }))]}
               />
               <FilterSelect
-                label="Score"
+                label="VERIS Score"
                 value={scoreFilter}
                 onChange={setScoreFilter}
                 options={[
-                  { value: "ALL", label: "All Scores" },
+                  { value: "ALL", label: "All VERIS Scores" },
                   { value: "HIGH", label: "80%+" },
                   { value: "MEDIUM", label: "60-79%" },
                   { value: "LOW", label: "Below 60%" },
@@ -529,39 +582,44 @@ export default function CandidatesPage() {
               </button>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[1120px] text-sm">
+            <div className="overflow-hidden">
+              <table className="w-full table-fixed text-sm">
+                <colgroup>
+                  <col className="w-[18%]" />
+                  <col className="w-[30%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[14%]" />
+                  <col className="w-[23%]" />
+                </colgroup>
                 <thead className="bg-slate-950/20 text-slate-400">
                   <tr>
                     <th className="p-5 text-left font-medium">Candidate</th>
                     <th className="p-5 text-left font-medium">Job</th>
                     <th className="p-5 text-left font-medium">Status</th>
-                    <th className="p-5 text-left font-medium">Score</th>
-                    <th className="p-5 text-left font-medium">Decision</th>
-                    <th className="p-5 text-left font-medium">VERIS Insight</th>
-                    <th className="p-5 text-right font-medium">Action</th>
+                    <th className="whitespace-nowrap p-5 text-left font-medium">VERIS Score</th>
+                    <th className="p-5 text-left font-medium">Hiring Action</th>
                   </tr>
                 </thead>
 
                 {loading ? (
-                  <TableSkeleton rows={8} columns={7} showAvatar showStatusChip />
+                  <TableSkeleton rows={8} columns={5} showAvatar showStatusChip />
                 ) : (
                   <tbody>
                     {loadError ? (
                     <tr>
-                      <td colSpan={7} className="p-10 text-center text-amber-200">
+                      <td colSpan={5} className="p-10 text-center text-amber-200">
                         {loadError}
                       </td>
                     </tr>
                   ) : candidates.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="p-10 text-center text-slate-400">
+                      <td colSpan={5} className="p-10 text-center text-slate-400">
                         No candidates available
                       </td>
                     </tr>
                   ) : filteredCandidates.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="p-10 text-center text-slate-400">
+                      <td colSpan={5} className="p-10 text-center text-slate-400">
                         No candidates match the current filters
                       </td>
                     </tr>
@@ -572,42 +630,62 @@ export default function CandidatesPage() {
                       return (
                       <Fragment key={rowKey}>
                       <tr className="border-t border-slate-800/80 align-top">
-                        <td className="p-5 font-medium text-white">{candidate.candidateName}</td>
-                        <td className="p-5 text-slate-300">{candidate.jobTitle}</td>
+                        <td className="p-5 font-medium text-white">
+                          <span className="block truncate">{candidate.candidateName}</span>
+                          {candidate.aiSummaryFull && isCompletedCandidate(candidate) ? (
+                            <button
+                              type="button"
+                              onClick={() => setExpandedCandidateId((current) => current === rowKey ? "" : rowKey)}
+                              className="mt-2 inline-flex text-xs font-semibold text-cyan-300/85 transition hover:text-cyan-100"
+                              aria-label={`View VERIS insight for ${candidate.candidateName}`}
+                            >
+                              {expandedCandidateId === rowKey ? "Hide insight" : "View insight"}
+                            </button>
+                          ) : null}
+                        </td>
+                        <td className="p-5 text-slate-300"><span className="block truncate">{candidate.jobTitle || "-"}</span></td>
                         <td className="p-5">
                           <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium tracking-[0.12em] ${getStatusBadge(candidate.status)}`}>
                             {formatStatusText(candidate.status)}
                           </span>
                         </td>
-                        <td className={`p-5 font-medium ${getScoreColor(candidate.score)}`}>{formatScore(candidate.score)}</td>
-                        <td className="p-5 text-slate-300">{candidate.decision ?? "-"}</td>
+                        <td className={`p-5 font-medium ${getScoreColor(candidate.score ?? candidate.verisScreeningScore)}`}>{formatScore(candidate.score ?? candidate.verisScreeningScore)}</td>
                         <td className="p-5">
-                          {candidate.aiSummaryFull && isCompletedCandidate(candidate) ? (
-                            <span className="block max-w-[360px] leading-6 text-slate-300">
-                              {candidate.aiSummaryShort}
-                            </span>
-                          ) : (
-                            <span className="text-slate-500">-</span>
-                          )}
-                        </td>
-                        <td className="p-5 text-right">
-                          {isCompletedCandidate(candidate) ? (
-                            <button
-                              type="button"
-                              onClick={() => setExpandedCandidateId((current) => current === rowKey ? "" : rowKey)}
-                              className="inline-flex items-center justify-center rounded-xl border border-emerald-400/25 bg-emerald-400/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:border-emerald-300/50 hover:bg-emerald-400/15 hover:text-white"
-                              aria-label={`View completed summary for ${candidate.candidateName}`}
-                            >
-                              {expandedCandidateId === rowKey ? "Hide" : "View"}
-                            </button>
-                          ) : (
-                            <span className="text-slate-600">-</span>
-                          )}
+                          <div className="flex flex-wrap items-center gap-2">
+                            {isDecisionReady(candidate) ? (
+                              candidate.recruiterDecisionStatus ? (
+                                <DecisionPill status={candidate.recruiterDecisionStatus} />
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setReviewCandidate(candidate)}
+                                  className="inline-flex h-10 items-center justify-center whitespace-nowrap rounded-xl border border-cyan-300/20 bg-cyan-400/10 px-4 text-sm font-semibold text-cyan-100 transition hover:border-cyan-200/45 hover:bg-cyan-400/15 hover:text-white"
+                                  aria-label={`Take hiring action for ${candidate.candidateName}`}
+                                >
+                                  Take Action
+                                </button>
+                              )
+                            ) : (
+                              <span className="inline-flex max-w-full rounded-full border border-slate-600/70 bg-slate-950/30 px-3 py-1 text-xs font-medium leading-5 text-slate-400">
+                                After completion
+                              </span>
+                            )}
+                            {isCompletedCandidate(candidate) ? (
+                              <button
+                                type="button"
+                                onClick={() => setExpandedCandidateId((current) => current === rowKey ? "" : rowKey)}
+                                className="inline-flex h-10 items-center justify-center whitespace-nowrap rounded-xl border border-emerald-400/25 bg-emerald-400/10 px-3 text-sm font-semibold text-emerald-100 transition hover:border-emerald-300/50 hover:bg-emerald-400/15 hover:text-white"
+                                aria-label={`View completed summary for ${candidate.candidateName}`}
+                              >
+                                {expandedCandidateId === rowKey ? "Hide" : "View"}
+                              </button>
+                            ) : null}
+                          </div>
                         </td>
                       </tr>
                       {expandedCandidateId === rowKey ? (
                         <tr className="border-t border-emerald-400/10">
-                          <td colSpan={7} className="bg-slate-950/30 p-5">
+                          <td colSpan={5} className="bg-slate-950/30 p-5">
                             <CompletedCandidateDetails candidate={candidate} onClose={() => setExpandedCandidateId("")} />
                           </td>
                         </tr>
@@ -623,6 +701,17 @@ export default function CandidatesPage() {
           </section>
         </main>
       </div>
+      <CandidateActionModal
+        isOpen={Boolean(reviewCandidate)}
+        candidate={reviewCandidate}
+        searchParams={searchParams}
+        onClose={() => setReviewCandidate(null)}
+        onDecisionSaved={(decision) => {
+          if (reviewCandidate) {
+            handleDecisionSaved(reviewCandidate, decision)
+          }
+        }}
+      />
       <SendInterviewModal isOpen={openSendInterview} onClose={() => setOpenSendInterview(false)} />
     </>
   )
