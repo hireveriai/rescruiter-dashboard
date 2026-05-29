@@ -159,58 +159,54 @@ export default function CandidateList({ initialCandidates, isLoading = false }) 
           <table className="w-full table-fixed text-[13px] sm:text-sm">
             <colgroup>
               <col className="w-[16%]" />
-              <col className="w-[27%]" />
-              <col className="w-[13%]" />
+              <col className="w-[29%]" />
+              <col className="w-[14%]" />
               <col className="w-[8%]" />
               <col className="w-[12%]" />
-              <col className="w-[14%]" />
-              <col className="w-[10%]" />
+              <col className="w-[21%]" />
             </colgroup>
             <thead className="text-gray-400 border-b border-gray-700">
               <tr>
-                <th className="px-3 py-4 text-left">Candidate</th>
-                <th className="px-3 py-4 text-left">Job</th>
-                <th className="px-3 py-4 text-left">Status</th>
-                <th className="px-3 py-4 text-left">Score</th>
-                <th className="px-3 py-4 text-left">VERIS Score</th>
-                <th className="px-3 py-4 text-left">Insight</th>
-                <th className="px-3 py-4 text-left">Action</th>
+                <th className="px-4 py-4 text-left align-middle">Candidate</th>
+                <th className="px-4 py-4 text-left align-middle">Job</th>
+                <th className="px-4 py-4 text-left align-middle">Status</th>
+                <th className="px-3 py-4 text-left align-middle">Score</th>
+                <th className="px-3 py-4 text-left align-middle">VERIS Score</th>
+                <th className="px-4 py-4 text-left align-middle">Action</th>
               </tr>
             </thead>
 
             {isLoading ? (
-              <TableSkeleton rows={5} columns={7} showAvatar />
+              <TableSkeleton rows={5} columns={6} showAvatar />
             ) : (
               <tbody>
                 {displayCandidates.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-4 text-gray-400 text-center">
+                  <td colSpan={6} className="p-4 text-gray-400 text-center">
                     No candidates available
                   </td>
                 </tr>
               ) : (
                 previewCandidates.map((candidate, index) => (
                   <tr key={`${candidate.candidateName}-${index}`} className="border-b border-gray-800">
-                    <td className="px-3 py-4 font-medium text-white"><span className="block truncate">{candidate.candidateName}</span></td>
-                    <td className="px-3 py-4 text-gray-300"><span className="block truncate">{candidate.jobTitle}</span></td>
-                    <td className={`px-3 py-4 ${getStatusColor(candidate.status)}`}><span className="block truncate">{formatStatusLabel(candidate.status)}</span></td>
-                    <td className={`px-3 py-4 ${getScoreColor(candidate.score)}`}>{formatScore(candidate.score)}</td>
-                    <td className={`px-3 py-4 ${getScoreColor(candidate.verisScreeningScore)}`}>{formatScore(candidate.verisScreeningScore)}</td>
-                    <td className="px-3 py-4">
+                    <td className="px-4 py-4 align-middle">
+                      <span className="block truncate font-semibold text-white">{candidate.candidateName}</span>
                       {candidate.aiSummaryFull ? (
                         <button
                           type="button"
-                          className="block max-w-full truncate text-left text-blue-400"
+                          className="mt-1 block max-w-full truncate text-left text-xs font-medium text-cyan-300/80 transition hover:text-cyan-100"
                           onClick={() => setSelectedCandidate(candidate)}
                           title={candidate.aiSummaryShort}
                         >
-                          {candidate.aiSummaryShort}
+                          View VERIS insight
                         </button>
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
+                      ) : null}
                     </td>
-                    <td className="px-3 py-4 align-middle">
+                    <td className="px-4 py-4 align-middle text-gray-300"><span className="block truncate">{candidate.jobTitle}</span></td>
+                    <td className={`px-4 py-4 align-middle ${getStatusColor(candidate.status)}`}><span className="block truncate">{formatStatusLabel(candidate.status)}</span></td>
+                    <td className={`px-3 py-4 align-middle ${getScoreColor(candidate.score)}`}>{formatScore(candidate.score)}</td>
+                    <td className={`px-3 py-4 align-middle ${getScoreColor(candidate.verisScreeningScore)}`}>{formatScore(candidate.verisScreeningScore)}</td>
+                    <td className="px-4 py-4 align-middle">
                       {candidate.interviewId && isDecisionReady(candidate) ? (
                         candidate.recruiterDecisionStatus ? (
                           <DecisionPill status={candidate.recruiterDecisionStatus} />
@@ -218,14 +214,16 @@ export default function CandidateList({ initialCandidates, isLoading = false }) 
                           <button
                             type="button"
                             onClick={() => setReviewCandidate(candidate)}
-                            className="inline-flex h-9 max-w-full items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-400/10 px-3 text-xs font-semibold text-cyan-100 transition hover:border-cyan-200/45 hover:bg-cyan-400/15 hover:text-white"
+                            className="inline-flex h-9 items-center justify-center whitespace-nowrap rounded-xl border border-cyan-300/20 bg-cyan-400/10 px-3.5 text-xs font-semibold text-cyan-100 transition hover:border-cyan-200/45 hover:bg-cyan-400/15 hover:text-white"
                             aria-label={`Take hiring action for ${candidate.candidateName}`}
                           >
                             Take Action
                           </button>
                         )
                       ) : (
-                        <span className="text-slate-500">After completion</span>
+                        <span className="inline-flex max-w-full rounded-full border border-slate-600/70 bg-slate-950/30 px-3 py-1 text-xs font-medium leading-5 text-slate-400">
+                          After completion
+                        </span>
                       )}
                     </td>
                   </tr>
