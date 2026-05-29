@@ -33,6 +33,7 @@ type CandidatesDashboardItem = {
   decision: string | null
   recruiterDecisionStatus: string | null
   recruiterDecisionAt: Date | string | null
+  recruiterDecisionNotes: string | null
   accessType: string
   startTime: Date | null
   endTime: Date | null
@@ -75,6 +76,7 @@ type CandidateDashboardRow = {
   ai_summary: string | null
   recruiter_decision_status: string | null
   recruiter_decision_at: Date | string | null
+  recruiter_decision_notes: string | null
 }
 
 function getShortSummary(text: string | null): string {
@@ -212,7 +214,8 @@ export async function getCandidatesDashboard(
       ev.decision,
       ev.ai_summary,
       rd.status as recruiter_decision_status,
-      rd.decided_at as recruiter_decision_at
+      rd.decided_at as recruiter_decision_at,
+      rd.notes as recruiter_decision_notes
     from public.candidates c
     left join lateral (
       select *
@@ -303,6 +306,7 @@ export async function getCandidatesDashboard(
       decision: row.decision ?? calculatedResult.decision,
       recruiterDecisionStatus: row.recruiter_decision_status,
       recruiterDecisionAt: row.recruiter_decision_at,
+      recruiterDecisionNotes: row.recruiter_decision_notes,
       accessType: row.invite_access_type ?? "FLEXIBLE",
       startTime: row.invite_start_time ?? null,
       endTime: row.invite_end_time ?? null,

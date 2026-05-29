@@ -13,6 +13,7 @@ const decisionSchema = z.object({
   interviewId: z.string().uuid().nullable().optional(),
   attemptId: z.string().uuid().nullable().optional(),
   status: z.string().trim().min(1),
+  notes: z.string().trim().max(4000).nullable().optional(),
 })
 
 export async function POST(request: Request) {
@@ -36,6 +37,7 @@ export async function POST(request: Request) {
       interviewId: input.interviewId ?? null,
       attemptId: input.attemptId ?? null,
       status,
+      notes: input.notes ?? null,
     })
 
     if (!decision) {

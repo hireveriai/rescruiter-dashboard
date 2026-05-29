@@ -10,8 +10,9 @@ import { formatDateTime } from "@/lib/client/date-format"
 import { readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache"
 
 import Navbar from "../../components/Navbar"
-import RecruiterDecisionControls from "../../components/RecruiterDecisionControls"
 import SendInterviewModal from "../../components/SendInterviewModal"
+import { CandidateActionModal } from "../../components/dashboard/CandidateActionModal"
+import { DecisionPill } from "../../components/dashboard/DecisionPill"
 import { MetricSkeleton, TableSkeleton, TimelineSkeleton } from "../../components/system/skeletons"
 
 function getStatusBadge(status) {
@@ -295,6 +296,7 @@ export default function InterviewsPage() {
   const [openSendInterview, setOpenSendInterview] = useState(false)
   const [actionBusyId, setActionBusyId] = useState("")
   const [copiedInterviewId, setCopiedInterviewId] = useState("")
+  const [reviewInterview, setReviewInterview] = useState(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("ALL")
   const [jobFilter, setJobFilter] = useState("ALL")
@@ -378,7 +380,12 @@ export default function InterviewsPage() {
   function handleDecisionSaved(interview, decision) {
     setInterviews((current) => current.map((item) => (
       item.interviewId === interview.interviewId
-        ? { ...item, recruiterDecisionStatus: decision.status, recruiterDecisionAt: decision.decidedAt }
+        ? {
+            ...item,
+            recruiterDecisionStatus: decision.status,
+            recruiterDecisionAt: decision.decidedAt,
+            recruiterDecisionNotes: decision.notes ?? item.recruiterDecisionNotes ?? null,
+          }
         : item
     )))
   }
@@ -615,7 +622,7 @@ export default function InterviewsPage() {
                   <th className="p-5 text-left font-medium">Score</th>
                   <th className="p-5 text-left font-medium">Decision</th>
                   <th className="p-5 text-left font-medium">Created</th>
-                  <th className="p-5 text-left font-medium">Recruiter Decision</th>
+                  <th className="p-5 text-left font-medium">Hiring Action</th>
                   <th className="p-5 text-center font-medium">Action</th>
                 </tr>
               </thead>
@@ -646,16 +653,20 @@ export default function InterviewsPage() {
                       <td className="p-5 text-slate-300">{formatScore(interview.score)}</td>
                       <td className="p-5 text-slate-300"><span className="block truncate">{interview.decision ?? "-"}</span></td>
                       <td className="p-5 text-slate-400"><span className="block truncate">{formatDateTime(interview.createdAt)}</span></td>
-                      <td className="p-4 align-top">
+                      <td className="p-4 align-middle">
                         {isCompletedInterview(interview) ? (
-                          <RecruiterDecisionControls
-                            candidateId={interview.candidateId}
-                            interviewId={interview.interviewId}
-                            attemptId={interview.attemptId}
-                            initialStatus={interview.recruiterDecisionStatus}
-                            compact
-                            onDecision={(decision) => handleDecisionSaved(interview, decision)}
-                          />
+                          interview.recruiterDecisionStatus ? (
+                            <DecisionPill status={interview.recruiterDecisionStatus} />
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setReviewInterview(interview)}
+                              className="inline-flex h-10 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-400/10 px-4 text-sm font-semibold text-cyan-100 transition hover:border-cyan-200/45 hover:bg-cyan-400/15 hover:text-white"
+                              aria-label={`Take hiring action for ${interview.candidateName}`}
+                            >
+                              Take Action
+                            </button>
+                          )
                         ) : (
                           <span className="text-slate-600">After completion</span>
                         )}
@@ -729,6 +740,17 @@ export default function InterviewsPage() {
         </section>
       </main>
 
+      <CandidateActionModal
+        isOpen={Boolean(reviewInterview)}
+        candidate={reviewInterview}
+        searchParams={searchParams}
+        onClose={() => setReviewInterview(null)}
+        onDecisionSaved={(decision) => {
+          if (reviewInterview) {
+            handleDecisionSaved(reviewInterview, decision)
+          }
+        }}
+      />
       <SendInterviewModal isOpen={openSendInterview} onClose={() => setOpenSendInterview(false)} />
     </div>
   )

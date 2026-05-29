@@ -406,6 +406,7 @@ export async function GET(request: Request) {
         decision: evaluation?.decision ?? calculatedResult.decision,
         recruiterDecisionStatus: recruiterDecision?.status ?? null,
         recruiterDecisionAt: recruiterDecision?.decidedAt ?? null,
+        recruiterDecisionNotes: recruiterDecision?.notes ?? null,
         aiSummary: evaluation?.aiSummary ?? buildAnswerFallbackSummary(answerSummaries),
         answerSummaries,
         createdAt: interview.createdAt,

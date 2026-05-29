@@ -6,9 +6,10 @@ import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl, hasAuthQuery } from "@/lib/client/auth-query"
 import { TableSkeleton } from "@/components/system/skeletons"
+import { CandidateActionModal } from "@/components/dashboard/CandidateActionModal"
+import { DecisionPill } from "@/components/dashboard/DecisionPill"
 
 import CandidateInsightModal from "./CandidateInsightModal"
-import RecruiterDecisionControls from "./RecruiterDecisionControls"
 
 function getStatusColor(status) {
   const normalized = String(status ?? "PENDING").toUpperCase()
@@ -78,22 +79,33 @@ export default function CandidateList({ initialCandidates, isLoading = false }) 
   const searchParams = useAuthSearchParams()
   const [candidates, setCandidates] = useState([])
   const [selectedCandidate, setSelectedCandidate] = useState(null)
+  const [reviewCandidate, setReviewCandidate] = useState(null)
   const [decisionOverrides, setDecisionOverrides] = useState({})
   const sourceCandidates = initialCandidates !== undefined ? initialCandidates : candidates
   const displayCandidates = sourceCandidates.map((candidate) => {
     const key = candidate.interviewId || candidate.candidateId
     return decisionOverrides[key]
-      ? { ...candidate, recruiterDecisionStatus: decisionOverrides[key] }
+      ? { ...candidate, recruiterDecisionStatus: decisionOverrides[key].status, recruiterDecisionNotes: decisionOverrides[key].notes }
       : candidate
   })
   const previewCandidates = displayCandidates.slice(0, 5)
 
   function handleDecisionSaved(candidate, decision) {
     const key = candidate.interviewId || candidate.candidateId
-    setDecisionOverrides((current) => ({ ...current, [key]: decision.status }))
+    setDecisionOverrides((current) => ({
+      ...current,
+      [key]: { status: decision.status, notes: decision.notes ?? candidate.recruiterDecisionNotes ?? null },
+    }))
     setCandidates((current) => current.map((item) => {
       const itemKey = item.interviewId || item.candidateId
-      return itemKey === key ? { ...item, recruiterDecisionStatus: decision.status, recruiterDecisionAt: decision.decidedAt } : item
+      return itemKey === key
+        ? {
+            ...item,
+            recruiterDecisionStatus: decision.status,
+            recruiterDecisionAt: decision.decidedAt,
+            recruiterDecisionNotes: decision.notes ?? item.recruiterDecisionNotes ?? null,
+          }
+        : item
     }))
   }
 
@@ -153,7 +165,7 @@ export default function CandidateList({ initialCandidates, isLoading = false }) 
                 <th className="text-left p-4">Score</th>
                 <th className="text-left p-4">VERIS Screening Score</th>
                 <th className="text-left p-4">VERIS Insight</th>
-                <th className="text-left p-4">Recruiter Decision</th>
+                <th className="text-left p-4">Hiring Action</th>
               </tr>
             </thead>
 
@@ -188,16 +200,20 @@ export default function CandidateList({ initialCandidates, isLoading = false }) 
                         <span className="text-gray-400">-</span>
                       )}
                     </td>
-                    <td className="p-4 align-top">
+                    <td className="p-4 align-middle">
                       {candidate.interviewId && isDecisionReady(candidate) ? (
-                        <RecruiterDecisionControls
-                          candidateId={candidate.candidateId}
-                          interviewId={candidate.interviewId}
-                          attemptId={candidate.attemptId}
-                          initialStatus={candidate.recruiterDecisionStatus}
-                          compact
-                          onDecision={(decision) => handleDecisionSaved(candidate, decision)}
-                        />
+                        candidate.recruiterDecisionStatus ? (
+                          <DecisionPill status={candidate.recruiterDecisionStatus} />
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setReviewCandidate(candidate)}
+                            className="inline-flex h-10 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-400/10 px-4 text-sm font-semibold text-cyan-100 transition hover:border-cyan-200/45 hover:bg-cyan-400/15 hover:text-white"
+                            aria-label={`Take hiring action for ${candidate.candidateName}`}
+                          >
+                            Take Action
+                          </button>
+                        )
                       ) : (
                         <span className="text-slate-500">After completion</span>
                       )}
@@ -216,6 +232,17 @@ export default function CandidateList({ initialCandidates, isLoading = false }) 
         onClose={() => setSelectedCandidate(null)}
         candidateName={selectedCandidate?.candidateName}
         summary={selectedCandidate?.aiSummaryFull}
+      />
+      <CandidateActionModal
+        isOpen={Boolean(reviewCandidate)}
+        candidate={reviewCandidate}
+        searchParams={searchParams}
+        onClose={() => setReviewCandidate(null)}
+        onDecisionSaved={(decision) => {
+          if (reviewCandidate) {
+            handleDecisionSaved(reviewCandidate, decision)
+          }
+        }}
       />
     </>
   )

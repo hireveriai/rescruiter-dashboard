@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client"
 
 import { prisma } from "@/lib/server/prisma"
 
-export const RECRUITER_DECISION_STATUSES = ["REVIEWED", "PROCEED", "HOLD", "REJECT"] as const
+export const RECRUITER_DECISION_STATUSES = ["REVIEW_REQUIRED", "REVIEWED", "PROCEED", "HOLD", "REJECT"] as const
 
 export type RecruiterDecisionStatus = typeof RECRUITER_DECISION_STATUSES[number]
 
@@ -15,12 +15,17 @@ export type RecruiterDecisionRecord = {
   status: RecruiterDecisionStatus
   decidedBy: string | null
   decidedAt: Date | string
+  notes: string | null
 }
 
 let ensureRecruiterDecisionsPromise: Promise<void> | null = null
 
 export function normalizeRecruiterDecisionStatus(value: unknown): RecruiterDecisionStatus | null {
   const normalized = String(value ?? "").trim().toUpperCase()
+  if (normalized === "ESCALATE_REVIEW" || normalized === "REVIEW") {
+    return "REVIEW_REQUIRED"
+  }
+
   return RECRUITER_DECISION_STATUSES.includes(normalized as RecruiterDecisionStatus)
     ? normalized as RecruiterDecisionStatus
     : null
@@ -42,8 +47,24 @@ export async function ensureRecruiterDecisionsTable() {
           notes text,
           metadata jsonb not null default '{}'::jsonb,
           constraint candidate_recruiter_decisions_status_check
-            check (status in ('REVIEWED', 'PROCEED', 'HOLD', 'REJECT'))
+            check (status in ('REVIEW_REQUIRED', 'REVIEWED', 'PROCEED', 'HOLD', 'REJECT'))
         )
+      `)
+
+      await prisma.$executeRaw(Prisma.sql`
+        alter table public.candidate_recruiter_decisions
+        add column if not exists notes text
+      `)
+
+      await prisma.$executeRaw(Prisma.sql`
+        alter table public.candidate_recruiter_decisions
+        drop constraint if exists candidate_recruiter_decisions_status_check
+      `)
+
+      await prisma.$executeRaw(Prisma.sql`
+        alter table public.candidate_recruiter_decisions
+        add constraint candidate_recruiter_decisions_status_check
+          check (status in ('REVIEW_REQUIRED', 'REVIEWED', 'PROCEED', 'HOLD', 'REJECT'))
       `)
 
       await prisma.$executeRaw(Prisma.sql`
@@ -84,6 +105,7 @@ export async function upsertRecruiterDecision(input: {
   interviewId?: string | null
   attemptId?: string | null
   status: RecruiterDecisionStatus
+  notes?: string | null
 }) {
   await ensureRecruiterDecisionsTable()
 
@@ -95,7 +117,8 @@ export async function upsertRecruiterDecision(input: {
       attempt_id,
       status,
       decided_by,
-      decided_at
+      decided_at,
+      notes
     )
     select
       c.organization_id,
@@ -104,7 +127,8 @@ export async function upsertRecruiterDecision(input: {
       ia.attempt_id,
       ${input.status},
       ${input.userId}::uuid,
-      now()
+      now(),
+      ${input.notes ?? null}
     from public.candidates c
     left join public.interviews i
       on i.interview_id = ${input.interviewId ?? null}::uuid
@@ -126,7 +150,8 @@ export async function upsertRecruiterDecision(input: {
       attempt_id = excluded.attempt_id,
       status = excluded.status,
       decided_by = excluded.decided_by,
-      decided_at = excluded.decided_at
+      decided_at = excluded.decided_at,
+      notes = excluded.notes
     returning
       decision_id::text as "decisionId",
       organization_id::text as "organizationId",
@@ -135,7 +160,8 @@ export async function upsertRecruiterDecision(input: {
       attempt_id::text as "attemptId",
       status,
       decided_by::text as "decidedBy",
-      decided_at as "decidedAt"
+      decided_at as "decidedAt",
+      notes
   `)
 
   return rows[0]
@@ -158,7 +184,8 @@ export async function getRecruiterDecisionsForInterviews(organizationId: string,
       attempt_id::text as "attemptId",
       status,
       decided_by::text as "decidedBy",
-      decided_at as "decidedAt"
+      decided_at as "decidedAt",
+      notes
     from public.candidate_recruiter_decisions
     where organization_id = ${organizationId}::uuid
       and interview_id in (${Prisma.join(ids.map((id) => Prisma.sql`${id}::uuid`))})
