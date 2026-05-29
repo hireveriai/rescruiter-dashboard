@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { Fragment, useEffect, useMemo, useState } from "react"
+import { Pencil } from "lucide-react"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
@@ -670,14 +671,15 @@ export default function CandidatesPage() {
                                 After completion
                               </span>
                             )}
-                            {isCompletedCandidate(candidate) ? (
+                            {isCompletedCandidate(candidate) && candidate.recruiterDecisionStatus ? (
                               <button
                                 type="button"
-                                onClick={() => setExpandedCandidateId((current) => current === rowKey ? "" : rowKey)}
-                                className="inline-flex h-10 items-center justify-center whitespace-nowrap rounded-xl border border-emerald-400/25 bg-emerald-400/10 px-3 text-sm font-semibold text-emerald-100 transition hover:border-emerald-300/50 hover:bg-emerald-400/15 hover:text-white"
-                                aria-label={`View completed summary for ${candidate.candidateName}`}
+                                onClick={() => setReviewCandidate(candidate)}
+                                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-400/10 text-cyan-100 transition hover:border-cyan-200/45 hover:bg-cyan-400/15 hover:text-white"
+                                aria-label={`Edit hiring action for ${candidate.candidateName}`}
+                                title="Edit hiring action"
                               >
-                                {expandedCandidateId === rowKey ? "Hide" : "View"}
+                                <Pencil className="h-4 w-4" aria-hidden="true" />
                               </button>
                             ) : null}
                           </div>
