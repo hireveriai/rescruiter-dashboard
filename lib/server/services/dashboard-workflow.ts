@@ -4,6 +4,7 @@ import { deriveDashboardState } from "@/lib/dashboard/dashboard-state-engine"
 import { prisma } from "@/lib/server/prisma"
 import { getDashboardPipelineData } from "@/lib/server/services/dashboard-pipeline"
 import { jobPositionsSupportIsActive } from "@/lib/server/services/jobs"
+import { ensureRecruiterDecisionsTable } from "@/lib/server/services/recruiter-decisions"
 
 export type DashboardWorkflowSnapshot = {
   pipeline: {
@@ -118,6 +119,8 @@ async function getJobWorkflowMetrics(organizationId: string) {
 }
 
 async function getInterviewWorkflowMetrics(organizationId: string) {
+  await ensureRecruiterDecisionsTable()
+
   const rows = await prisma.$queryRaw<InterviewWorkflowRow[]>(Prisma.sql`
     with latest_attempts as (
       select distinct on (ia.interview_id)
@@ -140,24 +143,29 @@ async function getInterviewWorkflowMetrics(organizationId: string) {
         la.started_at,
         la.ended_at,
         ie.evaluation_id,
-        ie.decision
+        ie.decision,
+        rd.status as recruiter_decision_status
       from public.interviews i
       left join latest_attempts la on la.interview_id = i.interview_id
       left join public.interview_evaluations ie on ie.attempt_id = la.attempt_id
+      left join public.candidate_recruiter_decisions rd
+        on rd.organization_id = i.organization_id
+        and rd.candidate_id = i.candidate_id
+        and rd.interview_id = i.interview_id
       where i.organization_id = ${organizationId}::uuid
     )
     select
       count(*) filter (
         where (upper(coalesce(interview_status, attempt_status, '')) in ('COMPLETED', 'SUBMITTED', 'EVALUATED') or ended_at is not null)
-          and (evaluation_id is null or decision is null)
+          and recruiter_decision_status is null
       )::int as pending_reports,
       count(*) filter (
         where (upper(coalesce(interview_status, attempt_status, '')) in ('COMPLETED', 'SUBMITTED', 'EVALUATED') or ended_at is not null)
-          and decision is not null
+          and recruiter_decision_status is not null
       )::int as reviewed_reports,
       count(*) filter (
         where (upper(coalesce(interview_status, attempt_status, '')) in ('COMPLETED', 'SUBMITTED', 'EVALUATED') or ended_at is not null)
-          and decision is not null
+          and recruiter_decision_status is null
       )::int as decisions_pending
     from base
   `)

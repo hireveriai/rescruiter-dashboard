@@ -7,6 +7,7 @@ import { prisma } from "@/lib/server/prisma"
 import { getInterviewAppUrl } from "@/lib/server/interview-url"
 import { deriveInterviewStatus } from "@/lib/server/services/interview-status"
 import { finalizeStaleInterviewAttempts } from "@/lib/server/services/interview-stale-finalizer"
+import { getRecruiterDecisionsForInterviews } from "@/lib/server/services/recruiter-decisions"
 
 type InterviewAnswerSummaryRow = {
   attempt_id: string
@@ -353,11 +354,16 @@ export async function GET(request: Request) {
       .map((interview) => interview.attempts[0]?.attemptId)
       .filter((attemptId): attemptId is string => Boolean(attemptId))
     const answerSummaryMap = includeAnswers ? await fetchAnswerSummaries(attemptIds) : new Map<string, ReturnType<typeof mapAnswerSummaryRow>[]>()
+    const recruiterDecisionMap = await getRecruiterDecisionsForInterviews(
+      auth.organizationId,
+      interviews.map((interview) => interview.interviewId)
+    )
 
     const data = interviews.map((interview) => {
       const latestInvite = interview.interviewInvites[0] ?? null
       const latestAttempt = interview.attempts[0] ?? null
       const evaluation = latestAttempt?.evaluation ?? null
+      const recruiterDecision = recruiterDecisionMap.get(interview.interviewId) ?? null
       const answerSummaries = latestAttempt?.attemptId ? answerSummaryMap.get(latestAttempt.attemptId) ?? [] : []
       const calculatedResult = deriveResultFromAnswerSummaries(answerSummaries)
       const questionStatus = interview.questionStatus ?? null
@@ -375,6 +381,7 @@ export async function GET(request: Request) {
       return {
         interviewId: interview.interviewId,
         attemptId: latestAttempt?.attemptId ?? null,
+        candidateId: interview.candidateId,
         candidateName: interview.candidate.fullName,
         jobTitle: interview.job.jobTitle,
         status,
@@ -397,6 +404,8 @@ export async function GET(request: Request) {
         endedAt: latestAttempt?.endedAt ?? null,
         score: evaluation?.finalScore === null || evaluation?.finalScore === undefined ? calculatedResult.score : Number(evaluation.finalScore),
         decision: evaluation?.decision ?? calculatedResult.decision,
+        recruiterDecisionStatus: recruiterDecision?.status ?? null,
+        recruiterDecisionAt: recruiterDecision?.decidedAt ?? null,
         aiSummary: evaluation?.aiSummary ?? buildAnswerFallbackSummary(answerSummaries),
         answerSummaries,
         createdAt: interview.createdAt,

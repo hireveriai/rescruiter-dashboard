@@ -8,6 +8,7 @@ import { buildAuthUrl, hasAuthQuery } from "@/lib/client/auth-query"
 import { TableSkeleton } from "@/components/system/skeletons"
 
 import CandidateInsightModal from "./CandidateInsightModal"
+import RecruiterDecisionControls from "./RecruiterDecisionControls"
 
 function getStatusColor(status) {
   const normalized = String(status ?? "PENDING").toUpperCase()
@@ -68,12 +69,33 @@ function formatStatusLabel(status) {
     .join(" ")
 }
 
+function isDecisionReady(candidate) {
+  const status = String(candidate.status ?? "").toUpperCase()
+  return Boolean(candidate.endedAt || candidate.score !== null || candidate.decision || ["COMPLETED", "SUBMITTED", "EVALUATED"].includes(status))
+}
+
 export default function CandidateList({ initialCandidates, isLoading = false }) {
   const searchParams = useAuthSearchParams()
   const [candidates, setCandidates] = useState([])
   const [selectedCandidate, setSelectedCandidate] = useState(null)
-  const displayCandidates = initialCandidates !== undefined ? initialCandidates : candidates
+  const [decisionOverrides, setDecisionOverrides] = useState({})
+  const sourceCandidates = initialCandidates !== undefined ? initialCandidates : candidates
+  const displayCandidates = sourceCandidates.map((candidate) => {
+    const key = candidate.interviewId || candidate.candidateId
+    return decisionOverrides[key]
+      ? { ...candidate, recruiterDecisionStatus: decisionOverrides[key] }
+      : candidate
+  })
   const previewCandidates = displayCandidates.slice(0, 5)
+
+  function handleDecisionSaved(candidate, decision) {
+    const key = candidate.interviewId || candidate.candidateId
+    setDecisionOverrides((current) => ({ ...current, [key]: decision.status }))
+    setCandidates((current) => current.map((item) => {
+      const itemKey = item.interviewId || item.candidateId
+      return itemKey === key ? { ...item, recruiterDecisionStatus: decision.status, recruiterDecisionAt: decision.decidedAt } : item
+    }))
+  }
 
   useEffect(() => {
     if (initialCandidates !== undefined) {
@@ -121,8 +143,8 @@ export default function CandidateList({ initialCandidates, isLoading = false }) 
           </Link>
         </div>
 
-        <div className="bg-[#111a2e] rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto rounded-lg bg-[#111a2e]">
+          <table className="w-full min-w-[1080px] text-sm">
             <thead className="text-gray-400 border-b border-gray-700">
               <tr>
                 <th className="text-left p-4">Candidate</th>
@@ -131,16 +153,17 @@ export default function CandidateList({ initialCandidates, isLoading = false }) 
                 <th className="text-left p-4">Score</th>
                 <th className="text-left p-4">VERIS Screening Score</th>
                 <th className="text-left p-4">VERIS Insight</th>
+                <th className="text-left p-4">Recruiter Decision</th>
               </tr>
             </thead>
 
             {isLoading ? (
-              <TableSkeleton rows={5} columns={6} showAvatar />
+              <TableSkeleton rows={5} columns={7} showAvatar />
             ) : (
               <tbody>
                 {displayCandidates.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-4 text-gray-400 text-center">
+                  <td colSpan={7} className="p-4 text-gray-400 text-center">
                     No candidates available
                   </td>
                 </tr>
@@ -163,6 +186,20 @@ export default function CandidateList({ initialCandidates, isLoading = false }) 
                         </button>
                       ) : (
                         <span className="text-gray-400">-</span>
+                      )}
+                    </td>
+                    <td className="p-4 align-top">
+                      {candidate.interviewId && isDecisionReady(candidate) ? (
+                        <RecruiterDecisionControls
+                          candidateId={candidate.candidateId}
+                          interviewId={candidate.interviewId}
+                          attemptId={candidate.attemptId}
+                          initialStatus={candidate.recruiterDecisionStatus}
+                          compact
+                          onDecision={(decision) => handleDecisionSaved(candidate, decision)}
+                        />
+                      ) : (
+                        <span className="text-slate-500">After completion</span>
                       )}
                     </td>
                   </tr>

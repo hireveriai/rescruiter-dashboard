@@ -10,6 +10,7 @@ import {
   fetchAnswerSummaries,
   InterviewAnswerSummary,
 } from "@/lib/server/services/interview-summary"
+import { ensureRecruiterDecisionsTable } from "@/lib/server/services/recruiter-decisions"
 
 type CandidatesDashboardOptions = {
   organizationId: string
@@ -30,6 +31,8 @@ type CandidatesDashboardItem = {
   aiSummaryShort: string
   aiSummaryFull: string | null
   decision: string | null
+  recruiterDecisionStatus: string | null
+  recruiterDecisionAt: Date | string | null
   accessType: string
   startTime: Date | null
   endTime: Date | null
@@ -70,6 +73,8 @@ type CandidateDashboardRow = {
   final_score: unknown | null
   decision: string | null
   ai_summary: string | null
+  recruiter_decision_status: string | null
+  recruiter_decision_at: Date | string | null
 }
 
 function getShortSummary(text: string | null): string {
@@ -171,6 +176,7 @@ export async function getCandidatesDashboard(
   if (options.finalizeStale !== false) {
     await finalizeStaleInterviewAttempts(options.organizationId)
   }
+  await ensureRecruiterDecisionsTable()
 
   const take = options.limit === "all" || options.limit === undefined ? undefined : options.limit
 
@@ -204,7 +210,9 @@ export async function getCandidatesDashboard(
       att.ended_at as attempt_ended_at,
       ev.final_score,
       ev.decision,
-      ev.ai_summary
+      ev.ai_summary,
+      rd.status as recruiter_decision_status,
+      rd.decided_at as recruiter_decision_at
     from public.candidates c
     left join lateral (
       select *
@@ -248,6 +256,13 @@ export async function getCandidatesDashboard(
     ) att on true
     left join public.interview_evaluations ev
       on ev.attempt_id = att.attempt_id
+    left join public.candidate_recruiter_decisions rd
+      on rd.organization_id = c.organization_id
+      and rd.candidate_id = c.candidate_id
+      and (
+        rd.interview_id = i.interview_id
+        or (rd.interview_id is null and i.interview_id is null)
+      )
     where c.organization_id = ${options.organizationId}::uuid
     order by coalesce(i.created_at, sm.created_at, c.created_at) desc
     ${take ? Prisma.sql`limit ${take}` : Prisma.empty}
@@ -286,6 +301,8 @@ export async function getCandidatesDashboard(
       aiSummaryShort: getShortSummary(aiSummaryFull),
       aiSummaryFull,
       decision: row.decision ?? calculatedResult.decision,
+      recruiterDecisionStatus: row.recruiter_decision_status,
+      recruiterDecisionAt: row.recruiter_decision_at,
       accessType: row.invite_access_type ?? "FLEXIBLE",
       startTime: row.invite_start_time ?? null,
       endTime: row.invite_end_time ?? null,

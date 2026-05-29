@@ -10,6 +10,7 @@ import { formatDateTime } from "@/lib/client/date-format"
 import { readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache"
 
 import Navbar from "../../components/Navbar"
+import RecruiterDecisionControls from "../../components/RecruiterDecisionControls"
 import SendInterviewModal from "../../components/SendInterviewModal"
 import { MetricSkeleton, TableSkeleton, TimelineSkeleton } from "../../components/system/skeletons"
 
@@ -369,9 +370,18 @@ export default function InterviewsPage() {
     const total = interviews.length
     const active = interviews.filter((item) => ["PENDING", "READY", "EMAIL_FAILED", "IN_PROGRESS", "SENDING_EMAIL", "PREPARING_INTERVIEW"].includes(String(item.status).toUpperCase())).length
     const completed = interviews.filter(isCompletedInterview).length
+    const pendingReview = interviews.filter((item) => isCompletedInterview(item) && !item.recruiterDecisionStatus).length
 
-    return { total, active, completed }
+    return { total, active, completed, pendingReview }
   }, [interviews])
+
+  function handleDecisionSaved(interview, decision) {
+    setInterviews((current) => current.map((item) => (
+      item.interviewId === interview.interviewId
+        ? { ...item, recruiterDecisionStatus: decision.status, recruiterDecisionAt: decision.decidedAt }
+        : item
+    )))
+  }
 
   const filterOptions = useMemo(() => {
     return {
@@ -486,9 +496,9 @@ export default function InterviewsPage() {
             </div>
 
             {loading ? (
-              <MetricSkeleton count={3} className="sm:grid-cols-3 xl:min-w-[520px]" />
+              <MetricSkeleton count={4} className="sm:grid-cols-4 xl:min-w-[680px]" />
             ) : (
-            <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[520px]">
+            <div className="grid gap-3 sm:grid-cols-4 xl:min-w-[680px]">
               <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-4">
                 <p className="text-sm text-slate-500">Total Interviews</p>
                 <p className="mt-3 text-3xl font-semibold text-white">{stats.total}</p>
@@ -500,6 +510,10 @@ export default function InterviewsPage() {
               <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-4">
                 <p className="text-sm text-slate-500">Completed</p>
                 <p className="mt-3 text-3xl font-semibold text-white">{stats.completed}</p>
+              </div>
+              <div className="rounded-2xl border border-cyan-400/15 bg-cyan-400/5 p-4">
+                <p className="text-sm text-slate-500">Pending Review</p>
+                <p className="mt-3 text-3xl font-semibold text-cyan-100">{stats.pendingReview}</p>
               </div>
             </div>
             )}
@@ -582,14 +596,15 @@ export default function InterviewsPage() {
           <div className="overflow-x-auto">
             <table className="w-full table-fixed text-sm">
               <colgroup>
+                <col className="w-[10%]" />
+                <col className="w-[16%]" />
                 <col className="w-[11%]" />
-                <col className="w-[19%]" />
-                <col className="w-[13%]" />
-                <col className="w-[12%]" />
+                <col className="w-[11%]" />
                 <col className="w-[7%]" />
+                <col className="w-[8%]" />
+                <col className="w-[13%]" />
+                <col className="w-[15%]" />
                 <col className="w-[9%]" />
-                <col className="w-[18%]" />
-                <col className="w-[11%]" />
               </colgroup>
               <thead className="bg-slate-950/20 text-slate-400">
                 <tr>
@@ -600,20 +615,21 @@ export default function InterviewsPage() {
                   <th className="p-5 text-left font-medium">Score</th>
                   <th className="p-5 text-left font-medium">Decision</th>
                   <th className="p-5 text-left font-medium">Created</th>
+                  <th className="p-5 text-left font-medium">Recruiter Decision</th>
                   <th className="p-5 text-center font-medium">Action</th>
                 </tr>
               </thead>
               {loading ? (
-                <TableSkeleton rows={8} columns={8} showAvatar showStatusChip />
+                <TableSkeleton rows={8} columns={9} showAvatar showStatusChip />
               ) : (
                 <tbody>
                   {interviews.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="p-10 text-center text-slate-400">No interviews available</td>
+                    <td colSpan={9} className="p-10 text-center text-slate-400">No interviews available</td>
                   </tr>
                 ) : filteredInterviews.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="p-10 text-center text-slate-400">No interviews match the current filters</td>
+                    <td colSpan={9} className="p-10 text-center text-slate-400">No interviews match the current filters</td>
                   </tr>
                 ) : (
                   filteredInterviews.map((interview) => (
@@ -630,6 +646,20 @@ export default function InterviewsPage() {
                       <td className="p-5 text-slate-300">{formatScore(interview.score)}</td>
                       <td className="p-5 text-slate-300"><span className="block truncate">{interview.decision ?? "-"}</span></td>
                       <td className="p-5 text-slate-400"><span className="block truncate">{formatDateTime(interview.createdAt)}</span></td>
+                      <td className="p-4 align-top">
+                        {isCompletedInterview(interview) ? (
+                          <RecruiterDecisionControls
+                            candidateId={interview.candidateId}
+                            interviewId={interview.interviewId}
+                            attemptId={interview.attemptId}
+                            initialStatus={interview.recruiterDecisionStatus}
+                            compact
+                            onDecision={(decision) => handleDecisionSaved(interview, decision)}
+                          />
+                        ) : (
+                          <span className="text-slate-600">After completion</span>
+                        )}
+                      </td>
                       <td className="p-4 text-center">
                         {isCompletedInterview(interview) ? (
                           <button
@@ -684,7 +714,7 @@ export default function InterviewsPage() {
                     </tr>
                     {expandedInterviewId === interview.interviewId ? (
                       <tr key={`${interview.interviewId}-details`} className="border-t border-emerald-400/10">
-                        <td colSpan={8} className="bg-slate-950/30 p-5">
+                        <td colSpan={9} className="bg-slate-950/30 p-5">
                           <CompletedInterviewDetails interview={interview} onClose={() => setExpandedInterviewId("")} />
                         </td>
                       </tr>
