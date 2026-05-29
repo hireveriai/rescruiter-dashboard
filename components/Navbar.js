@@ -373,20 +373,44 @@ export default function Navbar({ onSendInterviewClick: _onSendInterviewClick, in
 
   async function persistReadAlertsOnServer(alertIds) {
     if (!hasAuthQuery(searchParams) || alertIds.length === 0) {
-      return;
+      return true;
     }
 
     try {
-      await fetch(buildAuthUrl("/api/dashboard/alerts", searchParams), {
+      const response = await fetch(buildAuthUrl("/api/dashboard/alerts", searchParams), {
         method: "POST",
         credentials: "include",
         cache: "no-store",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ alertIds }),
       });
+
+      if (!response.ok) {
+        return false;
+      }
+
+      const payload = await response.json().catch(() => null);
+      return Boolean(payload?.success);
     } catch {
-      // Keep the immediate UI state; the next successful write will reconcile server read state.
+      return false;
     }
+  }
+
+  function restoreUnreadAlerts(alertIds) {
+    setReadAlertIds((current) => {
+      const nextReadIds = new Set(current);
+      alertIds.forEach((alertId) => nextReadIds.delete(alertId));
+
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.setItem(alertReadStorageKey, JSON.stringify([...nextReadIds]));
+        } catch {
+          // Local read markers are best-effort; server state remains authoritative.
+        }
+      }
+
+      return nextReadIds;
+    });
   }
 
   function handleMarkAlertRead(alertId) {
@@ -395,7 +419,22 @@ export default function Navbar({ onSendInterviewClick: _onSendInterviewClick, in
     persistReadAlertIds(nextReadIds);
     setAlerts((current) => current.filter((alert) => alert.id !== alertId));
     window.dispatchEvent(new CustomEvent(ALERTS_READ_EVENT, { detail: { alertIds: [alertId] } }));
-    void persistReadAlertsOnServer([alertId]);
+    void persistReadAlertsOnServer([alertId]).then((persisted) => {
+      if (!persisted) {
+        restoreUnreadAlerts([alertId]);
+        fetch(buildAuthUrl("/api/dashboard/alerts", searchParams), {
+          credentials: "include",
+          cache: "no-store",
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.success) {
+              setAlerts(data.data ?? []);
+            }
+          })
+          .catch(() => {});
+      }
+    });
   }
 
   function handleMarkAllAlertsRead() {
@@ -405,7 +444,22 @@ export default function Navbar({ onSendInterviewClick: _onSendInterviewClick, in
     persistReadAlertIds(nextReadIds);
     setAlerts((current) => current.filter((alert) => !alertIds.includes(alert.id)));
     window.dispatchEvent(new CustomEvent(ALERTS_READ_EVENT, { detail: { alertIds } }));
-    void persistReadAlertsOnServer(alertIds);
+    void persistReadAlertsOnServer(alertIds).then((persisted) => {
+      if (!persisted) {
+        restoreUnreadAlerts(alertIds);
+        fetch(buildAuthUrl("/api/dashboard/alerts", searchParams), {
+          credentials: "include",
+          cache: "no-store",
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.success) {
+              setAlerts(data.data ?? []);
+            }
+          })
+          .catch(() => {});
+      }
+    });
   }
 
   const handleNavigationClick = (href) => {

@@ -298,6 +298,11 @@ async function fetchAnswerSummaries(attemptIds: string[]) {
 export async function GET(request: Request) {
   try {
     const auth = await getRecruiterRequestContext(request)
+    const { searchParams } = new URL(request.url)
+    const rawLimit = Number.parseInt(searchParams.get("limit") ?? "0", 10)
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 200) : undefined
+    const includeAnswers = searchParams.get("includeAnswers") !== "0"
+
     await finalizeStaleInterviewAttempts(auth.organizationId)
 
     const interviews = await prisma.interview.findMany({
@@ -307,6 +312,7 @@ export async function GET(request: Request) {
       orderBy: {
         createdAt: "desc",
       },
+      take: limit,
       include: {
         candidate: {
           select: {
@@ -346,7 +352,7 @@ export async function GET(request: Request) {
     const attemptIds = interviews
       .map((interview) => interview.attempts[0]?.attemptId)
       .filter((attemptId): attemptId is string => Boolean(attemptId))
-    const answerSummaryMap = await fetchAnswerSummaries(attemptIds)
+    const answerSummaryMap = includeAnswers ? await fetchAnswerSummaries(attemptIds) : new Map<string, ReturnType<typeof mapAnswerSummaryRow>[]>()
 
     const data = interviews.map((interview) => {
       const latestInvite = interview.interviewInvites[0] ?? null

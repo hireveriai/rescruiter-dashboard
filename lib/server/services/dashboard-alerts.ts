@@ -25,6 +25,53 @@ type AlertRow = {
   occurred_at: Date | string | null
 }
 
+let ensureAlertReadsPromise: Promise<void> | null = null
+
+async function ensureDashboardAlertReadsTable() {
+  if (!ensureAlertReadsPromise) {
+    ensureAlertReadsPromise = (async () => {
+      await prisma.$executeRaw(Prisma.sql`
+        create table if not exists public.dashboard_alert_reads (
+          organization_id uuid not null,
+          user_id uuid not null,
+          alert_id text not null,
+          read_at timestamptz not null default now(),
+          constraint dashboard_alert_reads_org_user_alert_unique unique (organization_id, user_id, alert_id)
+        )
+      `)
+
+      await prisma.$executeRaw(Prisma.sql`
+        delete from public.dashboard_alert_reads a
+        using public.dashboard_alert_reads b
+        where a.organization_id = b.organization_id
+          and a.user_id = b.user_id
+          and a.alert_id = b.alert_id
+          and a.ctid < b.ctid
+      `)
+
+      await prisma.$executeRaw(Prisma.sql`
+        create unique index if not exists dashboard_alert_reads_org_user_alert_unique_idx
+          on public.dashboard_alert_reads (organization_id, user_id, alert_id)
+      `)
+
+      await prisma.$executeRaw(Prisma.sql`
+        create index if not exists dashboard_alert_reads_org_user_idx
+          on public.dashboard_alert_reads (organization_id, user_id, read_at desc)
+      `)
+
+      await prisma.$executeRaw(Prisma.sql`
+        create index if not exists dashboard_alert_reads_alert_idx
+          on public.dashboard_alert_reads (alert_id)
+      `)
+    })().catch((error) => {
+      ensureAlertReadsPromise = null
+      throw error
+    })
+  }
+
+  return ensureAlertReadsPromise
+}
+
 function normalizeStatus(value: string | null | undefined) {
   return String(value ?? "").trim().toUpperCase()
 }
@@ -95,6 +142,10 @@ function buildAlert(row: AlertRow): DashboardAlert {
 }
 
 export async function getDashboardAlerts(organizationId: string, limit = 8, userId?: string): Promise<DashboardAlert[]> {
+  if (userId) {
+    await ensureDashboardAlertReadsTable()
+  }
+
   const rows = await prisma.$queryRaw<AlertRow[]>(Prisma.sql`
     with latest_attempts as (
       select distinct on (ia.interview_id)
@@ -166,6 +217,8 @@ export async function markDashboardAlertsRead(input: {
   if (alertIds.length === 0) {
     return { marked: 0 }
   }
+
+  await ensureDashboardAlertReadsTable()
 
   const rows = await prisma.$queryRaw<Array<{ marked: bigint }>>(Prisma.sql`
     with inserted as (

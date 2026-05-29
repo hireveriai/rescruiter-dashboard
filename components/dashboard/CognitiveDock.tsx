@@ -63,6 +63,8 @@ type WorkspaceData = {
   reports: Record<string, unknown> | null;
 };
 
+type WorkspacePayload = Partial<WorkspaceData>;
+
 function getPanelTitle(panel: PanelMode) {
   if (panel === "search") return "Universal Search";
   if (panel === "alerts") return "Fraud Alerts";
@@ -95,6 +97,35 @@ function getPanelLoadingLabel(panel: PanelMode) {
   return "Syncing workspace intelligence...";
 }
 
+function hasWorkspaceData(workspace: WorkspaceData) {
+  return Boolean(workspace.jobs.length || workspace.candidates.length || workspace.interviews.length || workspace.reports);
+}
+
+function mergeWorkspaceData(current: WorkspaceData, next: WorkspacePayload): WorkspaceData {
+  return {
+    jobs: next.jobs ?? current.jobs,
+    candidates: next.candidates ?? current.candidates,
+    interviews: next.interviews ?? current.interviews,
+    reports: next.reports ?? current.reports,
+  };
+}
+
+async function fetchJsonWithTimeout(url: string, timeoutMs = 4500) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      credentials: "include",
+      cache: "default",
+      signal: controller.signal,
+    });
+    return response.json();
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
 export default function CognitiveDock({
   activeInterviewCount = 0,
   candidateCount = 0,
@@ -113,6 +144,7 @@ export default function CognitiveDock({
 
   const href = useCallback((path: string) => buildAuthUrl(path, searchParams), [searchParams]);
   const hasFlaggedCandidates = flaggedCount > 0;
+  const hasLiveWorkspaceData = hasWorkspaceData(workspace);
 
   const openCreateJob = useCallback(() => {
     window.dispatchEvent(new CustomEvent("hireveri:open-create-job"));
@@ -146,43 +178,89 @@ export default function CognitiveDock({
     }
 
     let active = true;
+    let loaderCeilingTimer: number | undefined;
     const loadTimer = window.setTimeout(() => {
-      setWorkspaceLoading(true);
-      setWorkspaceError("");
+      const overviewWorkspace: WorkspacePayload = {
+        candidates: Array.isArray(overview?.candidates) ? overview.candidates as Array<Record<string, unknown>> : undefined,
+        interviews: Array.isArray(overview?.pendingInterviews) ? overview.pendingInterviews as Array<Record<string, unknown>> : undefined,
+        reports: overview ?? null,
+      };
 
-      Promise.all([
-        fetch(href("/api/jobs"), { credentials: "include", cache: "no-store" }).then((res) => res.json()),
-        fetch(href("/api/dashboard/candidates?limit=all"), { credentials: "include", cache: "no-store" }).then((res) => res.json()),
-        fetch(href("/api/dashboard/interviews"), { credentials: "include", cache: "no-store" }).then((res) => res.json()),
-        fetch(href("/api/reports/overview"), { credentials: "include", cache: "no-store" }).then((res) => res.json()),
+      if (hasWorkspaceData(mergeWorkspaceData(workspace, overviewWorkspace))) {
+        setWorkspace((current) => mergeWorkspaceData(current, overviewWorkspace));
+      }
+
+      setWorkspaceLoading(!hasWorkspaceData(mergeWorkspaceData(workspace, overviewWorkspace)));
+      setWorkspaceError("");
+      loaderCeilingTimer = window.setTimeout(() => {
+        if (active) {
+          setWorkspaceLoading(false);
+        }
+      }, 900);
+
+      Promise.allSettled([
+        fetchJsonWithTimeout(href("/api/jobs"), 4500),
+        fetchJsonWithTimeout(href("/api/dashboard/candidates?limit=80"), 4500),
+        fetchJsonWithTimeout(href("/api/dashboard/interviews?limit=80&includeAnswers=0"), 4500),
+        fetchJsonWithTimeout(href("/api/reports/overview"), 5200),
       ])
-        .then(([jobsPayload, candidatesPayload, interviewsPayload, reportsPayload]) => {
+        .then((results) => {
           if (!active) return;
 
-          setWorkspace({
-            jobs: jobsPayload?.jobs ?? jobsPayload?.data?.jobs ?? [],
-            candidates: candidatesPayload?.data ?? [],
-            interviews: interviewsPayload?.data ?? [],
-            reports: reportsPayload?.data ?? null,
-          });
+          const [jobsResult, candidatesResult, interviewsResult, reportsResult] = results;
+          const jobsPayload = jobsResult.status === "fulfilled" ? jobsResult.value : null;
+          const candidatesPayload = candidatesResult.status === "fulfilled" ? candidatesResult.value : null;
+          const interviewsPayload = interviewsResult.status === "fulfilled" ? interviewsResult.value : null;
+          const reportsPayload = reportsResult.status === "fulfilled" ? reportsResult.value : null;
+          const nextWorkspace: WorkspacePayload = {
+            jobs: jobsPayload?.jobs ?? jobsPayload?.data?.jobs,
+            candidates: candidatesPayload?.data,
+            interviews: interviewsPayload?.data,
+            reports: reportsPayload?.data,
+          };
+          const failedCount = results.filter((result) => result.status === "rejected").length;
+
+          setWorkspace((current) => mergeWorkspaceData(current, nextWorkspace));
+
+          if (failedCount > 0) {
+            setWorkspaceError("Some live workspace signals are delayed. Showing available dashboard intelligence.");
+          }
         })
         .catch(() => {
           if (active) {
-            setWorkspaceError("Unable to sync live workspace data. Cached dashboard signals are still available.");
+            setWorkspaceError("Live workspace sync is delayed. Showing available dashboard intelligence.");
           }
         })
         .finally(() => {
           if (active) {
+            if (loaderCeilingTimer) {
+              window.clearTimeout(loaderCeilingTimer);
+            }
             setWorkspaceLoading(false);
           }
         });
-    }, 0);
+    }, 80);
 
     return () => {
       active = false;
       window.clearTimeout(loadTimer);
+      if (loaderCeilingTimer) {
+        window.clearTimeout(loaderCeilingTimer);
+      }
     };
-  }, [panel, href]);
+  }, [panel, href, overview]);
+
+  useEffect(() => {
+    if (!overview) {
+      return;
+    }
+
+    setWorkspace((current) => mergeWorkspaceData(current, {
+      candidates: Array.isArray(overview.candidates) ? overview.candidates as Array<Record<string, unknown>> : undefined,
+      interviews: Array.isArray(overview.pendingInterviews) ? overview.pendingInterviews as Array<Record<string, unknown>> : undefined,
+      reports: overview,
+    }));
+  }, [overview]);
 
   const searchItems = useMemo<SearchItem[]>(() => {
     const items: SearchItem[] = [
@@ -448,9 +526,9 @@ export default function CognitiveDock({
                   </button>
                 </div>
 
-                {(panel === "search" || panel === "copilot") && (workspaceLoading || workspaceError) ? (
+                {(panel === "search" || panel === "copilot") && ((workspaceLoading && !hasLiveWorkspaceData) || workspaceError) ? (
                   <div className="mt-4 rounded-2xl border border-cyan-300/10 bg-cyan-400/[0.05] px-4 py-3 text-sm text-slate-300">
-                    {workspaceLoading ? (
+                    {workspaceLoading && !hasLiveWorkspaceData ? (
                       <span className="inline-flex items-center gap-2">
                         <Loader2 className="h-4 w-4 animate-spin text-cyan-200" />
                         {getPanelLoadingLabel(panel)}
