@@ -79,8 +79,14 @@ export default function RecordedInterviews({ initialRecordedInterviews, organiza
 
     let isMounted = true
     let cancelScheduled = () => {}
+    let loaderCeilingTimer = null
 
     setIsFetching(true)
+    loaderCeilingTimer = window.setTimeout(() => {
+      if (isMounted) {
+        setIsFetching(false)
+      }
+    }, 1200)
 
     const fetchRecordings = () => {
       fetch(buildAuthUrl("/api/dashboard/recordings?limit=6", searchParams), {
@@ -97,6 +103,9 @@ export default function RecordedInterviews({ initialRecordedInterviews, organiza
           console.error("Failed to fetch recorded interviews", error)
         })
         .finally(() => {
+          if (loaderCeilingTimer) {
+            window.clearTimeout(loaderCeilingTimer)
+          }
           if (isMounted) {
             setIsFetching(false)
           }
@@ -112,6 +121,9 @@ export default function RecordedInterviews({ initialRecordedInterviews, organiza
 
     return () => {
       isMounted = false
+      if (loaderCeilingTimer) {
+        window.clearTimeout(loaderCeilingTimer)
+      }
       cancelScheduled()
     }
   }, [initialRecordedInterviews, searchParams])

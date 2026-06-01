@@ -72,8 +72,14 @@ export default function VerisSummary({ initialSummaries, isLoading = false }) {
 
     let isMounted = true
     let cancelScheduled = () => {}
+    let loaderCeilingTimer = null
 
     setIsFetching(true)
+    loaderCeilingTimer = window.setTimeout(() => {
+      if (isMounted) {
+        setIsFetching(false)
+      }
+    }, 1200)
 
     const fetchSummaries = () => {
       fetch(buildAuthUrl("/api/dashboard/veris", searchParams), {
@@ -90,6 +96,9 @@ export default function VerisSummary({ initialSummaries, isLoading = false }) {
           console.error("Failed to fetch VERIS summaries", error)
         })
         .finally(() => {
+          if (loaderCeilingTimer) {
+            window.clearTimeout(loaderCeilingTimer)
+          }
           if (isMounted) {
             setIsFetching(false)
           }
@@ -105,6 +114,9 @@ export default function VerisSummary({ initialSummaries, isLoading = false }) {
 
     return () => {
       isMounted = false
+      if (loaderCeilingTimer) {
+        window.clearTimeout(loaderCeilingTimer)
+      }
       cancelScheduled()
     }
   }, [initialSummaries, searchParams])
