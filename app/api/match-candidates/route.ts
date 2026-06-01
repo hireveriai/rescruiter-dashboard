@@ -260,6 +260,11 @@ export async function POST(request: Request) {
       throw new ApiError(400, "JD_NOT_PROCESSED", "Analyze a job before matching candidates")
     }
 
+    await assertTrialCreditsAvailable({
+      organizationId: auth.organizationId,
+      kind: "SCREENING",
+    })
+
     const job = await getScreeningJob(auth.organizationId, jobId)
 
     if (!job) {
@@ -441,6 +446,10 @@ export async function POST(request: Request) {
       },
     })
   } catch (error) {
+    console.error("VERIS candidate matching failed", {
+      error: error instanceof Error ? error.message : String(error),
+      code: typeof error === "object" && error !== null && "code" in error ? (error as { code?: unknown }).code : undefined,
+    })
     return errorResponse(error)
   }
 }

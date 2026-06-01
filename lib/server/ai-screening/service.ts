@@ -133,6 +133,9 @@ export type ScreeningRun = {
   avgScore: number
 }
 
+let ensureCandidateJobMatchesPromise: Promise<void> | null = null
+let ensureScreeningRunTablesPromise: Promise<void> | null = null
+
 function toIso(value: Date | string) {
   return value instanceof Date ? value.toISOString() : value
 }
@@ -549,6 +552,19 @@ async function resolveRequiredScreeningJobId(organizationId: string, jobId: stri
 }
 
 async function ensureScreeningRunTables() {
+  if (ensureScreeningRunTablesPromise) {
+    return ensureScreeningRunTablesPromise
+  }
+
+  ensureScreeningRunTablesPromise = ensureScreeningRunTablesUncached().catch((error) => {
+    ensureScreeningRunTablesPromise = null
+    throw error
+  })
+
+  return ensureScreeningRunTablesPromise
+}
+
+async function ensureScreeningRunTablesUncached() {
   await prisma.$executeRawUnsafe(`
     create table if not exists public.screening_runs (
       id uuid primary key default gen_random_uuid(),
@@ -575,6 +591,23 @@ async function ensureScreeningRunTables() {
   `)
 
   await prisma.$executeRawUnsafe(`
+    alter table public.screening_runs
+      add column if not exists batch_id uuid null,
+      add column if not exists created_by uuid null,
+      add column if not exists total_candidates int not null default 0,
+      add column if not exists strong_fit_count int not null default 0,
+      add column if not exists avg_score numeric(5,2) not null default 0
+  `)
+
+  await prisma.$executeRawUnsafe(`
+    alter table public.screening_run_matches
+      add column if not exists organization_id uuid,
+      add column if not exists candidate_id uuid,
+      add column if not exists match_snapshot jsonb not null default '{}'::jsonb,
+      add column if not exists created_at timestamptz not null default now()
+  `)
+
+  await prisma.$executeRawUnsafe(`
     create index if not exists idx_screening_runs_org_job_created
       on public.screening_runs (organization_id, job_id, created_at desc)
   `)
@@ -594,6 +627,69 @@ async function ensureScreeningRunTables() {
     create index if not exists idx_screening_run_matches_org_candidate
       on public.screening_run_matches (organization_id, candidate_id)
       where candidate_id is not null
+  `)
+}
+
+async function ensureCandidateJobMatchesTable() {
+  if (ensureCandidateJobMatchesPromise) {
+    return ensureCandidateJobMatchesPromise
+  }
+
+  ensureCandidateJobMatchesPromise = ensureCandidateJobMatchesTableUncached().catch((error) => {
+    ensureCandidateJobMatchesPromise = null
+    throw error
+  })
+
+  return ensureCandidateJobMatchesPromise
+}
+
+async function ensureCandidateJobMatchesTableUncached() {
+  await prisma.$executeRawUnsafe(`
+    create table if not exists public.candidate_job_matches (
+      id uuid primary key default gen_random_uuid(),
+      organization_id uuid not null references public.organizations(organization_id) on delete cascade,
+      candidate_id uuid not null references public.candidates(candidate_id) on delete cascade,
+      job_id uuid not null references public.jobs(id) on delete cascade,
+      match_score int not null default 0,
+      skill_match int not null default 0,
+      experience_match int not null default 0,
+      risk_level text not null default 'MEDIUM',
+      recommendation text not null default 'POTENTIAL',
+      insights jsonb not null default '{}'::jsonb,
+      created_at timestamptz not null default now()
+    )
+  `)
+
+  await prisma.$executeRawUnsafe(`
+    alter table public.candidate_job_matches
+      add column if not exists organization_id uuid,
+      add column if not exists candidate_id uuid,
+      add column if not exists job_id uuid,
+      add column if not exists match_score int not null default 0,
+      add column if not exists skill_match int not null default 0,
+      add column if not exists experience_match int not null default 0,
+      add column if not exists risk_level text not null default 'MEDIUM',
+      add column if not exists recommendation text not null default 'POTENTIAL',
+      add column if not exists insights jsonb not null default '{}'::jsonb,
+      add column if not exists created_at timestamptz not null default now()
+  `)
+
+  await prisma.$executeRawUnsafe(`
+    delete from public.candidate_job_matches a
+    using public.candidate_job_matches b
+    where a.candidate_id = b.candidate_id
+      and a.job_id = b.job_id
+      and a.ctid < b.ctid
+  `)
+
+  await prisma.$executeRawUnsafe(`
+    create unique index if not exists candidate_job_matches_candidate_job_uidx
+      on public.candidate_job_matches (candidate_id, job_id)
+  `)
+
+  await prisma.$executeRawUnsafe(`
+    create index if not exists idx_candidate_job_matches_org_candidate_created_desc
+      on public.candidate_job_matches (organization_id, candidate_id, created_at desc)
   `)
 }
 
@@ -914,6 +1010,8 @@ export async function upsertCandidateJobMatch(input: {
   jobId: string
   result: CandidateMatchResult
 }) {
+  await ensureCandidateJobMatchesTable()
+
   const insights = {
     missing_skills: input.result.missingSkills,
     short_reasoning: input.result.shortReasoning,
@@ -967,6 +1065,8 @@ export async function getMatchResults(
     includeAllCandidates?: boolean
   }
 ) {
+  await ensureCandidateJobMatchesTable()
+
   const batchId = normalizeUuid(options?.uploadBatchId)
   const candidateIds = (options?.candidateIds ?? []).map(normalizeUuid).filter((id): id is string => Boolean(id))
   const fileNames = normalizeFileNames(options?.fileNames ?? [])
