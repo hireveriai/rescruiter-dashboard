@@ -648,6 +648,16 @@ function normalizeTrialCredits(credits: Partial<TrialCredits> | null | undefined
   }
 }
 
+async function fetchTrialCreditsSnapshot() {
+  const response = await fetch(authUrl("/api/trial-credits"), {
+    credentials: "include",
+    cache: "no-store",
+  })
+  const payload = await response.json().catch(() => null)
+
+  return payload?.success ? normalizeTrialCredits(payload.data) : null
+}
+
 export default function AiScreeningPage() {
   const { timezone } = useOrgTimezone()
   const searchParams = useAuthSearchParams()
@@ -787,6 +797,24 @@ export default function AiScreeningPage() {
       active = false
     }
   }, [flowStateHydrated, restoredActiveJobId, restoredFlowStep, searchParams])
+
+  useEffect(() => {
+    let active = true
+
+    fetchTrialCreditsSnapshot()
+      .then((credits) => {
+        if (active && credits) {
+          setTrialCredits(credits)
+        }
+      })
+      .catch((error) => {
+        console.warn("Failed to refresh VERIS trial credits", error)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [searchParams])
 
   useEffect(() => {
     if (!flowStateHydrated || typeof window === "undefined") {
@@ -1514,11 +1542,19 @@ export default function AiScreeningPage() {
       if (payload.data?.trialCredits) {
         setTrialCredits(normalizeTrialCredits(payload.data.trialCredits))
       } else {
+        const fallbackDeduction = Number(payload.data?.matchedCount ?? candidateIds.length ?? 1)
         setTrialCredits((current) => ({
           ...current,
-          screeningCreditsRemaining: Math.max(0, current.screeningCreditsRemaining - 1),
+          screeningCreditsRemaining: Math.max(0, current.screeningCreditsRemaining - Math.max(1, fallbackDeduction)),
         }))
       }
+      fetchTrialCreditsSnapshot()
+        .then((credits) => {
+          if (credits) {
+            setTrialCredits(credits)
+          }
+        })
+        .catch(() => undefined)
       const apiMatches = (payload.data?.matches ?? []) as MatchRow[]
       const scopedMatches = filterMatchesToCandidateScope(
         apiMatches,

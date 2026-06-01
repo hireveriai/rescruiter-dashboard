@@ -82,11 +82,12 @@ function filterMatchesToCandidateIds<T extends { candidateId: string }>(matches:
   return matches.filter((match) => scopedIds.has(match.candidateId))
 }
 
-async function assertScreeningCreditsWithoutBreakingMatch(organizationId: string) {
+async function assertScreeningCreditsWithoutBreakingMatch(organizationId: string, amount: number) {
   try {
     await assertTrialCreditsAvailable({
       organizationId,
       kind: "SCREENING",
+      amount,
     })
   } catch (error) {
     if (isApiError(error) && error.code === "FREE_TRIAL_LIMIT_REACHED") {
@@ -97,11 +98,12 @@ async function assertScreeningCreditsWithoutBreakingMatch(organizationId: string
   }
 }
 
-async function deductScreeningCreditsWithoutBreakingMatch(organizationId: string) {
+async function deductScreeningCreditsWithoutBreakingMatch(organizationId: string, amount: number) {
   try {
     return await deductTrialCredits({
       organizationId,
       kind: "SCREENING",
+      amount,
     })
   } catch (error) {
     if (isApiError(error) && error.code === "FREE_TRIAL_LIMIT_REACHED") {
@@ -160,7 +162,7 @@ export async function GET(request: Request) {
       throw new ApiError(400, "JD_NOT_PROCESSED", "Analyze a job before matching candidates")
     }
 
-    await assertScreeningCreditsWithoutBreakingMatch(auth.organizationId)
+    await assertScreeningCreditsWithoutBreakingMatch(auth.organizationId, 1)
 
     const job = await getScreeningJob(auth.organizationId, jobId)
 
@@ -288,8 +290,6 @@ export async function POST(request: Request) {
       throw new ApiError(400, "JD_NOT_PROCESSED", "Analyze a job before matching candidates")
     }
 
-    await assertScreeningCreditsWithoutBreakingMatch(auth.organizationId)
-
     const job = await getScreeningJob(auth.organizationId, jobId)
 
     if (!job) {
@@ -368,6 +368,8 @@ export async function POST(request: Request) {
         "Uploaded resumes were saved, but matching could not find the current upload. Please refresh and run matching again, or use Scope: All Candidates (Database)."
       )
     }
+
+    await assertScreeningCreditsWithoutBreakingMatch(auth.organizationId, candidates.length)
 
     const generatedMatches = await processInBatches(candidates, BATCH_SIZE, async (candidate) => {
       const result = await matchCandidateToJobWithAI({
@@ -477,7 +479,7 @@ export async function POST(request: Request) {
       })
       return null
     })
-    const trialCredits = await deductScreeningCreditsWithoutBreakingMatch(auth.organizationId)
+    const trialCredits = await deductScreeningCreditsWithoutBreakingMatch(auth.organizationId, candidates.length)
 
     return NextResponse.json({
       success: true,
