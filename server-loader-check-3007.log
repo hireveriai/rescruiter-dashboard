@@ -1,0 +1,13 @@
+
+> hireveri-recruiter@0.1.0 dev
+> next dev --port 3007
+
+▲ Next.js 16.1.6 (Turbopack)
+- Local:         http://localhost:3007
+- Network:       http://192.168.0.117:3007
+- Environments: .env.local
+
+✓ Starting...
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+✓ Ready in 2.8s
+[?25h

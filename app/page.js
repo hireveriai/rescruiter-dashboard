@@ -7,7 +7,6 @@ import Navbar from "../components/Navbar";
 import DashboardIntelligenceBanner from "../components/DashboardIntelligenceBanner";
 import FreeTrialUsage from "../components/FreeTrialUsage";
 import RecruiterDashboardBootstrap from "../components/RecruiterDashboardBootstrap";
-import { CardSkeleton, MetricSkeleton, TableSkeleton, TimelineSkeleton } from "../components/system/skeletons";
 
 const CognitiveDock = dynamic(() => import("../components/dashboard/CognitiveDock"), {
   ssr: false,
@@ -15,32 +14,32 @@ const CognitiveDock = dynamic(() => import("../components/dashboard/CognitiveDoc
 
 const Pipeline = dynamic(() => import("../components/Pipeline"), {
   ssr: false,
-  loading: () => <MetricSkeleton className="mt-8 grid-cols-2 lg:grid-cols-3" />,
+  loading: () => null,
 });
 
 const PendingInterviews = dynamic(() => import("../components/PendingInterviews"), {
   ssr: false,
-  loading: () => <div className="mt-10 overflow-hidden rounded-lg bg-[#111a2e]"><table className="w-full text-sm"><TableSkeleton rows={3} columns={6} showAvatar /></table></div>,
+  loading: () => null,
 });
 
 const RecordedInterviews = dynamic(() => import("../components/RecordedInterviews"), {
   ssr: false,
-  loading: () => <CardSkeleton count={3} className="mt-10 grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3" />,
+  loading: () => null,
 });
 
 const CandidateList = dynamic(() => import("../components/CandidateList"), {
   ssr: false,
-  loading: () => <div className="mt-10 overflow-hidden rounded-lg bg-[#111a2e]"><table className="w-full text-sm"><TableSkeleton rows={5} columns={5} showAvatar /></table></div>,
+  loading: () => null,
 });
 
 const Sidebar = dynamic(() => import("../components/Sidebar"), {
   ssr: false,
-  loading: () => <div className="min-h-[360px] rounded-[28px] border border-slate-800 bg-slate-900/40" />,
+  loading: () => null,
 });
 
 const VerisSummary = dynamic(() => import("../components/VerisSummary"), {
   ssr: false,
-  loading: () => <TimelineSkeleton className="mt-10" messages={["Loading behavioral telemetry...", "Preparing cognitive analysis...", "Building forensic timeline..."]} />,
+  loading: () => null,
 });
 
 const WarRoomButton = dynamic(() => import("../components/WarRoomButton"), {
@@ -75,6 +74,23 @@ const EMPTY_WORKFLOW_METRICS = {
   decisionsPending: 0,
 };
 
+function createEmptyDashboardOverview(profile = null) {
+  return {
+    partial: true,
+    profile,
+    pipeline: EMPTY_PIPELINE,
+    workflowMetrics: EMPTY_WORKFLOW_METRICS,
+    dashboardState: {},
+    pendingInterviews: [],
+    pendingInterviewsTotal: 0,
+    candidates: [],
+    alerts: [],
+    trialCredits: null,
+    recordedInterviews: [],
+    veris: [],
+  };
+}
+
 function normalizeDashboardOverview(overview) {
   if (!overview) {
     return null;
@@ -93,9 +109,9 @@ function normalizeDashboardOverview(overview) {
 
 function DashboardContent({ profile, overview, isLoading }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const isPartialOverview = Boolean(overview?.partial);
-  const fullOverview = normalizeDashboardOverview(overview);
   const displayProfile = profile ?? overview?.profile ?? null;
+  const fullOverview = normalizeDashboardOverview(overview) ?? createEmptyDashboardOverview(displayProfile);
+  const isPartialOverview = Boolean(fullOverview?.partial);
   const [trialCredits, setTrialCredits] = useState(overview?.trialCredits ?? null);
   const activeInterviewCount = fullOverview?.pendingInterviewsTotal ?? fullOverview?.pendingInterviews?.length ?? 0;
   const candidateCount = fullOverview?.candidates?.length ?? 0;
@@ -152,27 +168,27 @@ function DashboardContent({ profile, overview, isLoading }) {
           <FreeTrialUsage credits={trialCredits} />
 
           <Suspense fallback={null}>
-            <Pipeline initialPipeline={fullOverview?.pipeline} isLoading={isLoading || isPartialOverview} />
+            <Pipeline initialPipeline={fullOverview?.pipeline} isLoading={false} />
           </Suspense>
           <Suspense fallback={null}>
             <PendingInterviews
               initialPendingInterviews={fullOverview?.pendingInterviews}
               initialPendingTotal={fullOverview?.pendingInterviewsTotal}
-              isLoading={isLoading}
+              isLoading={false}
             />
           </Suspense>
           <Suspense fallback={null}>
             <RecordedInterviews
               initialRecordedInterviews={isPartialOverview ? [] : fullOverview?.recordedInterviews}
               organizationId={displayProfile?.organizationId}
-              isLoading={isLoading}
+              isLoading={false}
             />
           </Suspense>
           <Suspense fallback={null}>
-            <CandidateList initialCandidates={fullOverview?.candidates} isLoading={isLoading} />
+            <CandidateList initialCandidates={fullOverview?.candidates} isLoading={false} />
           </Suspense>
           <Suspense fallback={null}>
-            <VerisSummary initialSummaries={isPartialOverview ? [] : fullOverview?.veris} isLoading={isLoading} />
+            <VerisSummary initialSummaries={isPartialOverview ? [] : fullOverview?.veris} isLoading={false} />
           </Suspense>
           <WarRoomButton organizationId={displayProfile?.organizationId} />
         </div>
