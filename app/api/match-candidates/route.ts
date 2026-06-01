@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
-import { ApiError } from "@/lib/server/errors"
+import { ApiError, isApiError } from "@/lib/server/errors"
 import { errorResponse } from "@/lib/server/response"
 import { matchCandidateToJobWithAI } from "@/lib/server/ai-screening/openai"
 import {
@@ -82,6 +82,37 @@ function filterMatchesToCandidateIds<T extends { candidateId: string }>(matches:
   return matches.filter((match) => scopedIds.has(match.candidateId))
 }
 
+async function assertScreeningCreditsWithoutBreakingMatch(organizationId: string) {
+  try {
+    await assertTrialCreditsAvailable({
+      organizationId,
+      kind: "SCREENING",
+    })
+  } catch (error) {
+    if (isApiError(error) && error.code === "FREE_TRIAL_LIMIT_REACHED") {
+      throw error
+    }
+
+    console.warn("VERIS screening credit preflight skipped", error)
+  }
+}
+
+async function deductScreeningCreditsWithoutBreakingMatch(organizationId: string) {
+  try {
+    return await deductTrialCredits({
+      organizationId,
+      kind: "SCREENING",
+    })
+  } catch (error) {
+    if (isApiError(error) && error.code === "FREE_TRIAL_LIMIT_REACHED") {
+      throw error
+    }
+
+    console.warn("VERIS screening credit deduction skipped after successful match", error)
+    return null
+  }
+}
+
 export async function GET(request: Request) {
   try {
     const auth = await getRecruiterRequestContext(request)
@@ -129,10 +160,7 @@ export async function GET(request: Request) {
       throw new ApiError(400, "JD_NOT_PROCESSED", "Analyze a job before matching candidates")
     }
 
-    await assertTrialCreditsAvailable({
-      organizationId: auth.organizationId,
-      kind: "SCREENING",
-    })
+    await assertScreeningCreditsWithoutBreakingMatch(auth.organizationId)
 
     const job = await getScreeningJob(auth.organizationId, jobId)
 
@@ -260,10 +288,7 @@ export async function POST(request: Request) {
       throw new ApiError(400, "JD_NOT_PROCESSED", "Analyze a job before matching candidates")
     }
 
-    await assertTrialCreditsAvailable({
-      organizationId: auth.organizationId,
-      kind: "SCREENING",
-    })
+    await assertScreeningCreditsWithoutBreakingMatch(auth.organizationId)
 
     const job = await getScreeningJob(auth.organizationId, jobId)
 
@@ -378,6 +403,12 @@ export async function POST(request: Request) {
         candidateId: candidate.candidate_id,
         jobId,
         result,
+      }).catch((error) => {
+        console.warn("VERIS generated match cache write skipped", {
+          candidateId: candidate.candidate_id,
+          jobId,
+          error: error instanceof Error ? error.message : String(error),
+        })
       })
 
       return {
@@ -406,6 +437,12 @@ export async function POST(request: Request) {
       candidateIds: resolvedCandidateIds,
       fileNames: uploadFileNames,
       includeAllCandidates,
+    }).catch((error) => {
+      console.warn("VERIS stored match lookup skipped", {
+        jobId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return [] as typeof generatedMatches
     })
     matches = includeAllCandidates ? matches : filterMatchesToCandidateIds(matches, resolvedCandidateIds)
 
@@ -414,6 +451,12 @@ export async function POST(request: Request) {
         candidateIds: resolvedCandidateIds,
         fileNames: uploadFileNames,
         includeAllCandidates: false,
+      }).catch((error) => {
+        console.warn("VERIS stored match file lookup skipped", {
+          jobId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+        return [] as typeof generatedMatches
       })
       matches = filterMatchesToCandidateIds(matches, resolvedCandidateIds)
     }
@@ -427,11 +470,14 @@ export async function POST(request: Request) {
       jobId,
       batchId: effectiveBatchId || null,
       matches,
+    }).catch((error) => {
+      console.warn("VERIS screening run snapshot write skipped", {
+        jobId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return null
     })
-    const trialCredits = await deductTrialCredits({
-      organizationId: auth.organizationId,
-      kind: "SCREENING",
-    })
+    const trialCredits = await deductScreeningCreditsWithoutBreakingMatch(auth.organizationId)
 
     return NextResponse.json({
       success: true,
