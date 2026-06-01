@@ -48,6 +48,39 @@ function mapTrialCreditRow(row: TrialCreditRow): TrialCreditSnapshot {
   }
 }
 
+async function tableExists(tableName: string, client: QueryClient = prisma) {
+  const rows = await client.$queryRaw<Array<{ regclass: string | null }>>(Prisma.sql`
+    select to_regclass(${`public.${tableName}`})::text as regclass
+  `)
+
+  return Boolean(rows[0]?.regclass)
+}
+
+async function reconcileScreeningCreditsFromRuns(organizationId: string, client: QueryClient = prisma) {
+  if (!(await tableExists("screening_runs", client))) {
+    return
+  }
+
+  const rows = await client.$queryRaw<Array<{ used_screening_credits: number }>>(Prisma.sql`
+    select coalesce(sum(greatest(coalesce(total_candidates, 0), 0)), 0)::int as used_screening_credits
+    from public.screening_runs
+    where organization_id = ${organizationId}::uuid
+  `)
+  const usedScreeningCredits = normalizeCount(rows[0]?.used_screening_credits)
+  const reconciledRemaining = Math.max(0, FREE_TRIAL_SCREENING_CREDITS - usedScreeningCredits)
+
+  await client.$executeRaw(Prisma.sql`
+    update public.workspace_trial_credits
+    set
+      screening_credits_remaining = least(screening_credits_remaining, ${reconciledRemaining}),
+      updated_at = case
+        when screening_credits_remaining > ${reconciledRemaining} then now()
+        else updated_at
+      end
+    where organization_id = ${organizationId}::uuid
+  `)
+}
+
 export async function ensureTrialCreditSchema(client: QueryClient = prisma) {
   await client.$executeRaw(Prisma.sql`
     create table if not exists public.workspace_trial_credits (
@@ -93,7 +126,7 @@ export async function getOrCreateTrialCredits(organizationId: string, client: Qu
   await ensureTrialCreditSchema(client)
   await ensureTrialCreditOrganization(organizationId, client)
 
-  const rows = await client.$queryRaw<TrialCreditRow[]>(Prisma.sql`
+  await client.$executeRaw(Prisma.sql`
     insert into public.workspace_trial_credits (
       organization_id,
       interview_credits_remaining,
@@ -106,10 +139,18 @@ export async function getOrCreateTrialCredits(organizationId: string, client: Qu
     )
     on conflict (organization_id) do update
     set updated_at = public.workspace_trial_credits.updated_at
-    returning
+  `)
+
+  await reconcileScreeningCreditsFromRuns(organizationId, client)
+
+  const rows = await client.$queryRaw<TrialCreditRow[]>(Prisma.sql`
+    select
       organization_id::text,
       interview_credits_remaining,
       screening_credits_remaining
+    from public.workspace_trial_credits
+    where organization_id = ${organizationId}::uuid
+    limit 1
   `)
 
   const row = rows[0]
