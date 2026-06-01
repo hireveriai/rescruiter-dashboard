@@ -8,6 +8,7 @@ import { showActionFeedback } from "@/lib/client/action-feedback"
 import { buildAuthUrl } from "@/lib/client/auth-query"
 import { copyText } from "@/lib/client/copy-to-clipboard"
 import { formatDateTime } from "@/lib/client/date-format"
+import UpgradeLimitDialog from "@/components/UpgradeLimitDialog"
 
 function CalendarIcon() {
   return (
@@ -89,7 +90,24 @@ function getResumeSourceLabel(file) {
   return ["Uploaded from device", typeLabel, sizeLabel].filter(Boolean).join(" · ")
 }
 
-export default function SendInterviewModal({ isOpen, onClose }) {
+const UPGRADE_MESSAGE =
+  "You’ve reached your free trial limit. Upgrade your workspace to continue conducting interviews and screenings."
+
+function normalizeTrialCredits(credits) {
+  return {
+    interviewCreditsRemaining: Math.max(0, Number(credits?.interviewCreditsRemaining ?? 5)),
+    screeningCreditsRemaining: Math.max(0, Number(credits?.screeningCreditsRemaining ?? 15)),
+    upgradeMessage: credits?.upgradeMessage || UPGRADE_MESSAGE,
+  }
+}
+
+function notifyTrialCreditsUpdated(credits) {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("hireveri:trial-credits-updated", { detail: credits }))
+  }
+}
+
+export default function SendInterviewModal({ isOpen, onClose, initialTrialCredits = null }) {
   const searchParams = useAuthSearchParams()
   const primaryFileInputRef = useRef(null)
   const changeFileInputRef = useRef(null)
@@ -110,6 +128,10 @@ export default function SendInterviewModal({ isOpen, onClose }) {
   const [emailError, setEmailError] = useState("")
   const [copyStatus, setCopyStatus] = useState("idle")
   const [duplicateWarning, setDuplicateWarning] = useState(null)
+  const [trialCredits, setTrialCredits] = useState(() => normalizeTrialCredits(initialTrialCredits))
+  const [creditConfirmationOpen, setCreditConfirmationOpen] = useState(false)
+  const [confirmedCreditNotice, setConfirmedCreditNotice] = useState(false)
+  const [upgradeLimitOpen, setUpgradeLimitOpen] = useState(false)
 
   const resetModalState = () => {
     setJobId("")
@@ -126,6 +148,9 @@ export default function SendInterviewModal({ isOpen, onClose }) {
     setEmailError("")
     setCopyStatus("idle")
     setDuplicateWarning(null)
+    setCreditConfirmationOpen(false)
+    setConfirmedCreditNotice(false)
+    setUpgradeLimitOpen(false)
     submissionKeyRef.current = ""
     resetFileInputs()
   }
@@ -137,11 +162,24 @@ export default function SendInterviewModal({ isOpen, onClose }) {
     }
 
     setJobsLoading(true)
-    fetch(buildAuthUrl("/api/jobs", searchParams), {
-      credentials: "include",
-      cache: "no-store",
-    })
-      .then((res) => res.json())
+    Promise.all([
+      fetch(buildAuthUrl("/api/jobs", searchParams), {
+        credentials: "include",
+        cache: "no-store",
+      }),
+      fetch(buildAuthUrl("/api/trial-credits", searchParams), {
+        credentials: "include",
+        cache: "no-store",
+      }),
+    ])
+      .then(async ([jobsResponse, creditsResponse]) => {
+        const data = await jobsResponse.json()
+        const creditsPayload = await creditsResponse.json().catch(() => null)
+        if (creditsPayload?.success) {
+          setTrialCredits(normalizeTrialCredits(creditsPayload.data))
+        }
+        return data
+      })
       .then((data) => {
         const nextJobs = (data.jobs || data.data?.jobs || []).filter(
           (job) => (job.isActive ?? job.is_active ?? true) !== false
@@ -162,6 +200,10 @@ export default function SendInterviewModal({ isOpen, onClose }) {
       })
       .finally(() => setJobsLoading(false))
   }, [isOpen, searchParams])
+
+  useEffect(() => {
+    setTrialCredits(normalizeTrialCredits(initialTrialCredits))
+  }, [initialTrialCredits])
 
   useEffect(() => {
     if (copyStatus !== "success") {
@@ -203,7 +245,7 @@ export default function SendInterviewModal({ isOpen, onClose }) {
     }
   }
 
-  const handleSubmit = async ({ confirmedDuplicate = false } = {}) => {
+  const handleSubmit = async ({ confirmedDuplicate = false, confirmedCredit = false } = {}) => {
     setError("")
     setLink("")
     setEmailStatus(null)
@@ -227,6 +269,16 @@ export default function SendInterviewModal({ isOpen, onClose }) {
 
     if (!resumeFile) {
       showFormError("Resume is required")
+      return
+    }
+
+    if (trialCredits.interviewCreditsRemaining <= 0) {
+      setUpgradeLimitOpen(true)
+      return
+    }
+
+    if (!confirmedCreditNotice && !confirmedCredit) {
+      setCreditConfirmationOpen(true)
       return
     }
 
@@ -328,6 +380,20 @@ export default function SendInterviewModal({ isOpen, onClose }) {
       }
 
       const responseData = interviewData.data || interviewData
+      if (responseData.trialCredits) {
+        const nextCredits = normalizeTrialCredits(responseData.trialCredits)
+        setTrialCredits(nextCredits)
+        notifyTrialCreditsUpdated(nextCredits)
+      } else {
+        setTrialCredits((current) => {
+          const nextCredits = {
+            ...current,
+            interviewCreditsRemaining: Math.max(0, current.interviewCreditsRemaining - 1),
+          }
+          notifyTrialCreditsUpdated(nextCredits)
+          return nextCredits
+        })
+      }
       setLink(responseData.link || "")
       setEmailStatus(
         responseData.emailSent === true
@@ -353,6 +419,11 @@ export default function SendInterviewModal({ isOpen, onClose }) {
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to send interview link"
+      if (message === UPGRADE_MESSAGE || message.toLowerCase().includes("free trial limit")) {
+        setUpgradeLimitOpen(true)
+        setError("")
+        return
+      }
       setError(message)
       showActionFeedback({
         tone: "error",
@@ -406,6 +477,43 @@ export default function SendInterviewModal({ isOpen, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/80 px-4 py-4 backdrop-blur-md sm:py-6" role="dialog" aria-modal="true">
+      {creditConfirmationOpen ? (
+        <div className="fixed inset-0 z-[65] flex items-start justify-center overflow-y-auto bg-slate-950/70 px-4 py-4 backdrop-blur-sm sm:py-6" role="dialog" aria-modal="true">
+          <div className="w-full max-w-md rounded-2xl border border-cyan-400/20 bg-[#0b1220] p-6 shadow-[0_24px_80px_rgba(2,6,23,0.55)]">
+            <p className="text-xs font-semibold uppercase tracking-[0.26em] text-cyan-200/75">Credit Notice</p>
+            <h3 className="mt-3 text-lg font-semibold text-white">You are about to use 1 AI Interview credit.</h3>
+            <p className="mt-3 text-sm leading-6 text-slate-300">
+              Remaining Interview Credits after this action: {Math.max(0, trialCredits.interviewCreditsRemaining - 1)}
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setCreditConfirmationOpen(false)}
+                className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCreditConfirmationOpen(false)
+                  setConfirmedCreditNotice(true)
+                  void handleSubmit({ confirmedCredit: true })
+                }}
+                className="rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300/50"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      <UpgradeLimitDialog
+        isOpen={upgradeLimitOpen}
+        onClose={() => setUpgradeLimitOpen(false)}
+        credits={trialCredits}
+        message={trialCredits.upgradeMessage}
+      />
       {duplicateWarning ? (
         <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-slate-950/80 px-4 py-4 backdrop-blur-sm sm:py-6" role="dialog" aria-modal="true">
           <div className="w-full max-w-md rounded-2xl border border-amber-400/25 bg-[#0b1220] p-6 shadow-[0_24px_80px_rgba(2,6,23,0.55)]">
@@ -612,10 +720,27 @@ export default function SendInterviewModal({ isOpen, onClose }) {
                 <br />- Monitored for integrity
               </div>
 
+              <div className={`mb-5 rounded-2xl border p-4 text-sm ${trialCredits.interviewCreditsRemaining <= 0 ? "border-amber-400/25 bg-amber-500/10 text-amber-100" : "border-cyan-400/15 bg-cyan-400/[0.06] text-cyan-100"}`}>
+                {trialCredits.interviewCreditsRemaining <= 0
+                  ? (
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <span>{trialCredits.upgradeMessage}</span>
+                      <button
+                        type="button"
+                        onClick={() => setUpgradeLimitOpen(true)}
+                        className="rounded-xl border border-amber-200/35 bg-amber-300/12 px-4 py-2 text-sm font-semibold text-amber-50 transition hover:border-amber-100/60"
+                      >
+                        View Subscription Plans
+                      </button>
+                    </div>
+                  )
+                  : `AI Interviews Left: ${trialCredits.interviewCreditsRemaining}`}
+              </div>
+
               {error && <p className="mb-2 text-sm text-red-400">{error}</p>}
               <button
                 onClick={() => handleSubmit()}
-                disabled={loading || jobsLoading}
+                disabled={loading || jobsLoading || trialCredits.interviewCreditsRemaining <= 0}
                 className="w-full rounded-2xl bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 px-4 py-3 text-base font-medium text-white shadow-[0_18px_30px_rgba(37,99,235,0.3)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {loading ? "Generating secure link..." : "Send Interview Link"}

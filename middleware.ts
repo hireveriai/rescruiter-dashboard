@@ -17,6 +17,7 @@ const PROTECTED_PAGE_PREFIXES = [
   "/settings",
   "/contact-us",
   "/billing",
+  "/subscription",
 ]
 
 const PROTECTED_API_PREFIXES = [
@@ -39,6 +40,7 @@ const PROTECTED_API_PREFIXES = [
   "/api/verify-payment",
   "/api/payment-failed",
   "/api/billing",
+  "/api/trial-credits",
 ]
 
 function hasSupabaseAuthCookie(request: NextRequest) {

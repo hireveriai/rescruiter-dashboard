@@ -17,6 +17,7 @@ import {
   prepareInterviewQuestionsWithRetry,
   sendInterviewEmailForInterview,
 } from "@/lib/server/services/interview-workflow"
+import { assertTrialCreditsAvailable, deductTrialCredits } from "@/lib/server/services/trial-credits"
 
 type CandidateEmailRow = {
   full_name: string | null
@@ -196,6 +197,11 @@ export async function POST(request: Request) {
       throw new ApiError(400, "INVALID_CANDIDATE_ID", "candidateId is required")
     }
 
+    await assertTrialCreditsAvailable({
+      organizationId: auth.organizationId,
+      kind: "INTERVIEW",
+    })
+
     const hasIsActive = await jobPositionsSupportIsActive()
 
     const job = await prisma.jobPosition.findFirst({
@@ -323,6 +329,11 @@ export async function POST(request: Request) {
     }
 
     if (!result.reused) {
+      const trialCredits = await deductTrialCredits({
+        organizationId: auth.organizationId,
+        kind: "INTERVIEW",
+      })
+
       after(() =>
         finalizeInterviewPreparation({
           organizationId: auth.organizationId,
@@ -363,6 +374,7 @@ export async function POST(request: Request) {
           preparationQueued: true,
           emailError: null,
           link: result.link,
+          trialCredits,
         },
         202
       )

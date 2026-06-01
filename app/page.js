@@ -1,10 +1,11 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 
 import Navbar from "../components/Navbar";
 import DashboardIntelligenceBanner from "../components/DashboardIntelligenceBanner";
+import FreeTrialUsage from "../components/FreeTrialUsage";
 import RecruiterDashboardBootstrap from "../components/RecruiterDashboardBootstrap";
 import { CardSkeleton, MetricSkeleton, TableSkeleton, TimelineSkeleton } from "../components/system/skeletons";
 
@@ -55,12 +56,30 @@ function DashboardContent({ profile, overview, isLoading }) {
   const isPartialOverview = Boolean(overview?.partial);
   const fullOverview = isPartialOverview ? null : overview;
   const displayProfile = profile ?? overview?.profile ?? null;
+  const [trialCredits, setTrialCredits] = useState(overview?.trialCredits ?? null);
   const activeInterviewCount = fullOverview?.pendingInterviewsTotal ?? fullOverview?.pendingInterviews?.length ?? 0;
   const candidateCount = fullOverview?.candidates?.length ?? 0;
   const fraudAlerts = (overview?.alerts ?? []).filter((alert) => {
     const text = `${alert?.tone ?? ""} ${alert?.type ?? ""} ${alert?.title ?? ""} ${alert?.message ?? ""}`.toLowerCase();
     return text.includes("danger") || text.includes("fraud") || text.includes("flag") || text.includes("suspicion") || text.includes("anomaly");
   });
+
+  useEffect(() => {
+    if (overview?.trialCredits) {
+      setTrialCredits(overview.trialCredits);
+    }
+  }, [overview?.trialCredits]);
+
+  useEffect(() => {
+    function handleTrialCreditsUpdated(event) {
+      if (event.detail) {
+        setTrialCredits(event.detail);
+      }
+    }
+
+    window.addEventListener("hireveri:trial-credits-updated", handleTrialCreditsUpdated);
+    return () => window.removeEventListener("hireveri:trial-credits-updated", handleTrialCreditsUpdated);
+  }, []);
 
   return (
     <div className="relative min-h-screen bg-[#0b1220] text-white">
@@ -90,6 +109,7 @@ function DashboardContent({ profile, overview, isLoading }) {
             onCreateJob={() => window.dispatchEvent(new CustomEvent("hireveri:open-create-job"))}
             onSendInterview={() => setIsModalOpen(true)}
           />
+          <FreeTrialUsage credits={trialCredits} />
 
           <Suspense fallback={null}>
             <Pipeline initialPipeline={fullOverview?.pipeline} isLoading={isLoading || isPartialOverview} />
@@ -122,7 +142,7 @@ function DashboardContent({ profile, overview, isLoading }) {
         </div>
       </div>
 
-      {isModalOpen ? <SendInterviewModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} /> : null}
+      {isModalOpen ? <SendInterviewModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} initialTrialCredits={trialCredits} /> : null}
     </div>
   );
 }

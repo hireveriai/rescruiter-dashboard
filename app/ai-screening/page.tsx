@@ -5,6 +5,7 @@ import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "re
 
 import Navbar from "@/components/Navbar"
 import SendInterviewModal from "@/components/SendInterviewModal"
+import UpgradeLimitDialog from "@/components/UpgradeLimitDialog"
 import { InsightTooltip } from "@/components/ui/InsightTooltip"
 import { ProcessingTimeline, type TimelineStep } from "@/components/ui/ProcessingTimeline"
 import { StepProgress } from "@/components/ui/StepProgress"
@@ -73,6 +74,12 @@ type ScreeningRun = {
   totalCandidates: number
   strongFitCount: number
   avgScore: number
+}
+
+type TrialCredits = {
+  interviewCreditsRemaining: number
+  screeningCreditsRemaining: number
+  upgradeMessage: string
 }
 
 type UploadRow = {
@@ -148,6 +155,8 @@ const riskFilters = ["ALL", "LOW", "MEDIUM", "HIGH"] as const
 const FLOW_STORAGE_KEY = "hireveri.aiScreening.flowState"
 const AUTO_RUN = true
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const UPGRADE_MESSAGE =
+  "You’ve reached your free trial limit. Upgrade your workspace to continue conducting interviews and screenings."
 
 type StoredFlowState = {
   flowStep: FlowStep
@@ -631,6 +640,14 @@ function authUrl(path: string) {
   return buildAuthUrl(path)
 }
 
+function normalizeTrialCredits(credits: Partial<TrialCredits> | null | undefined): TrialCredits {
+  return {
+    interviewCreditsRemaining: Math.max(0, Number(credits?.interviewCreditsRemaining ?? 5)),
+    screeningCreditsRemaining: Math.max(0, Number(credits?.screeningCreditsRemaining ?? 15)),
+    upgradeMessage: credits?.upgradeMessage || UPGRADE_MESSAGE,
+  }
+}
+
 export default function AiScreeningPage() {
   const { timezone } = useOrgTimezone()
   const searchParams = useAuthSearchParams()
@@ -691,6 +708,8 @@ export default function AiScreeningPage() {
   const [duplicateInviteWarnings, setDuplicateInviteWarnings] = useState<DuplicateInviteWarning[]>([])
   const [selectedInsight, setSelectedInsight] = useState<SelectedInsight | null>(null)
   const [screeningRuns, setScreeningRuns] = useState<ScreeningRun[]>([])
+  const [trialCredits, setTrialCredits] = useState<TrialCredits>(() => normalizeTrialCredits(null))
+  const [upgradeLimitOpen, setUpgradeLimitOpen] = useState(false)
   const [selectedRunId, setSelectedRunId] = useState("")
   const [loadingRunId, setLoadingRunId] = useState("")
   const [runLoadDiagnostics, setRunLoadDiagnostics] = useState("")
@@ -713,7 +732,7 @@ export default function AiScreeningPage() {
 
     async function loadInitialData() {
       try {
-        const [jobsResponse, screeningJobsResponse] = await Promise.all([
+        const [jobsResponse, screeningJobsResponse, trialCreditsResponse] = await Promise.all([
           fetch(authUrl("/api/jobs?includeInactive=1"), {
             credentials: "include",
             cache: "no-store",
@@ -722,9 +741,14 @@ export default function AiScreeningPage() {
             credentials: "include",
             cache: "no-store",
           }),
+          fetch(authUrl("/api/trial-credits"), {
+            credentials: "include",
+            cache: "no-store",
+          }),
         ])
         const jobsPayload = await jobsResponse.json()
         const screeningPayload = await screeningJobsResponse.json()
+        const trialCreditsPayload = await trialCreditsResponse.json().catch(() => null)
 
         if (!active) {
           return
@@ -747,6 +771,10 @@ export default function AiScreeningPage() {
             setActiveJob(jobs[0])
             setSelectedExistingJobId((current) => current || jobs[0].sourceJobPositionId || jobs[0].id)
           }
+        }
+
+        if (trialCreditsPayload?.success) {
+          setTrialCredits(normalizeTrialCredits(trialCreditsPayload.data))
         }
       } catch (loadError) {
         console.error("Failed to load VERIS screening data", loadError)
@@ -1078,6 +1106,8 @@ export default function AiScreeningPage() {
   }, [selectedInsight])
 
   const isBusy = uploading || isProcessingJD || isMatching || savingNewJob || sending || cleanupBusy || isSwitchingRuns
+  const screeningLimitReached = trialCredits.screeningCreditsRemaining <= 0
+  const interviewLimitReached = trialCredits.interviewCreditsRemaining <= 0
   const canShowCleanupActions = matches.length > 0 || Boolean(currentBatchId) || uploadedCandidateIds.length > 0
   const canAnalyzeJob = hasUploadedResumes && hasSelectedJob && flowStep !== "JD_PROCESSED" && flowStep !== "MATCHED" && !isBusy
   const canRunMatching = Boolean(
@@ -1174,6 +1204,11 @@ export default function AiScreeningPage() {
   }
 
   async function handleUpload() {
+    if (screeningLimitReached) {
+      setUpgradeLimitOpen(true)
+      return
+    }
+
     if (files.length === 0) {
       setError("Choose PDF or DOCX resumes before uploading.")
       return
@@ -1421,6 +1456,12 @@ export default function AiScreeningPage() {
       return false
     }
 
+    if (screeningLimitReached) {
+      setUpgradeLimitOpen(true)
+      setPipelineErrorStep("match")
+      return false
+    }
+
     try {
       const fallbackJob =
         selectedScreeningJob ??
@@ -1470,6 +1511,14 @@ export default function AiScreeningPage() {
         }),
       })
       const payload = await readJsonResponse(response)
+      if (payload.data?.trialCredits) {
+        setTrialCredits(normalizeTrialCredits(payload.data.trialCredits))
+      } else {
+        setTrialCredits((current) => ({
+          ...current,
+          screeningCreditsRemaining: Math.max(0, current.screeningCreditsRemaining - 1),
+        }))
+      }
       const apiMatches = (payload.data?.matches ?? []) as MatchRow[]
       const scopedMatches = filterMatchesToCandidateScope(
         apiMatches,
@@ -1502,8 +1551,14 @@ export default function AiScreeningPage() {
 
       return true
     } catch (matchError) {
+      const message = matchError instanceof Error ? matchError.message : "Candidate matching failed"
+      if (message === UPGRADE_MESSAGE || message.toLowerCase().includes("free trial limit")) {
+        setUpgradeLimitOpen(true)
+        setError("")
+        return false
+      }
       setPipelineErrorStep("match")
-      setError(matchError instanceof Error ? matchError.message : "Candidate matching failed")
+      setError(message)
       return false
     } finally {
       setIsMatching(false)
@@ -1603,11 +1658,20 @@ export default function AiScreeningPage() {
         throw new Error(payload?.error?.message || payload?.message || "Bulk interview send failed")
       }
 
+      if (payload.data?.trialCredits) {
+        setTrialCredits(normalizeTrialCredits(payload.data.trialCredits))
+      }
       setSendResults(payload.data?.results ?? [])
       setNotice(`${payload.data?.sentCount ?? 0} interview invitations sent.`)
       return "sent"
     } catch (sendError) {
-      setError(sendError instanceof Error ? sendError.message : "Bulk interview send failed")
+      const message = sendError instanceof Error ? sendError.message : "Bulk interview send failed"
+      if (message === UPGRADE_MESSAGE || message.toLowerCase().includes("free trial limit")) {
+        setUpgradeLimitOpen(true)
+        setError("")
+        return "failed"
+      }
+      setError(message)
       return "failed"
     } finally {
       setSending(false)
@@ -1668,6 +1732,11 @@ export default function AiScreeningPage() {
   }
 
   function openSendConfirmation(candidateIds: string[]) {
+    if (interviewLimitReached) {
+      setUpgradeLimitOpen(true)
+      return
+    }
+
     const uniqueCandidateIds = [...new Set(candidateIds)].filter(Boolean)
 
     if (uniqueCandidateIds.length === 0) {
@@ -1991,6 +2060,29 @@ export default function AiScreeningPage() {
           </section>
         ) : null}
 
+        <section className="mt-6 rounded-2xl border border-slate-800 bg-[#0f172a] px-5 py-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Free Trial Remaining</p>
+              <p className="mt-2 text-sm text-slate-300">
+                AI Interviews Left: {trialCredits.interviewCreditsRemaining} · AI Screenings Left: {trialCredits.screeningCreditsRemaining}
+              </p>
+            </div>
+            {(screeningLimitReached || interviewLimitReached) ? (
+              <div className="flex flex-col gap-3 rounded-xl border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100 sm:flex-row sm:items-center">
+                <span>{trialCredits.upgradeMessage}</span>
+                <button
+                  type="button"
+                  onClick={() => setUpgradeLimitOpen(true)}
+                  className="inline-flex shrink-0 items-center justify-center rounded-xl border border-amber-200/35 bg-amber-300/12 px-4 py-2 text-sm font-semibold text-amber-50 transition hover:border-amber-100/60"
+                >
+                  View Subscription Plans
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </section>
+
         <div className="mt-8 grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
           <section className="rounded-[28px] border border-slate-800 bg-[#0f172a] p-6 shadow-[0_16px_60px_rgba(2,6,23,0.3)]">
             <div className="flex items-center justify-between gap-3">
@@ -2001,7 +2093,7 @@ export default function AiScreeningPage() {
               <button
                 type="button"
                 onClick={handleUpload}
-                disabled={isBusy}
+                disabled={isBusy || screeningLimitReached}
                 className="inline-flex items-center gap-2 rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-4 py-2.5 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300/50 hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <PlayIcon />
@@ -2145,13 +2237,19 @@ export default function AiScreeningPage() {
                       <button
                         type="button"
                         onClick={handleMatchCandidates}
-                        disabled={!canRunMatching}
+                        disabled={!canRunMatching || screeningLimitReached}
                         className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:border-emerald-300/50 hover:bg-emerald-500/15 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {isMatching ? "Matching..." : "Run Matching"}
                       </button>
-                      {!canRunMatching && !isBusy ? (
-                        <p className="mt-2 text-xs text-slate-500">{matchHelpText}</p>
+                      {(!canRunMatching || screeningLimitReached) && !isBusy ? (
+                        <button
+                          type="button"
+                          onClick={() => screeningLimitReached ? setUpgradeLimitOpen(true) : undefined}
+                          className={`mt-2 text-left text-xs ${screeningLimitReached ? "font-semibold text-amber-200 hover:text-amber-100" : "text-slate-500"}`}
+                        >
+                          {screeningLimitReached ? "View Subscription Plans" : matchHelpText}
+                        </button>
                       ) : null}
                     </div>
                   </div>
@@ -2633,7 +2731,7 @@ export default function AiScreeningPage() {
                           <button
                             type="button"
                             onClick={() => openSendConfirmation([match.candidateId])}
-                            disabled={isBusy || flowStep !== "MATCHED" || !match.email}
+                            disabled={isBusy || flowStep !== "MATCHED" || !match.email || interviewLimitReached}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-cyan-400/30 bg-cyan-400/10 text-cyan-100 transition hover:border-cyan-300/50 disabled:cursor-not-allowed disabled:opacity-50"
                             aria-label={`Send interview to ${match.candidateName}`}
                           >
@@ -2664,7 +2762,7 @@ export default function AiScreeningPage() {
               <button
                 type="button"
                 onClick={() => openSendConfirmation(selectedMatches.map((match) => match.candidateId))}
-                disabled={isBusy || flowStep !== "MATCHED" || selectedCount === 0}
+                disabled={isBusy || flowStep !== "MATCHED" || selectedCount === 0 || interviewLimitReached}
                 className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-5 py-2.5 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300/50 hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <SendIcon />
@@ -3198,6 +3296,13 @@ export default function AiScreeningPage() {
           </div>
         </div>
       ) : null}
+
+      <UpgradeLimitDialog
+        isOpen={upgradeLimitOpen}
+        onClose={() => setUpgradeLimitOpen(false)}
+        credits={trialCredits}
+        message={trialCredits.upgradeMessage}
+      />
 
       <SendInterviewModal isOpen={openSendInterview} onClose={() => setOpenSendInterview(false)} />
     </div>

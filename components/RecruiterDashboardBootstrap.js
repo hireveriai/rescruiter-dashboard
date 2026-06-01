@@ -24,6 +24,7 @@ function getOverviewSignature(overview) {
     pendingInterviews: overview.pendingInterviews,
     candidates: overview.candidates,
     alerts: overview.alerts,
+    trialCredits: overview.trialCredits,
   })
 }
 

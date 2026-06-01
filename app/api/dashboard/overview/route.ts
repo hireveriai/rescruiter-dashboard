@@ -8,6 +8,7 @@ import { deriveDashboardState } from "@/lib/dashboard/dashboard-state-engine"
 import { getRecruiterProfile } from "@/lib/server/services/recruiter-profile"
 import { getDashboardAlerts, type DashboardAlert } from "@/lib/server/services/dashboard-alerts"
 import { getDashboardWorkflowSnapshot } from "@/lib/server/services/dashboard-workflow"
+import { getOrCreateTrialCredits, type TrialCreditSnapshot } from "@/lib/server/services/trial-credits"
 
 type OverviewPayload = {
   partial?: boolean
@@ -41,6 +42,7 @@ type OverviewPayload = {
   candidates: Awaited<ReturnType<typeof getCandidatesDashboard>>
   veris?: Array<Record<string, unknown>>
   alerts: DashboardAlert[]
+  trialCredits: TrialCreditSnapshot
 }
 
 type CacheEntry = {
@@ -86,12 +88,14 @@ function emptyDashboardState() {
 async function buildFastOverview(
   auth: Awaited<ReturnType<typeof getRecruiterRequestContext>>
 ): Promise<OverviewPayload> {
-  const [profileStep, alertsStep] = await Promise.all([
+  const [profileStep, alertsStep, trialCreditsStep] = await Promise.all([
     timedStep("profile", () => getRecruiterProfile(auth)),
     timedStep("alerts", () => getDashboardAlerts(auth.organizationId, 8, auth.userId).catch(() => [])),
+    timedStep("trialCredits", () => getOrCreateTrialCredits(auth.organizationId)),
   ])
   const profile = profileStep.result
   const alerts = alertsStep.result
+  const trialCredits = trialCreditsStep.result
 
   return {
     partial: true,
@@ -103,6 +107,7 @@ async function buildFastOverview(
     pendingInterviewsTotal: undefined as unknown as OverviewPayload["pendingInterviewsTotal"],
     candidates: undefined as unknown as Awaited<ReturnType<typeof getCandidatesDashboard>>,
     alerts,
+    trialCredits,
   }
 }
 
@@ -116,7 +121,7 @@ async function buildOverview(
     ensureRecoverySchema: false,
   }))
 
-  const [profileStep, candidatesStep, pipelineStep, alertsStep] = await Promise.all([
+  const [profileStep, candidatesStep, pipelineStep, alertsStep, trialCreditsStep] = await Promise.all([
     timedStep("profile", () => getRecruiterProfile(auth)),
     timedStep("candidates", () => getCandidatesDashboard({
       organizationId: auth.organizationId,
@@ -126,11 +131,13 @@ async function buildOverview(
     })),
     pipelinePromise,
     timedStep("alerts", () => getDashboardAlerts(auth.organizationId, 8, auth.userId)),
+    timedStep("trialCredits", () => getOrCreateTrialCredits(auth.organizationId)),
   ])
   const profile = profileStep.result
   const candidates = candidatesStep.result
   const pipelineData = pipelineStep.result
   const alerts = alertsStep.result
+  const trialCredits = trialCreditsStep.result
   const workflowStep = await timedStep("workflow", () => getDashboardWorkflowSnapshot(auth.organizationId, pipelineData))
   const workflowSnapshot = workflowStep.result
 
@@ -146,6 +153,7 @@ async function buildOverview(
     pendingInterviewsTotal: pipelineData.pendingTotal,
     candidates: candidates ?? [],
     alerts,
+    trialCredits,
   }
 }
 

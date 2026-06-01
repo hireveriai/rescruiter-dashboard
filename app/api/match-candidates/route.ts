@@ -16,6 +16,7 @@ import {
   getUploadBatchManifest,
   upsertCandidateJobMatch,
 } from "@/lib/server/ai-screening/service"
+import { assertTrialCreditsAvailable, deductTrialCredits } from "@/lib/server/services/trial-credits"
 
 export const runtime = "nodejs"
 
@@ -127,6 +128,11 @@ export async function GET(request: Request) {
     if (!jobId) {
       throw new ApiError(400, "JD_NOT_PROCESSED", "Analyze a job before matching candidates")
     }
+
+    await assertTrialCreditsAvailable({
+      organizationId: auth.organizationId,
+      kind: "SCREENING",
+    })
 
     const job = await getScreeningJob(auth.organizationId, jobId)
 
@@ -417,6 +423,10 @@ export async function POST(request: Request) {
       batchId: effectiveBatchId || null,
       matches,
     })
+    const trialCredits = await deductTrialCredits({
+      organizationId: auth.organizationId,
+      kind: "SCREENING",
+    })
 
     return NextResponse.json({
       success: true,
@@ -427,6 +437,7 @@ export async function POST(request: Request) {
         matchScope,
         source,
         matches,
+        trialCredits,
       },
     })
   } catch (error) {

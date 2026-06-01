@@ -17,6 +17,7 @@ import {
   normalizeEmail,
   recordInterviewInviteForScreening,
 } from "@/lib/server/ai-screening/service"
+import { assertTrialCreditsAvailable, deductTrialCredits, getOrCreateTrialCredits } from "@/lib/server/services/trial-credits"
 
 export const runtime = "nodejs"
 
@@ -247,6 +248,15 @@ export async function POST(request: Request) {
       throw new ApiError(400, "NO_MATCHES_SELECTED", "No matched candidates were selected")
     }
 
+    const selectedWithEmailCount = selected.filter((match) => normalizeEmail(match.email)).length
+    if (selectedWithEmailCount > 0) {
+      await assertTrialCreditsAvailable({
+        organizationId: auth.organizationId,
+        kind: "INTERVIEW",
+        amount: selectedWithEmailCount,
+      })
+    }
+
     if (!confirmDuplicateInvites) {
       const duplicateWarnings = (
         await Promise.all(
@@ -385,6 +395,15 @@ export async function POST(request: Request) {
       }
     })
 
+    const chargeableLinkCount = results.filter((result) => result.inviteLink).length
+    const trialCredits = chargeableLinkCount > 0
+      ? await deductTrialCredits({
+          organizationId: auth.organizationId,
+          kind: "INTERVIEW",
+          amount: chargeableLinkCount,
+        })
+      : await getOrCreateTrialCredits(auth.organizationId)
+
     return NextResponse.json({
       success: true,
       data: {
@@ -394,6 +413,7 @@ export async function POST(request: Request) {
         failedCount: results.filter((result) => result.status === "FAILED").length,
         matchScope,
         results,
+        trialCredits,
       },
     })
   } catch (error) {
