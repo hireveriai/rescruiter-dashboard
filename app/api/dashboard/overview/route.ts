@@ -8,7 +8,13 @@ import { deriveDashboardState } from "@/lib/dashboard/dashboard-state-engine"
 import { getRecruiterProfile } from "@/lib/server/services/recruiter-profile"
 import { getDashboardAlerts, type DashboardAlert } from "@/lib/server/services/dashboard-alerts"
 import { getDashboardWorkflowSnapshot } from "@/lib/server/services/dashboard-workflow"
-import { getOrCreateTrialCredits, type TrialCreditSnapshot } from "@/lib/server/services/trial-credits"
+import {
+  FREE_TRIAL_INTERVIEW_CREDITS,
+  FREE_TRIAL_LIMIT_MESSAGE,
+  FREE_TRIAL_SCREENING_CREDITS,
+  getOrCreateTrialCredits,
+  type TrialCreditSnapshot,
+} from "@/lib/server/services/trial-credits"
 
 type OverviewPayload = {
   partial?: boolean
@@ -74,6 +80,21 @@ async function timedStep<T>(name: string, operation: () => Promise<T>) {
   return { result, durationMs }
 }
 
+async function safeTimedStep<T>(name: string, operation: () => Promise<T>, fallback: T) {
+  try {
+    return await timedStep(name, operation)
+  } catch (error) {
+    console.warn(JSON.stringify({
+      level: "warn",
+      msg: "dashboard_step_recovered",
+      step: name,
+      error: error instanceof Error ? error.message : String(error),
+    }))
+
+    return { result: fallback, durationMs: 0 }
+  }
+}
+
 function emptyDashboardState() {
   return deriveDashboardState({
     jobs_count: 0,
@@ -85,13 +106,39 @@ function emptyDashboardState() {
   })
 }
 
+function emptyPipeline() {
+  return {
+    pipeline: {
+      pending: 0,
+      inProgress: 0,
+      completed: 0,
+      flagged: 0,
+      reviewed: 0,
+      reviewRequired: 0,
+    },
+    pendingInterviews: [],
+    pendingTotal: 0,
+  }
+}
+
+function emptyTrialCredits(organizationId: string): TrialCreditSnapshot {
+  return {
+    organizationId,
+    interviewCreditsRemaining: FREE_TRIAL_INTERVIEW_CREDITS,
+    screeningCreditsRemaining: FREE_TRIAL_SCREENING_CREDITS,
+    canSendInterview: true,
+    canStartScreening: true,
+    upgradeMessage: FREE_TRIAL_LIMIT_MESSAGE,
+  }
+}
+
 async function buildFastOverview(
   auth: Awaited<ReturnType<typeof getRecruiterRequestContext>>
 ): Promise<OverviewPayload> {
   const [profileStep, alertsStep, trialCreditsStep] = await Promise.all([
     timedStep("profile", () => getRecruiterProfile(auth)),
-    timedStep("alerts", () => getDashboardAlerts(auth.organizationId, 8, auth.userId).catch(() => [])),
-    timedStep("trialCredits", () => getOrCreateTrialCredits(auth.organizationId)),
+    safeTimedStep("alerts", () => getDashboardAlerts(auth.organizationId, 8, auth.userId), []),
+    safeTimedStep("trialCredits", () => getOrCreateTrialCredits(auth.organizationId), emptyTrialCredits(auth.organizationId)),
   ])
   const profile = profileStep.result
   const alerts = alertsStep.result
@@ -114,31 +161,53 @@ async function buildFastOverview(
 async function buildOverview(
   auth: Awaited<ReturnType<typeof getRecruiterRequestContext>>
 ): Promise<OverviewPayload> {
-  const pipelinePromise = timedStep("pipeline", () => getDashboardPipelineData({
+  const emptyPipelineData = emptyPipeline()
+  const pipelinePromise = safeTimedStep("pipeline", () => getDashboardPipelineData({
     organizationId: auth.organizationId,
     limit: 5,
     finalizeStale: false,
     ensureRecoverySchema: false,
-  }))
+  }), emptyPipelineData)
 
   const [profileStep, candidatesStep, pipelineStep, alertsStep, trialCreditsStep] = await Promise.all([
     timedStep("profile", () => getRecruiterProfile(auth)),
-    timedStep("candidates", () => getCandidatesDashboard({
+    safeTimedStep("candidates", () => getCandidatesDashboard({
       organizationId: auth.organizationId,
       limit: 5,
       finalizeStale: false,
       includeAnswerSummaries: false,
-    })),
+    }), []),
     pipelinePromise,
-    timedStep("alerts", () => getDashboardAlerts(auth.organizationId, 8, auth.userId)),
-    timedStep("trialCredits", () => getOrCreateTrialCredits(auth.organizationId)),
+    safeTimedStep("alerts", () => getDashboardAlerts(auth.organizationId, 8, auth.userId), []),
+    safeTimedStep("trialCredits", () => getOrCreateTrialCredits(auth.organizationId), emptyTrialCredits(auth.organizationId)),
   ])
   const profile = profileStep.result
   const candidates = candidatesStep.result
   const pipelineData = pipelineStep.result
   const alerts = alertsStep.result
   const trialCredits = trialCreditsStep.result
-  const workflowStep = await timedStep("workflow", () => getDashboardWorkflowSnapshot(auth.organizationId, pipelineData))
+  const workflowStep = await safeTimedStep(
+    "workflow",
+    () => getDashboardWorkflowSnapshot(auth.organizationId, pipelineData),
+    {
+      pipeline: pipelineData.pipeline,
+      workflowMetrics: {
+        jobs: 0,
+        activeJobs: 0,
+        invites: 0,
+        screeningRuns: 0,
+        shortlistedCandidates: 0,
+        screeningStarted: false,
+        screeningCompleted: false,
+        interviewsRunning: pipelineData.pipeline.inProgress,
+        completedInterviews: pipelineData.pipeline.completed,
+        pendingReports: 0,
+        reviewedReports: 0,
+        decisionsPending: 0,
+      },
+      dashboardState: emptyDashboardState(),
+    }
+  )
   const workflowSnapshot = workflowStep.result
 
   return {
