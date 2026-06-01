@@ -27,6 +27,8 @@ type TrialCreditRow = {
 
 type QueryClient = typeof prisma | Prisma.TransactionClient
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 function normalizeCount(value: unknown) {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0
@@ -65,8 +67,31 @@ export async function ensureTrialCreditSchema(client: QueryClient = prisma) {
   `)
 }
 
+export async function ensureTrialCreditOrganization(organizationId: string, client: QueryClient = prisma) {
+  if (!UUID_REGEX.test(organizationId)) {
+    throw new ApiError(400, "INVALID_ORGANIZATION_ID", "Invalid recruiter workspace.")
+  }
+
+  await client.$executeRaw(Prisma.sql`
+    insert into public.organizations (
+      organization_id,
+      organization_name,
+      is_active,
+      created_at
+    )
+    values (
+      ${organizationId}::uuid,
+      'Recruiter Workspace',
+      true,
+      now()
+    )
+    on conflict (organization_id) do nothing
+  `)
+}
+
 export async function getOrCreateTrialCredits(organizationId: string, client: QueryClient = prisma) {
   await ensureTrialCreditSchema(client)
+  await ensureTrialCreditOrganization(organizationId, client)
 
   const rows = await client.$queryRaw<TrialCreditRow[]>(Prisma.sql`
     insert into public.workspace_trial_credits (

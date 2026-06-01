@@ -201,6 +201,43 @@ function throwRecruiterLookupFailed(context: string, error: unknown): never {
   throw new ApiError(500, "RECRUITER_LOOKUP_FAILED", "Could not validate recruiter access. Please try again.")
 }
 
+function workspaceNameFromEmail(email?: string | null) {
+  const localPart = email?.split("@")[0]?.trim()
+  return localPart ? `${localPart}'s Workspace` : "Recruiter Workspace"
+}
+
+async function ensureRecruiterOrganization(input: {
+  organizationId: string
+  email?: string | null
+}) {
+  if (!UUID_REGEX.test(input.organizationId)) {
+    return false
+  }
+
+  try {
+    await prisma.$executeRaw(Prisma.sql`
+      insert into public.organizations (
+        organization_id,
+        organization_name,
+        is_active,
+        created_at
+      )
+      values (
+        ${input.organizationId}::uuid,
+        ${workspaceNameFromEmail(input.email)},
+        true,
+        now()
+      )
+      on conflict (organization_id) do nothing
+    `)
+
+    return true
+  } catch (error) {
+    console.warn("Recruiter organization auto-heal failed", error)
+    return false
+  }
+}
+
 function decodeBase64Url(value: string): string | null {
   try {
     const normalized = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=")
@@ -474,6 +511,9 @@ async function lookupRecruiterByIdentity(
       select u.user_id::text as user_id,
              u.organization_id::text as organization_id
       from public.users u
+      inner join public.organizations o
+        on o.organization_id = u.organization_id
+       and o.is_active = true
       where u.identity_id::text = ${identityId}
         and u.role in ('RECRUITER', 'ADMIN', 'ORG_OWNER')
         and u.is_active = true
@@ -571,6 +611,11 @@ async function ensureRecruiterUserFromTrustedAuth(input: {
     return null
   }
 
+  await ensureRecruiterOrganization({
+    organizationId: input.organizationId,
+    email,
+  })
+
   try {
     await prisma.$executeRaw(Prisma.sql`
       insert into public.users (
@@ -628,9 +673,14 @@ async function resolveTrustedRecruiterByUserOrgOrEmail(input: {
   organizationId: string
   email?: string | null
 }): Promise<RecruiterLookupRow | null> {
-  let recruiter = await lookupRecruiterByUserOrg(input.userId, input.organizationId)
-
   const email = input.email?.trim().toLowerCase()
+
+  await ensureRecruiterOrganization({
+    organizationId: input.organizationId,
+    email,
+  })
+
+  let recruiter = await lookupRecruiterByUserOrg(input.userId, input.organizationId)
 
   if (!recruiter && email) {
     recruiter = await lookupRecruiterByEmailOrg(email, input.organizationId)
@@ -792,6 +842,9 @@ async function reconcileRecruiterIdentity(
       select u.user_id::text as user_id,
              u.organization_id::text as organization_id
       from public.users u
+      inner join public.organizations o
+        on o.organization_id = u.organization_id
+       and o.is_active = true
       where lower(u.email) = ${email}
         and u.role in ('RECRUITER', 'ADMIN', 'ORG_OWNER')
         and u.is_active = true
