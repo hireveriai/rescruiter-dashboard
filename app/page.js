@@ -51,10 +51,50 @@ const SendInterviewModal = dynamic(() => import("../components/SendInterviewModa
   ssr: false,
 });
 
+const EMPTY_PIPELINE = {
+  pending: 0,
+  inProgress: 0,
+  completed: 0,
+  flagged: 0,
+  reviewed: 0,
+  reviewRequired: 0,
+};
+
+const EMPTY_WORKFLOW_METRICS = {
+  jobs: 0,
+  activeJobs: 0,
+  invites: 0,
+  screeningRuns: 0,
+  shortlistedCandidates: 0,
+  screeningStarted: false,
+  screeningCompleted: false,
+  interviewsRunning: 0,
+  completedInterviews: 0,
+  pendingReports: 0,
+  reviewedReports: 0,
+  decisionsPending: 0,
+};
+
+function normalizeDashboardOverview(overview) {
+  if (!overview) {
+    return null;
+  }
+
+  return {
+    ...overview,
+    pipeline: overview.pipeline ?? EMPTY_PIPELINE,
+    workflowMetrics: overview.workflowMetrics ?? EMPTY_WORKFLOW_METRICS,
+    dashboardState: overview.dashboardState ?? {},
+    pendingInterviews: overview.pendingInterviews ?? [],
+    pendingInterviewsTotal: overview.pendingInterviewsTotal ?? 0,
+    candidates: overview.candidates ?? [],
+  };
+}
+
 function DashboardContent({ profile, overview, isLoading }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const isPartialOverview = Boolean(overview?.partial);
-  const fullOverview = isPartialOverview ? null : overview;
+  const fullOverview = normalizeDashboardOverview(overview);
   const displayProfile = profile ?? overview?.profile ?? null;
   const [trialCredits, setTrialCredits] = useState(overview?.trialCredits ?? null);
   const activeInterviewCount = fullOverview?.pendingInterviewsTotal ?? fullOverview?.pendingInterviews?.length ?? 0;
@@ -123,7 +163,7 @@ function DashboardContent({ profile, overview, isLoading }) {
           </Suspense>
           <Suspense fallback={null}>
             <RecordedInterviews
-              initialRecordedInterviews={fullOverview?.recordedInterviews}
+              initialRecordedInterviews={isPartialOverview ? [] : fullOverview?.recordedInterviews}
               organizationId={displayProfile?.organizationId}
               isLoading={isLoading}
             />
@@ -132,7 +172,7 @@ function DashboardContent({ profile, overview, isLoading }) {
             <CandidateList initialCandidates={fullOverview?.candidates} isLoading={isLoading} />
           </Suspense>
           <Suspense fallback={null}>
-            <VerisSummary initialSummaries={fullOverview?.veris} isLoading={isLoading} />
+            <VerisSummary initialSummaries={isPartialOverview ? [] : fullOverview?.veris} isLoading={isLoading} />
           </Suspense>
           <WarRoomButton organizationId={displayProfile?.organizationId} />
         </div>

@@ -133,6 +133,7 @@ export default function RecruiterDashboardBootstrap({ children }) {
   const searchParams = useAuthSearchParams()
   const { setTimezoneState } = useOrgTimezone()
   const overviewSignatureRef = useRef("")
+  const overviewPartialRef = useRef(false)
   const [updateAvailable, setUpdateAvailable] = useState(false)
   const [state, setState] = useState({
     status: "loading",
@@ -152,6 +153,7 @@ export default function RecruiterDashboardBootstrap({ children }) {
         }
 
         overviewSignatureRef.current = getOverviewSignature(cachedOverview)
+        overviewPartialRef.current = Boolean(cachedOverview?.partial)
         setTimezoneState({
           timezone: cachedOverview?.profile?.timezone,
           timezoneLabel: cachedOverview?.profile?.timezoneLabel,
@@ -224,8 +226,16 @@ export default function RecruiterDashboardBootstrap({ children }) {
         const overview = overviewData.data ?? null
         const profile = overview?.profile ?? null
         const nextSignature = getOverviewSignature(overview)
+        const replacingPartialOverview = overviewPartialRef.current
 
-        if (silent && !overview?.partial && overviewSignatureRef.current && nextSignature && overviewSignatureRef.current !== nextSignature) {
+        if (
+          silent &&
+          !overview?.partial &&
+          !replacingPartialOverview &&
+          overviewSignatureRef.current &&
+          nextSignature &&
+          overviewSignatureRef.current !== nextSignature
+        ) {
           writeCachedOverview(overview)
           setUpdateAvailable(true)
           return
@@ -235,6 +245,7 @@ export default function RecruiterDashboardBootstrap({ children }) {
           writeCachedOverview(overview)
           overviewSignatureRef.current = nextSignature
         }
+        overviewPartialRef.current = Boolean(overview?.partial)
         setUpdateAvailable(false)
         setState({
           status: "ready",
@@ -248,7 +259,13 @@ export default function RecruiterDashboardBootstrap({ children }) {
         })
 
         if (overview?.partial && !forceRefresh) {
-          bootstrap({ forceRefresh: true, silent: false })
+          const refreshFullOverview = () => bootstrap({ forceRefresh: true, silent: true })
+
+          if (typeof window.requestIdleCallback === "function") {
+            window.requestIdleCallback(refreshFullOverview, { timeout: 2500 })
+          } else {
+            window.setTimeout(refreshFullOverview, 1000)
+          }
         }
       } catch (error) {
         if (!active) {
