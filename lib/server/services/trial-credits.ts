@@ -75,6 +75,10 @@ async function reconcileScreeningCreditsFromRuns(organizationId: string, client:
     return
   }
 
+  if (!(await columnExists("screening_runs", "organization_id", client))) {
+    return
+  }
+
   if (!(await columnExists("screening_runs", "total_candidates", client))) {
     await client.$executeRaw(Prisma.sql`
       alter table public.screening_runs
@@ -116,6 +120,14 @@ export async function ensureTrialCreditSchema(client: QueryClient = prisma) {
   `)
 
   await client.$executeRaw(Prisma.sql`
+    alter table public.workspace_trial_credits
+      add column if not exists interview_credits_remaining integer not null default ${FREE_TRIAL_INTERVIEW_CREDITS},
+      add column if not exists screening_credits_remaining integer not null default ${FREE_TRIAL_SCREENING_CREDITS},
+      add column if not exists created_at timestamptz not null default now(),
+      add column if not exists updated_at timestamptz not null default now()
+  `)
+
+  await client.$executeRaw(Prisma.sql`
     create index if not exists workspace_trial_credits_updated_at_idx
       on public.workspace_trial_credits (updated_at desc)
   `)
@@ -126,21 +138,17 @@ export async function ensureTrialCreditOrganization(organizationId: string, clie
     throw new ApiError(400, "INVALID_ORGANIZATION_ID", "Invalid recruiter workspace.")
   }
 
-  await client.$executeRaw(Prisma.sql`
-    insert into public.organizations (
-      organization_id,
-      organization_name,
-      is_active,
-      created_at
-    )
-    values (
-      ${organizationId}::uuid,
-      'Recruiter Workspace',
-      true,
-      now()
-    )
-    on conflict (organization_id) do nothing
+  const rows = await client.$queryRaw<Array<{ exists: boolean }>>(Prisma.sql`
+    select exists (
+      select 1
+      from public.organizations
+      where organization_id = ${organizationId}::uuid
+    ) as exists
   `)
+
+  if (!rows[0]?.exists) {
+    throw new ApiError(404, "RECRUITER_WORKSPACE_NOT_FOUND", "Recruiter workspace was not found.")
+  }
 }
 
 export async function getOrCreateTrialCredits(organizationId: string, client: QueryClient = prisma) {
@@ -162,7 +170,11 @@ export async function getOrCreateTrialCredits(organizationId: string, client: Qu
     set updated_at = public.workspace_trial_credits.updated_at
   `)
 
-  await reconcileScreeningCreditsFromRuns(organizationId, client)
+  try {
+    await reconcileScreeningCreditsFromRuns(organizationId, client)
+  } catch (error) {
+    console.warn("Trial credit screening reconciliation skipped", error)
+  }
 
   const rows = await client.$queryRaw<TrialCreditRow[]>(Prisma.sql`
     select
