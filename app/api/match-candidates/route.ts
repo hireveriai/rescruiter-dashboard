@@ -435,17 +435,23 @@ export async function POST(request: Request) {
     if (matches.length === 0) {
       matches = includeAllCandidates ? generatedMatches : filterMatchesToCandidateIds(generatedMatches, resolvedCandidateIds)
     }
+    const trialCredits = await deductTrialCredits({
+      organizationId: auth.organizationId,
+      kind: "SCREENING",
+      amount: candidates.length,
+    })
     const runId = await createScreeningRun({
       organizationId: auth.organizationId,
       userId: auth.userId,
       jobId,
       batchId: effectiveBatchId || null,
       matches,
-    })
-    const trialCredits = await deductTrialCredits({
-      organizationId: auth.organizationId,
-      kind: "SCREENING",
-      amount: candidates.length,
+    }).catch((error) => {
+      console.warn("VERIS screening run snapshot write skipped after successful credit deduction", {
+        jobId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return null
     })
 
     return NextResponse.json({

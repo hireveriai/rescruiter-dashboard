@@ -569,9 +569,9 @@ async function ensureScreeningRunTablesUncached() {
     create table if not exists public.screening_runs (
       id uuid primary key default gen_random_uuid(),
       organization_id uuid not null references public.organizations(organization_id) on delete cascade,
-      job_id uuid not null references public.jobs(id) on delete cascade,
+      job_id uuid not null,
       batch_id uuid null,
-      created_by uuid null references public.users(user_id) on delete set null,
+      created_by uuid null,
       created_at timestamptz not null default now(),
       total_candidates int not null default 0,
       strong_fit_count int not null default 0,
@@ -584,7 +584,7 @@ async function ensureScreeningRunTablesUncached() {
       id uuid primary key default gen_random_uuid(),
       run_id uuid not null references public.screening_runs(id) on delete cascade,
       organization_id uuid not null references public.organizations(organization_id) on delete cascade,
-      candidate_id uuid null references public.candidates(candidate_id) on delete set null,
+      candidate_id uuid null,
       match_snapshot jsonb not null,
       created_at timestamptz not null default now()
     )
