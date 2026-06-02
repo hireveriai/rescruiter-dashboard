@@ -6,10 +6,13 @@ import { ApiError } from "@/lib/server/errors"
 import { errorResponse } from "@/lib/server/response"
 import { prisma } from "@/lib/server/prisma"
 import {
-  createInterviewLink,
   getLatestInterviewInviteForEmail,
   recordInterviewInviteTracking,
 } from "@/lib/server/services/interview.service"
+import {
+  createPreparingInterview,
+  prepareInterviewQuestionsWithRetry,
+} from "@/lib/server/services/interview-workflow"
 import { sendAiScreeningInterviewEmail } from "@/lib/server/ai-screening/email"
 import {
   getMatchesForInviteSelection,
@@ -313,13 +316,19 @@ export async function POST(request: Request) {
       }
 
       try {
-        const link = await createInterviewLink({
+        const link = await createPreparingInterview({
           organizationId: auth.organizationId,
           jobId: interviewJobId,
           candidateId: match.candidate_id,
           accessType: scheduleByCandidateId.get(match.candidate_id)?.accessType ?? "FLEXIBLE",
           startTime: scheduleByCandidateId.get(match.candidate_id)?.startTime ?? undefined,
           endTime: scheduleByCandidateId.get(match.candidate_id)?.endTime ?? undefined,
+        })
+        await prepareInterviewQuestionsWithRetry({
+          organizationId: auth.organizationId,
+          interviewId: link.interviewId,
+          totalQuestions: 10,
+          interviewDurationMinutes: emailDuration ?? undefined,
         })
 
         try {

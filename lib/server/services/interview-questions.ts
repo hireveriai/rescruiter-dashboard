@@ -56,6 +56,21 @@ function normalizeText(value: string) {
   return value.toLowerCase().replace(/\s+/g, " ").trim()
 }
 
+function isLegacySeedQuestion(question: string, referenceContext?: Record<string, unknown> | null) {
+  const normalized = normalizeText(question)
+  const seededBy = String(referenceContext?.seeded_by ?? "")
+
+  return (
+    seededBy === "interview_auto_seed_orchestration_patch" ||
+    normalized.includes("the ideal candidate will independently manage") ||
+    normalized.includes("role emphasizes hands-on operational excellence") ||
+    normalized.includes("proven ability to collaborate effectively") ||
+    normalized.includes("work with predefined runbooks to collect logs") ||
+    normalized.startsWith("your background includes addressed customer queries") ||
+    normalized.includes(" when it starts failing in production")
+  )
+}
+
 function mentionsSkill(question: string, skill: string) {
   const normalizedQuestion = normalizeText(question)
   const normalizedSkill = normalizeText(skill)
@@ -104,7 +119,7 @@ export async function prepareInterviewQuestionsForPersistence(questions: Intervi
 function cleanQuestionsForSave(questions: InterviewQuestion[]) {
   const cleaned = questions.filter((question) => {
     const text = question.question ?? ""
-    return validateQuestionStrict(text).valid
+    return validateQuestionStrict(text).valid && !isLegacySeedQuestion(text, question.reference_context)
   }).map((question, index) => ({
     ...question,
     question: question.question,
@@ -458,12 +473,7 @@ export async function replaceInterviewQuestions(
 ) {
   const preparedQuestions = await repairQuestionsForPersistence(questions)
   const cleaned = cleanQuestionsForSave(preparedQuestions)
-  const uniqueQuestions = dedupeQuestionsForSave(cleaned)
-  const existing = await fetchExistingInterviewQuestions(interviewId)
-  const existingSet = new Set(existing.map((questionText) => questionText.trim()))
-  const filtered = uniqueQuestions.filter((question) =>
-    !existingSet.has((question.question ?? "").trim())
-  )
+  const filtered = dedupeQuestionsForSave(cleaned)
 
   if (filtered.length < MIN_VALID_QUESTIONS) {
     throw new Error(`Rejected: low-quality questions after filtering (${filtered.length}/${MIN_VALID_QUESTIONS})`)
