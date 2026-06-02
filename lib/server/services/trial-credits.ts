@@ -48,6 +48,17 @@ function mapTrialCreditRow(row: TrialCreditRow): TrialCreditSnapshot {
   }
 }
 
+export function createInitialTrialCreditSnapshot(organizationId: string): TrialCreditSnapshot {
+  return {
+    organizationId,
+    interviewCreditsRemaining: FREE_TRIAL_INTERVIEW_CREDITS,
+    screeningCreditsRemaining: FREE_TRIAL_SCREENING_CREDITS,
+    canSendInterview: true,
+    canStartScreening: true,
+    upgradeMessage: FREE_TRIAL_LIMIT_MESSAGE,
+  }
+}
+
 async function tableExists(tableName: string, client: QueryClient = prisma) {
   const rows = await client.$queryRaw<Array<{ regclass: string | null }>>(Prisma.sql`
     select to_regclass(${`public.${tableName}`})::text as regclass
@@ -136,6 +147,26 @@ export async function ensureTrialCreditSchema(client: QueryClient = prisma) {
 export async function ensureTrialCreditOrganization(organizationId: string, client: QueryClient = prisma) {
   if (!UUID_REGEX.test(organizationId)) {
     throw new ApiError(400, "INVALID_ORGANIZATION_ID", "Invalid recruiter workspace.")
+  }
+
+  try {
+    await client.$executeRaw(Prisma.sql`
+      insert into public.organizations (
+        organization_id,
+        organization_name,
+        is_active,
+        created_at
+      )
+      values (
+        ${organizationId}::uuid,
+        'Recruiter Workspace',
+        true,
+        now()
+      )
+      on conflict (organization_id) do nothing
+    `)
+  } catch (error) {
+    console.warn("Trial credit organization bootstrap skipped", error)
   }
 
   const rows = await client.$queryRaw<Array<{ exists: boolean }>>(Prisma.sql`
