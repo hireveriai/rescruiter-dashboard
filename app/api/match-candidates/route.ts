@@ -471,6 +471,16 @@ export async function POST(request: Request) {
       error: error instanceof Error ? error.message : String(error),
       code: typeof error === "object" && error !== null && "code" in error ? (error as { code?: unknown }).code : undefined,
     })
-    return errorResponse(error)
+    if (error instanceof ApiError) {
+      return errorResponse(error)
+    }
+
+    return errorResponse(
+      new ApiError(
+        500,
+        "VERIS_MATCHING_FAILED",
+        error instanceof Error ? `VERIS matching failed: ${error.message}` : "VERIS matching failed."
+      )
+    )
   }
 }

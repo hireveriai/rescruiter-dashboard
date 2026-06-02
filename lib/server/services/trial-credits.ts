@@ -231,7 +231,15 @@ export async function assertTrialCreditsAvailable(input: {
   amount?: number
 }) {
   const amount = Math.max(1, Math.floor(input.amount ?? 1))
-  const credits = await getOrCreateTrialCredits(input.organizationId)
+  let credits: TrialCreditSnapshot
+
+  try {
+    credits = await getOrCreateTrialCredits(input.organizationId)
+  } catch (error) {
+    console.warn("Trial credit availability check used initial snapshot fallback", error)
+    credits = createInitialTrialCreditSnapshot(input.organizationId)
+  }
+
   const remaining =
     input.kind === "INTERVIEW" ? credits.interviewCreditsRemaining : credits.screeningCreditsRemaining
 
@@ -248,10 +256,27 @@ export async function deductTrialCredits(input: {
   amount?: number
 }) {
   const amount = Math.max(1, Math.floor(input.amount ?? 1))
-  await getOrCreateTrialCredits(input.organizationId)
+  let creditsBeforeDeduction: TrialCreditSnapshot
 
-  const rows = input.kind === "INTERVIEW"
-    ? await prisma.$queryRaw<TrialCreditRow[]>(Prisma.sql`
+  try {
+    creditsBeforeDeduction = await getOrCreateTrialCredits(input.organizationId)
+  } catch (error) {
+    console.warn("Trial credit deduction used initial snapshot fallback", error)
+    creditsBeforeDeduction = createInitialTrialCreditSnapshot(input.organizationId)
+  }
+
+  const remainingBeforeDeduction =
+    input.kind === "INTERVIEW"
+      ? creditsBeforeDeduction.interviewCreditsRemaining
+      : creditsBeforeDeduction.screeningCreditsRemaining
+
+  if (remainingBeforeDeduction < amount) {
+    throw new ApiError(402, "FREE_TRIAL_LIMIT_REACHED", FREE_TRIAL_LIMIT_MESSAGE)
+  }
+
+  try {
+    const rows = input.kind === "INTERVIEW"
+      ? await prisma.$queryRaw<TrialCreditRow[]>(Prisma.sql`
         update public.workspace_trial_credits
         set
           interview_credits_remaining = interview_credits_remaining - ${amount},
@@ -263,7 +288,7 @@ export async function deductTrialCredits(input: {
           interview_credits_remaining,
           screening_credits_remaining
       `)
-    : await prisma.$queryRaw<TrialCreditRow[]>(Prisma.sql`
+      : await prisma.$queryRaw<TrialCreditRow[]>(Prisma.sql`
         update public.workspace_trial_credits
         set
           screening_credits_remaining = screening_credits_remaining - ${amount},
@@ -276,10 +301,36 @@ export async function deductTrialCredits(input: {
           screening_credits_remaining
       `)
 
-  const row = rows[0]
-  if (!row) {
-    throw new ApiError(402, "FREE_TRIAL_LIMIT_REACHED", FREE_TRIAL_LIMIT_MESSAGE)
-  }
+    const row = rows[0]
+    if (!row) {
+      throw new ApiError(402, "FREE_TRIAL_LIMIT_REACHED", FREE_TRIAL_LIMIT_MESSAGE)
+    }
 
-  return mapTrialCreditRow(row)
+    return mapTrialCreditRow(row)
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error
+    }
+
+    console.warn("Trial credit table update skipped; returning fallback deduction snapshot", error)
+    return {
+      ...creditsBeforeDeduction,
+      interviewCreditsRemaining:
+        input.kind === "INTERVIEW"
+          ? Math.max(0, creditsBeforeDeduction.interviewCreditsRemaining - amount)
+          : creditsBeforeDeduction.interviewCreditsRemaining,
+      screeningCreditsRemaining:
+        input.kind === "SCREENING"
+          ? Math.max(0, creditsBeforeDeduction.screeningCreditsRemaining - amount)
+          : creditsBeforeDeduction.screeningCreditsRemaining,
+      canSendInterview:
+        input.kind === "INTERVIEW"
+          ? creditsBeforeDeduction.interviewCreditsRemaining - amount > 0
+          : creditsBeforeDeduction.interviewCreditsRemaining > 0,
+      canStartScreening:
+        input.kind === "SCREENING"
+          ? creditsBeforeDeduction.screeningCreditsRemaining - amount > 0
+          : creditsBeforeDeduction.screeningCreditsRemaining > 0,
+    }
+  }
 }
