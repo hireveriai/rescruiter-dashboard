@@ -256,6 +256,303 @@ function normalizeSkill(value: string) {
   return value.trim().toLowerCase()
 }
 
+function normalizeEvidenceText(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9+#.]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function stringifyCandidateValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return ""
+  }
+
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value)
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(stringifyCandidateValue).join(" ")
+  }
+
+  if (typeof value === "object") {
+    return Object.values(value as Record<string, unknown>).map(stringifyCandidateValue).join(" ")
+  }
+
+  return ""
+}
+
+function buildCandidateEvidence(input: {
+  candidate: ParsedResume | Record<string, unknown>
+  resumeText?: string | null
+}) {
+  return normalizeEvidenceText(
+    [
+      getCandidateSkills(input.candidate).join(" "),
+      stringifyCandidateValue(input.candidate),
+      input.resumeText ?? "",
+    ].join(" ")
+  )
+}
+
+const SKILL_STOPWORDS = new Set([
+  "and",
+  "or",
+  "of",
+  "in",
+  "to",
+  "for",
+  "with",
+  "on",
+  "the",
+  "a",
+  "an",
+  "good",
+  "strong",
+  "hands",
+  "hand",
+  "working",
+  "knowledge",
+  "understanding",
+  "experience",
+  "proficiency",
+  "concepts",
+  "core",
+  "basic",
+  "related",
+  "services",
+  "activities",
+  "ability",
+  "proven",
+  "capability",
+  "familiarity",
+  "expertise",
+  "skilled",
+  "using",
+  "including",
+  "such",
+  "as",
+  "tools",
+  "platform",
+  "platforms",
+  "systems",
+  "environment",
+  "environments",
+  "management",
+  "development",
+  "developer",
+  "engineering",
+  "engineer",
+  "administration",
+  "administrator",
+  "support",
+  "operations",
+  "operational",
+])
+
+function uniqueValues(values: string[]) {
+  return Array.from(new Set(values.map(normalizeEvidenceText).filter(Boolean)))
+}
+
+const GLOBAL_SKILL_ALIAS_GROUPS = [
+  ["javascript", "js", "ecmascript"],
+  ["typescript", "ts"],
+  ["node.js", "node js", "nodejs", "node"],
+  ["react.js", "react js", "reactjs", "react"],
+  ["next.js", "next js", "nextjs", "next"],
+  ["vue.js", "vue js", "vuejs", "vue"],
+  ["angular.js", "angular js", "angularjs", "angular"],
+  ["express.js", "express js", "expressjs", "express"],
+  ["nestjs", "nest js", "nest.js"],
+  ["java", "j2ee", "jakarta ee"],
+  ["spring boot", "springboot"],
+  ["c#", "c sharp", "csharp"],
+  [".net", "dotnet", "asp.net", "asp net"],
+  ["c++", "cpp"],
+  ["python", "py"],
+  ["django", "django rest framework", "drf"],
+  ["machine learning", "ml"],
+  ["artificial intelligence", "ai"],
+  ["large language model", "large language models", "llm", "llms", "generative ai", "gen ai"],
+  ["natural language processing", "nlp"],
+  ["rest api", "restful api", "rest", "api development"],
+  ["graphql", "graph ql"],
+  ["microservices", "microservice architecture"],
+  ["ci/cd", "ci cd", "continuous integration", "continuous delivery", "continuous deployment"],
+  ["aws", "amazon web services"],
+  ["gcp", "google cloud", "google cloud platform"],
+  ["azure", "microsoft azure"],
+  ["docker", "containerization", "containers"],
+  ["kubernetes", "k8s"],
+  ["terraform", "infrastructure as code", "iac"],
+  ["linux", "unix"],
+  ["postgresql", "postgres"],
+  ["sql server", "mssql", "ms sql"],
+  ["mongodb", "mongo db"],
+  ["redis", "elasticache"],
+  ["elasticsearch", "elastic search", "opensearch"],
+  ["data pipeline", "data pipelines", "etl", "elt"],
+  ["data warehouse", "data warehousing", "dwh"],
+  ["power bi", "powerbi"],
+  ["tableau", "tableau desktop"],
+  ["quality assurance", "qa", "testing"],
+  ["test automation", "automation testing", "automated testing"],
+  ["selenium", "selenium webdriver"],
+  ["playwright", "playwright testing"],
+  ["cypress", "cypress testing"],
+  ["security", "cybersecurity", "information security", "infosec"],
+  ["identity and access management", "iam"],
+  ["agile", "scrum"],
+  ["jira", "atlassian jira"],
+  ["product management", "product manager"],
+  ["project management", "program management"],
+  ["customer relationship management", "crm"],
+  ["search engine optimization", "seo"],
+  ["search engine marketing", "sem"],
+  ["user experience", "ux"],
+  ["user interface", "ui"],
+]
+
+function stemEvidenceToken(token: string) {
+  if (token.length <= 4) {
+    return token
+  }
+
+  return token
+    .replace(/(?:ization|isation)$/i, "ize")
+    .replace(/(?:tion|sion)$/i, "t")
+    .replace(/(?:ing|ers|er|ed|es|s)$/i, "")
+}
+
+function expandSkillPhrase(skill: string) {
+  const normalized = normalizeEvidenceText(skill)
+  const variants = [normalized]
+  const compact = normalized.replace(/\s+/g, "")
+
+  if (compact && compact !== normalized) {
+    variants.push(compact)
+  }
+
+  for (const part of normalized.split(/\b(?:and|or|with)\b|[,+]/i)) {
+    if (part.trim()) {
+      variants.push(part)
+    }
+  }
+
+  const slashParts = skill
+    .split(/[\/|]/)
+    .map((part) => normalizeEvidenceText(part))
+    .filter(Boolean)
+  variants.push(...slashParts)
+
+  return uniqueValues(variants)
+}
+
+function getSkillAliases(skill: string) {
+  const normalized = normalizeEvidenceText(skill)
+  const aliases: string[] = expandSkillPhrase(skill)
+
+  const add = (...items: string[]) => aliases.push(...items)
+
+  for (const group of GLOBAL_SKILL_ALIAS_GROUPS) {
+    if (group.some((alias) => normalized.includes(normalizeEvidenceText(alias)))) {
+      add(...group)
+    }
+  }
+
+  if (/\b(postgresql|postgres)\b/.test(normalized)) add("postgresql", "postgres")
+  if (/\b(sql server|mssql|ms sql)\b/.test(normalized)) add("sql server", "mssql", "ms sql")
+  if (/\bazure\b/.test(normalized)) add("azure", "azure sql", "azure database", "azure database for postgresql")
+  if (/\boracle\b/.test(normalized)) add("oracle")
+  if (/\bmysql\b/.test(normalized)) add("mysql")
+  if (/\bbackup|restore|recovery\b/.test(normalized)) add("backup", "restore", "disaster recovery", "recovery")
+  if (/\bpatch|patching\b/.test(normalized)) add("patch", "patching", "patched")
+  if (/\bmonitor|monitoring\b/.test(normalized)) add("monitor", "monitoring", "monitored")
+  if (/\blog|logs|diagnostic\b/.test(normalized)) add("log analysis", "logs", "diagnostic")
+  if (/\bperformance|tuning|optimization|execution plan|indexing\b/.test(normalized)) {
+    add("performance tuning", "sql performance tuning", "optimization", "execution plan", "indexing", "index")
+  }
+  if (/\bsecurity|audit\b/.test(normalized)) add("security", "audit", "encryption", "privileges", "roles")
+  if (/\bmigration|modernization|cloud transformation\b/.test(normalized)) add("migration", "data migration", "modernization")
+  if (/\bautomation|script|powershell|runbook\b/.test(normalized)) add("automation", "scripts", "powershell", "runbook")
+  if (/\bdocumentation|procedure|report|cmdb\b/.test(normalized)) {
+    add("documentation", "user manuals", "standard operating procedures", "reports")
+  }
+  if (/\bdatabase administration|database administrator|dba|database operations\b/.test(normalized)) {
+    add("database administrator", "database administration", "database management", "database operations", "dba")
+  }
+
+  return uniqueValues(aliases)
+}
+
+function getImportantSkillTokens(skill: string) {
+  return expandSkillPhrase(skill)
+    .join(" ")
+    .split(" ")
+    .filter((token) => token.length >= 3 && !SKILL_STOPWORDS.has(token))
+}
+
+function scoreSkillEvidence(skill: string, evidence: string) {
+  const aliases = getSkillAliases(skill)
+
+  if (aliases.some((alias) => evidence.includes(alias) || evidence.includes(alias.replace(/\s+/g, "")))) {
+    return 1
+  }
+
+  const tokens = getImportantSkillTokens(skill)
+  if (tokens.length === 0) {
+    return 0
+  }
+
+  const evidenceTokens = new Set(evidence.split(" ").filter(Boolean))
+  const evidenceStems = new Set(Array.from(evidenceTokens).map(stemEvidenceToken))
+  const matchedTokens = tokens.filter((token) => {
+    const stemmed = stemEvidenceToken(token)
+    return evidence.includes(token) || evidenceTokens.has(token) || evidenceStems.has(stemmed)
+  }).length
+  const coverage = matchedTokens / tokens.length
+
+  if (tokens.length <= 2) {
+    return coverage === 1 ? 0.9 : 0
+  }
+
+  return coverage >= 0.7 ? 0.75 : coverage >= 0.5 ? 0.55 : 0
+}
+
+function inferExperienceYearsFromEvidence(evidence: string) {
+  const explicitMatch = evidence.match(/(\d+(?:\.\d+)?)\s*\+?\s*years?/)
+  if (explicitMatch?.[1]) {
+    const explicitYears = Number.parseFloat(explicitMatch[1])
+    if (Number.isFinite(explicitYears)) {
+      return explicitYears
+    }
+  }
+
+  const ranges = evidence.matchAll(/\b(\d{1,2})\/(\d{4})\s*-\s*(current|present|(\d{1,2})\/(\d{4}))/gi)
+  let months = 0
+  const now = new Date()
+
+  for (const range of ranges) {
+    const startMonth = Number(range[1])
+    const startYear = Number(range[2])
+    const endMonth = range[3] === "current" || range[3] === "present" ? now.getMonth() + 1 : Number(range[4])
+    const endYear = range[3] === "current" || range[3] === "present" ? now.getFullYear() : Number(range[5])
+
+    if (
+      Number.isFinite(startMonth) &&
+      Number.isFinite(startYear) &&
+      Number.isFinite(endMonth) &&
+      Number.isFinite(endYear)
+    ) {
+      months += Math.max(0, (endYear - startYear) * 12 + (endMonth - startMonth))
+    }
+  }
+
+  return months > 0 ? Math.round((months / 12) * 10) / 10 : null
+}
+
 function getCandidateSkills(candidate: ParsedResume | Record<string, unknown>) {
   const skills = Array.isArray(candidate.skills) ? candidate.skills : []
   return skills.filter((skill): skill is string => typeof skill === "string" && Boolean(skill.trim()))
@@ -275,20 +572,27 @@ function getCandidateExperience(candidate: ParsedResume | Record<string, unknown
 function fallbackMatchCandidate(input: {
   candidate: ParsedResume | Record<string, unknown>
   job: ParsedJobDescription
+  resumeText?: string | null
 }): CandidateMatchResult {
-  const candidateSkills = new Set(getCandidateSkills(input.candidate).map(normalizeSkill))
   const requiredSkills = input.job.requiredSkills.filter(Boolean)
-  const matchedSkillCount = requiredSkills.filter((skill) => candidateSkills.has(normalizeSkill(skill))).length
+  const evidence = buildCandidateEvidence({ candidate: input.candidate, resumeText: input.resumeText })
+  const scoredSkills = requiredSkills.map((skill) => ({
+    skill,
+    score: scoreSkillEvidence(skill, evidence),
+  }))
+  const matchedSkillCount = scoredSkills.filter((item) => item.score >= 0.55).length
   const skillMatch =
-    requiredSkills.length > 0 ? Math.round((matchedSkillCount / requiredSkills.length) * 100) : 50
-  const candidateExperience = getCandidateExperience(input.candidate)
+    requiredSkills.length > 0
+      ? clampScore((scoredSkills.reduce((total, item) => total + item.score, 0) / requiredSkills.length) * 100)
+      : 50
+  const candidateExperience = getCandidateExperience(input.candidate) ?? inferExperienceYearsFromEvidence(evidence)
   const experienceNeeded = input.job.experienceNeeded
   const experienceMatch =
     candidateExperience === null || experienceNeeded === null
       ? 55
       : clampScore((candidateExperience / Math.max(experienceNeeded, 1)) * 100)
-  const matchScore = clampScore(skillMatch * 0.68 + experienceMatch * 0.32)
-  const missingSkills = requiredSkills.filter((skill) => !candidateSkills.has(normalizeSkill(skill))).slice(0, 12)
+  const matchScore = clampScore(skillMatch * 0.72 + experienceMatch * 0.28)
+  const missingSkills = scoredSkills.filter((item) => item.score < 0.55).map((item) => item.skill).slice(0, 12)
   const riskLevel = matchScore >= 75 ? "LOW" : matchScore >= 50 ? "MEDIUM" : "HIGH"
   const recommendation =
     matchScore >= 82 ? "STRONG_FIT" : matchScore >= 62 ? "POTENTIAL" : matchScore >= 42 ? "WEAK" : "REJECT"
@@ -344,6 +648,7 @@ export async function matchCandidateToJobWithAI(input: {
   const fallback = fallbackMatchCandidate({
     candidate: input.candidateJson,
     job: input.job,
+    resumeText: input.resumeText,
   })
 
   if (!isAiCandidateMatchingEnabled() || !process.env.OPENAI_API_KEY) {
