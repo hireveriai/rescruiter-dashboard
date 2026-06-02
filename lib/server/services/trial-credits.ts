@@ -56,9 +56,30 @@ async function tableExists(tableName: string, client: QueryClient = prisma) {
   return Boolean(rows[0]?.regclass)
 }
 
+async function columnExists(tableName: string, columnName: string, client: QueryClient = prisma) {
+  const rows = await client.$queryRaw<Array<{ exists: boolean }>>(Prisma.sql`
+    select exists (
+      select 1
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = ${tableName}
+        and column_name = ${columnName}
+    ) as exists
+  `)
+
+  return Boolean(rows[0]?.exists)
+}
+
 async function reconcileScreeningCreditsFromRuns(organizationId: string, client: QueryClient = prisma) {
   if (!(await tableExists("screening_runs", client))) {
     return
+  }
+
+  if (!(await columnExists("screening_runs", "total_candidates", client))) {
+    await client.$executeRaw(Prisma.sql`
+      alter table public.screening_runs
+        add column if not exists total_candidates integer not null default 0
+    `)
   }
 
   const rows = await client.$queryRaw<Array<{ used_screening_credits: number }>>(Prisma.sql`

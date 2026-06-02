@@ -7,6 +7,8 @@ import Navbar from "../components/Navbar";
 import DashboardIntelligenceBanner from "../components/DashboardIntelligenceBanner";
 import FreeTrialUsage from "../components/FreeTrialUsage";
 import RecruiterDashboardBootstrap from "../components/RecruiterDashboardBootstrap";
+import { buildAuthUrl } from "../lib/client/auth-query";
+import { useAuthSearchParams } from "../lib/client/use-auth-search-params";
 
 const CognitiveDock = dynamic(() => import("../components/dashboard/CognitiveDock"), {
   ssr: false,
@@ -108,6 +110,7 @@ function normalizeDashboardOverview(overview) {
 }
 
 function DashboardContent({ profile, overview, isLoading }) {
+  const searchParams = useAuthSearchParams();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const displayProfile = profile ?? overview?.profile ?? null;
   const fullOverview = normalizeDashboardOverview(overview) ?? createEmptyDashboardOverview(displayProfile);
@@ -125,6 +128,38 @@ function DashboardContent({ profile, overview, isLoading }) {
       setTrialCredits(overview.trialCredits);
     }
   }, [overview?.trialCredits]);
+
+  useEffect(() => {
+    if (trialCredits) {
+      return;
+    }
+
+    let active = true;
+
+    async function loadTrialCredits() {
+      try {
+        const response = await fetch(buildAuthUrl("/api/trial-credits", searchParams), {
+          credentials: "include",
+          cache: "no-store",
+        });
+        const payload = await response.json().catch(() => null);
+
+        if (!active || !response.ok || !payload?.success) {
+          return;
+        }
+
+        setTrialCredits(payload.data);
+      } catch (error) {
+        console.warn("Failed to load trial credits from dashboard fallback", error);
+      }
+    }
+
+    loadTrialCredits();
+
+    return () => {
+      active = false;
+    };
+  }, [searchParams, trialCredits]);
 
   useEffect(() => {
     function handleTrialCreditsUpdated(event) {
