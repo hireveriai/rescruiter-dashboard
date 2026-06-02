@@ -184,7 +184,7 @@ export async function deductTrialCredits(input: {
   amount?: number
 }) {
   const amount = Math.max(1, Math.floor(input.amount ?? 1))
-  await ensureTrialCreditSchema()
+  await getOrCreateTrialCredits(input.organizationId)
 
   const rows = input.kind === "INTERVIEW"
     ? await prisma.$queryRaw<TrialCreditRow[]>(Prisma.sql`

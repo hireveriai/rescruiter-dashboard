@@ -35,6 +35,10 @@ function getOpenAIModel() {
   return process.env.OPENAI_SCREENING_MODEL?.trim() || DEFAULT_MODEL
 }
 
+function isAiCandidateMatchingEnabled() {
+  return process.env.VERIS_SCREENING_AI_MATCHING === "true"
+}
+
 function extractStructuredOutputText(response: OpenAIResponsesOutputText) {
   if (typeof response.output_text === "string" && response.output_text.trim()) {
     return response.output_text.trim()
@@ -342,7 +346,7 @@ export async function matchCandidateToJobWithAI(input: {
     job: input.job,
   })
 
-  if (!process.env.OPENAI_API_KEY) {
+  if (!isAiCandidateMatchingEnabled() || !process.env.OPENAI_API_KEY) {
     return fallback
   }
 

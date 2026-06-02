@@ -10,6 +10,8 @@ import { useOrgTimezone } from "@/components/OrgTimezoneProvider"
 
 const DASHBOARD_AUTO_REFRESH_MS = 60000
 const DASHBOARD_CACHE_KEY = "hireveri-overview"
+const DASHBOARD_INVALIDATED_EVENT = "hireveri:dashboard-data-invalidated"
+const DASHBOARD_INVALIDATED_KEY = "hireveri-overview-invalidated"
 
 function getOverviewSignature(overview) {
   if (!overview) {
@@ -145,6 +147,8 @@ export default function RecruiterDashboardBootstrap({ children }) {
   useEffect(() => {
     let active = true
     let cachedOverview = readCachedOverview()
+    const dashboardWasInvalidated =
+      typeof window !== "undefined" && window.sessionStorage.getItem(DASHBOARD_INVALIDATED_KEY) === "1"
 
     if (cachedOverview) {
       window.queueMicrotask(() => {
@@ -244,6 +248,9 @@ export default function RecruiterDashboardBootstrap({ children }) {
         if (!overview?.partial) {
           writeCachedOverview(overview)
           overviewSignatureRef.current = nextSignature
+          if (typeof window !== "undefined") {
+            window.sessionStorage.removeItem(DASHBOARD_INVALIDATED_KEY)
+          }
         }
         overviewPartialRef.current = Boolean(overview?.partial)
         setUpdateAvailable(false)
@@ -286,7 +293,7 @@ export default function RecruiterDashboardBootstrap({ children }) {
       }
     }
 
-    bootstrap({ forceRefresh: Boolean(cachedOverview), silent: Boolean(cachedOverview) })
+    bootstrap({ forceRefresh: Boolean(cachedOverview) || dashboardWasInvalidated, silent: Boolean(cachedOverview) })
 
     let refreshInFlight = false
     const refreshTimer = window.setInterval(() => {
@@ -307,12 +314,26 @@ export default function RecruiterDashboardBootstrap({ children }) {
 
       if (typeof window !== "undefined") {
         window.sessionStorage.removeItem(DASHBOARD_CACHE_KEY)
+        window.sessionStorage.setItem(DASHBOARD_INVALIDATED_KEY, "1")
       }
       bootstrap({ forceRefresh: true })
     }
 
+    function handleDashboardInvalidated() {
+      cachedOverview = null
+      overviewSignatureRef.current = ""
+      overviewPartialRef.current = false
+
+      if (typeof window !== "undefined") {
+        window.sessionStorage.removeItem(DASHBOARD_CACHE_KEY)
+      }
+
+      bootstrap({ forceRefresh: true, silent: true })
+    }
+
     if (typeof window !== "undefined") {
       window.addEventListener("pageshow", handlePageShow)
+      window.addEventListener(DASHBOARD_INVALIDATED_EVENT, handleDashboardInvalidated)
     }
 
     return () => {
@@ -320,6 +341,7 @@ export default function RecruiterDashboardBootstrap({ children }) {
       window.clearInterval(refreshTimer)
       if (typeof window !== "undefined") {
         window.removeEventListener("pageshow", handlePageShow)
+        window.removeEventListener(DASHBOARD_INVALIDATED_EVENT, handleDashboardInvalidated)
       }
     }
   }, [searchParams, setTimezoneState])

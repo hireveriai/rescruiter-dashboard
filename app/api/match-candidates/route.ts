@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
-import { ApiError, isApiError } from "@/lib/server/errors"
+import { ApiError } from "@/lib/server/errors"
 import { errorResponse } from "@/lib/server/response"
 import { matchCandidateToJobWithAI } from "@/lib/server/ai-screening/openai"
 import {
@@ -20,7 +20,7 @@ import { assertTrialCreditsAvailable, deductTrialCredits } from "@/lib/server/se
 
 export const runtime = "nodejs"
 
-const BATCH_SIZE = 3
+const BATCH_SIZE = 12
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 type MatchScope = "BATCH" | "GLOBAL"
 
@@ -82,39 +82,6 @@ function filterMatchesToCandidateIds<T extends { candidateId: string }>(matches:
   return matches.filter((match) => scopedIds.has(match.candidateId))
 }
 
-async function assertScreeningCreditsWithoutBreakingMatch(organizationId: string, amount: number) {
-  try {
-    await assertTrialCreditsAvailable({
-      organizationId,
-      kind: "SCREENING",
-      amount,
-    })
-  } catch (error) {
-    if (isApiError(error) && error.code === "FREE_TRIAL_LIMIT_REACHED") {
-      throw error
-    }
-
-    console.warn("VERIS screening credit preflight skipped", error)
-  }
-}
-
-async function deductScreeningCreditsWithoutBreakingMatch(organizationId: string, amount: number) {
-  try {
-    return await deductTrialCredits({
-      organizationId,
-      kind: "SCREENING",
-      amount,
-    })
-  } catch (error) {
-    if (isApiError(error) && error.code === "FREE_TRIAL_LIMIT_REACHED") {
-      throw error
-    }
-
-    console.warn("VERIS screening credit deduction skipped after successful match", error)
-    return null
-  }
-}
-
 export async function GET(request: Request) {
   try {
     const auth = await getRecruiterRequestContext(request)
@@ -161,8 +128,6 @@ export async function GET(request: Request) {
     if (!jobId) {
       throw new ApiError(400, "JD_NOT_PROCESSED", "Analyze a job before matching candidates")
     }
-
-    await assertScreeningCreditsWithoutBreakingMatch(auth.organizationId, 1)
 
     const job = await getScreeningJob(auth.organizationId, jobId)
 
@@ -369,7 +334,11 @@ export async function POST(request: Request) {
       )
     }
 
-    await assertScreeningCreditsWithoutBreakingMatch(auth.organizationId, candidates.length)
+    await assertTrialCreditsAvailable({
+      organizationId: auth.organizationId,
+      kind: "SCREENING",
+      amount: candidates.length,
+    })
 
     const generatedMatches = await processInBatches(candidates, BATCH_SIZE, async (candidate) => {
       const result = await matchCandidateToJobWithAI({
@@ -472,14 +441,12 @@ export async function POST(request: Request) {
       jobId,
       batchId: effectiveBatchId || null,
       matches,
-    }).catch((error) => {
-      console.warn("VERIS screening run snapshot write skipped", {
-        jobId,
-        error: error instanceof Error ? error.message : String(error),
-      })
-      return null
     })
-    const trialCredits = await deductScreeningCreditsWithoutBreakingMatch(auth.organizationId, candidates.length)
+    const trialCredits = await deductTrialCredits({
+      organizationId: auth.organizationId,
+      kind: "SCREENING",
+      amount: candidates.length,
+    })
 
     return NextResponse.json({
       success: true,

@@ -9,9 +9,6 @@ import { getRecruiterProfile } from "@/lib/server/services/recruiter-profile"
 import { getDashboardAlerts, type DashboardAlert } from "@/lib/server/services/dashboard-alerts"
 import { getDashboardWorkflowSnapshot } from "@/lib/server/services/dashboard-workflow"
 import {
-  FREE_TRIAL_INTERVIEW_CREDITS,
-  FREE_TRIAL_LIMIT_MESSAGE,
-  FREE_TRIAL_SCREENING_CREDITS,
   getOrCreateTrialCredits,
   type TrialCreditSnapshot,
 } from "@/lib/server/services/trial-credits"
@@ -48,7 +45,7 @@ type OverviewPayload = {
   candidates: Awaited<ReturnType<typeof getCandidatesDashboard>>
   veris?: Array<Record<string, unknown>>
   alerts: DashboardAlert[]
-  trialCredits: TrialCreditSnapshot
+  trialCredits: TrialCreditSnapshot | null
 }
 
 type CacheEntry = {
@@ -121,24 +118,13 @@ function emptyPipeline() {
   }
 }
 
-function emptyTrialCredits(organizationId: string): TrialCreditSnapshot {
-  return {
-    organizationId,
-    interviewCreditsRemaining: FREE_TRIAL_INTERVIEW_CREDITS,
-    screeningCreditsRemaining: FREE_TRIAL_SCREENING_CREDITS,
-    canSendInterview: true,
-    canStartScreening: true,
-    upgradeMessage: FREE_TRIAL_LIMIT_MESSAGE,
-  }
-}
-
 async function buildFastOverview(
   auth: Awaited<ReturnType<typeof getRecruiterRequestContext>>
 ): Promise<OverviewPayload> {
   const [profileStep, alertsStep, trialCreditsStep] = await Promise.all([
     timedStep("profile", () => getRecruiterProfile(auth)),
     safeTimedStep("alerts", () => getDashboardAlerts(auth.organizationId, 8, auth.userId), []),
-    safeTimedStep("trialCredits", () => getOrCreateTrialCredits(auth.organizationId), emptyTrialCredits(auth.organizationId)),
+    safeTimedStep<TrialCreditSnapshot | null>("trialCredits", () => getOrCreateTrialCredits(auth.organizationId), null),
   ])
   const profile = profileStep.result
   const alerts = alertsStep.result
@@ -179,7 +165,7 @@ async function buildOverview(
     }), []),
     pipelinePromise,
     safeTimedStep("alerts", () => getDashboardAlerts(auth.organizationId, 8, auth.userId), []),
-    safeTimedStep("trialCredits", () => getOrCreateTrialCredits(auth.organizationId), emptyTrialCredits(auth.organizationId)),
+    safeTimedStep<TrialCreditSnapshot | null>("trialCredits", () => getOrCreateTrialCredits(auth.organizationId), null),
   ])
   const profile = profileStep.result
   const candidates = candidatesStep.result

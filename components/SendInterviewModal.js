@@ -10,6 +10,20 @@ import { copyText } from "@/lib/client/copy-to-clipboard"
 import { formatDateTime } from "@/lib/client/date-format"
 import UpgradeLimitDialog from "@/components/UpgradeLimitDialog"
 
+const DASHBOARD_CACHE_KEY = "hireveri-overview"
+const DASHBOARD_INVALIDATED_EVENT = "hireveri:dashboard-data-invalidated"
+const DASHBOARD_INVALIDATED_KEY = "hireveri-overview-invalidated"
+
+function invalidateDashboardOverviewCache() {
+  if (typeof window === "undefined") {
+    return
+  }
+
+  window.sessionStorage.removeItem(DASHBOARD_CACHE_KEY)
+  window.sessionStorage.setItem(DASHBOARD_INVALIDATED_KEY, "1")
+  window.dispatchEvent(new CustomEvent(DASHBOARD_INVALIDATED_EVENT))
+}
+
 function CalendarIcon() {
   return (
     <svg
@@ -394,6 +408,7 @@ export default function SendInterviewModal({ isOpen, onClose, initialTrialCredit
           return nextCredits
         })
       }
+      invalidateDashboardOverviewCache()
       setLink(responseData.link || "")
       setEmailStatus(
         responseData.emailSent === true

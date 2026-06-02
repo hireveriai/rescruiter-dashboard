@@ -153,10 +153,23 @@ type CleanupModal = "CLEAR_RESULTS" | "DELETE_UPLOAD" | null
 const recommendationFilters = ["ALL", "STRONG_FIT", "POTENTIAL", "WEAK", "REJECT"] as const
 const riskFilters = ["ALL", "LOW", "MEDIUM", "HIGH"] as const
 const FLOW_STORAGE_KEY = "hireveri.aiScreening.flowState"
+const DASHBOARD_CACHE_KEY = "hireveri-overview"
+const DASHBOARD_INVALIDATED_EVENT = "hireveri:dashboard-data-invalidated"
+const DASHBOARD_INVALIDATED_KEY = "hireveri-overview-invalidated"
 const AUTO_RUN = true
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const UPGRADE_MESSAGE =
   "You’ve reached your free trial limit. Upgrade your workspace to continue conducting interviews and screenings."
+
+function invalidateDashboardOverviewCache() {
+  if (typeof window === "undefined") {
+    return
+  }
+
+  window.sessionStorage.removeItem(DASHBOARD_CACHE_KEY)
+  window.sessionStorage.setItem(DASHBOARD_INVALIDATED_KEY, "1")
+  window.dispatchEvent(new CustomEvent(DASHBOARD_INVALIDATED_EVENT))
+}
 
 type StoredFlowState = {
   flowStep: FlowStep
@@ -1555,6 +1568,7 @@ export default function AiScreeningPage() {
           }
         })
         .catch(() => undefined)
+      invalidateDashboardOverviewCache()
       const apiMatches = (payload.data?.matches ?? []) as MatchRow[]
       const scopedMatches = filterMatchesToCandidateScope(
         apiMatches,
@@ -1697,6 +1711,7 @@ export default function AiScreeningPage() {
       if (payload.data?.trialCredits) {
         setTrialCredits(normalizeTrialCredits(payload.data.trialCredits))
       }
+      invalidateDashboardOverviewCache()
       setSendResults(payload.data?.results ?? [])
       setNotice(`${payload.data?.sentCount ?? 0} interview invitations sent.`)
       return "sent"
