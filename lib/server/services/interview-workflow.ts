@@ -51,6 +51,11 @@ type InterviewContextRow = {
   core_skills: string[] | null
   experience_level_id: number | null
   interview_duration_minutes: number | null
+  coding_required: string | null
+  coding_assessment_type: string | null
+  coding_difficulty: string | null
+  coding_duration_minutes: number | null
+  coding_languages: string[] | null
   candidate_name: string | null
   candidate_email: string | null
   resume_text: string | null
@@ -306,6 +311,11 @@ async function getInterviewContext(organizationId: string, interviewId: string) 
       jp.core_skills,
       jp.experience_level_id,
       jp.interview_duration_minutes,
+      jp.coding_required,
+      jp.coding_assessment_type,
+      jp.coding_difficulty,
+      jp.coding_duration_minutes,
+      jp.coding_languages,
       c.full_name as candidate_name,
       c.email as candidate_email,
       c.resume_text,
@@ -432,6 +442,11 @@ export async function prepareInterviewQuestionsWithRetry(input: GenerateQuestion
           totalQuestions: input.totalQuestions,
           interviewDurationMinutes: input.interviewDurationMinutes ?? context.interview_duration_minutes ?? undefined,
           jobTitle: context.job_title ?? undefined,
+          codingRequired: context.coding_required,
+          codingAssessmentType: context.coding_assessment_type,
+          codingDifficulty: context.coding_difficulty,
+          codingDurationMinutes: context.coding_duration_minutes,
+          codingLanguages: context.coding_languages ?? [],
           previousQuestions: [],
           similarityThreshold: input.similarityThreshold ?? 0.8,
         }),

@@ -52,6 +52,79 @@ function buildResumeQuestion(skill: string, index: number, seniorityLevel: "juni
   return templates[index % templates.length]
 }
 
+function isCodingRequired(input: BaseGenerationInput) {
+  return String(input.codingRequired ?? "").toUpperCase() === "YES"
+}
+
+function buildCodingQuestion(input: BaseGenerationInput) {
+  const assessmentType = String(input.codingAssessmentType ?? "").toUpperCase()
+  const language = (input.codingLanguages ?? []).find((item) => item?.trim())?.trim()
+  const corpus = `${input.jobTitle ?? ""} ${input.jobDescription ?? ""} ${(input.coreSkills ?? []).join(" ")} ${assessmentType}`.toLowerCase()
+
+  if (assessmentType === "SQL" || /\b(sql|database|postgres|postgresql|mysql|oracle|query)\b/.test(corpus)) {
+    return {
+      skill: "SQL query design",
+      question:
+        "Write a SQL query to find records with the highest recent activity, and explain the indexes you would use to keep it efficient.",
+    }
+  }
+
+  if (assessmentType === "DEBUGGING") {
+    return {
+      skill: "Debugging",
+      question:
+        "Debug a failing function or query, identify the root cause, and describe the smallest safe fix you would apply.",
+    }
+  }
+
+  if (assessmentType === "BACKEND_LOGIC" || /\b(api|backend|service|node|java|python|spring|express)\b/.test(corpus)) {
+    return {
+      skill: "Backend logic",
+      question:
+        `Implement a small ${language || "backend"} function that validates input, handles an error case, and returns a predictable response.`,
+    }
+  }
+
+  if (assessmentType === "DSA" || /\b(algorithm|data structure|dsa)\b/.test(corpus)) {
+    return {
+      skill: "Problem solving",
+      question:
+        `Implement a ${language || "programming"} function that removes duplicates from a list while preserving the original order.`,
+    }
+  }
+
+  return {
+    skill: language ? `${language} coding` : "Practical coding",
+    question:
+      `Write a ${language || "code"} solution for a small real-world task, then explain how you would test edge cases.`,
+  }
+}
+
+function buildCodingInterviewQuestion(input: BaseGenerationInput, index: number): InterviewQuestion {
+  const coding = buildCodingQuestion(input)
+  const questionId = `coding-${index}`
+
+  return {
+    id: questionId,
+    question: coding.question,
+    skill: coding.skill,
+    skill_type: "technical",
+    skill_bucket: bucketSkill(coding.skill),
+    source_type: "job",
+    reference_context: {
+      anchor: coding.skill,
+      source: "coding_assessment",
+    },
+    is_dynamic: true,
+    allow_followups: true,
+    question_type: InterviewQuestionType.CODING,
+    classifier_confidence: 0.94,
+    recruiter_override: false,
+    rendering_mode: "code_editor",
+    phase_hint: index <= 1 ? "warmup" : "core",
+  }
+}
+
 function mapQuestion(
   question: {
     id: string
@@ -148,7 +221,21 @@ export async function generateInterviewQuestions(
     )
   })
 
-  return [...keptJobQuestions, ...injectedResumeQuestions].slice(0, totalQuestions)
+  const finalQuestions = [...keptJobQuestions, ...injectedResumeQuestions].slice(0, totalQuestions)
+
+  if (!isCodingRequired(input)) {
+    return finalQuestions
+  }
+
+  const codingQuestion = buildCodingInterviewQuestion(input, finalQuestions.length)
+  const withoutExistingCoding = finalQuestions.filter((question) => question.question_type !== InterviewQuestionType.CODING)
+
+  if (withoutExistingCoding.length >= totalQuestions) {
+    withoutExistingCoding.splice(Math.max(1, Math.min(withoutExistingCoding.length - 1, 2)), 1, codingQuestion)
+    return withoutExistingCoding.slice(0, totalQuestions)
+  }
+
+  return [codingQuestion, ...withoutExistingCoding].slice(0, totalQuestions)
 }
 
 export type { BaseGenerationInput, InterviewQuestion } from "@/lib/server/ai/interview-flow"

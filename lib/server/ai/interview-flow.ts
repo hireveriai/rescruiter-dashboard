@@ -37,6 +37,11 @@ export type BaseGenerationInput = {
   jobTitle?: string
   previousQuestions?: string[]
   similarityThreshold?: number
+  codingRequired?: string | null
+  codingAssessmentType?: string | null
+  codingDifficulty?: string | null
+  codingDurationMinutes?: number | null
+  codingLanguages?: string[] | null
 }
 
 export type InterviewQuestion = {
