@@ -82,13 +82,6 @@ type TrialCredits = {
   upgradeMessage: string
 }
 
-type DashboardWorkflowCredits = {
-  workflowMetrics?: {
-    invites?: number | null
-    screeningRuns?: number | null
-  } | null
-}
-
 type UploadRow = {
   fileName: string
   status: "uploading" | "uploaded" | "processing" | "ready" | "failed"
@@ -678,20 +671,6 @@ function mergeTrialCredits(current: TrialCredits, incoming: Partial<TrialCredits
   }
 }
 
-function deriveTrialCreditsFromWorkflow(workflow: DashboardWorkflowCredits | null | undefined): Partial<TrialCredits> | null {
-  const invites = Number(workflow?.workflowMetrics?.invites ?? 0)
-  const screeningRuns = Number(workflow?.workflowMetrics?.screeningRuns ?? 0)
-
-  if (!Number.isFinite(invites) && !Number.isFinite(screeningRuns)) {
-    return null
-  }
-
-  return {
-    interviewCreditsRemaining: Math.max(0, 5 - Math.max(0, Number.isFinite(invites) ? Math.floor(invites) : 0)),
-    screeningCreditsRemaining: Math.max(0, 15 - Math.max(0, Number.isFinite(screeningRuns) ? Math.floor(screeningRuns) : 0)),
-  }
-}
-
 async function fetchTrialCreditsSnapshot() {
   const response = await fetch(authUrl(`/api/trial-credits?refresh=${Date.now()}`), {
     credentials: "include",
@@ -700,16 +679,6 @@ async function fetchTrialCreditsSnapshot() {
   const payload = await response.json().catch(() => null)
 
   return payload?.success ? normalizeTrialCredits(payload.data) : null
-}
-
-async function fetchWorkflowTrialCreditsSnapshot() {
-  const response = await fetch(authUrl(`/api/dashboard/workflow?refresh=${Date.now()}`), {
-    credentials: "include",
-    cache: "no-store",
-  })
-  const payload = await response.json().catch(() => null)
-
-  return payload?.success ? deriveTrialCreditsFromWorkflow(payload.data) : null
 }
 
 export default function AiScreeningPage() {
@@ -796,7 +765,7 @@ export default function AiScreeningPage() {
 
     async function loadInitialData() {
       try {
-        const [jobsResponse, screeningJobsResponse, trialCreditsResponse, workflowResponse] = await Promise.all([
+        const [jobsResponse, screeningJobsResponse, trialCreditsResponse] = await Promise.all([
           fetch(authUrl("/api/jobs?includeInactive=1"), {
             credentials: "include",
             cache: "no-store",
@@ -809,15 +778,10 @@ export default function AiScreeningPage() {
             credentials: "include",
             cache: "no-store",
           }),
-          fetch(authUrl(`/api/dashboard/workflow?refresh=${Date.now()}`), {
-            credentials: "include",
-            cache: "no-store",
-          }),
         ])
         const jobsPayload = await jobsResponse.json()
         const screeningPayload = await screeningJobsResponse.json()
         const trialCreditsPayload = await trialCreditsResponse.json().catch(() => null)
-        const workflowPayload = await workflowResponse.json().catch(() => null)
 
         if (!active) {
           return
@@ -845,13 +809,6 @@ export default function AiScreeningPage() {
         if (trialCreditsPayload?.success) {
           setTrialCredits((current) => mergeTrialCredits(current, trialCreditsPayload.data))
         }
-
-        if (workflowPayload?.success) {
-          const derivedCredits = deriveTrialCreditsFromWorkflow(workflowPayload.data)
-          if (derivedCredits) {
-            setTrialCredits((current) => mergeTrialCredits(current, derivedCredits))
-          }
-        }
       } catch (loadError) {
         console.error("Failed to load VERIS screening data", loadError)
       }
@@ -867,27 +824,14 @@ export default function AiScreeningPage() {
   useEffect(() => {
     let active = true
 
-    Promise.all([
-      fetchTrialCreditsSnapshot().catch((error) => {
-        console.warn("Failed to refresh VERIS trial credits", error)
-        return null
-      }),
-      fetchWorkflowTrialCreditsSnapshot().catch((error) => {
-        console.warn("Failed to refresh VERIS workflow trial usage", error)
-        return null
-      }),
-    ])
-      .then(([credits, workflowCredits]) => {
-        if (!active) {
-          return
-        }
-
-        if (credits) {
+    fetchTrialCreditsSnapshot()
+      .then((credits) => {
+        if (active && credits) {
           setTrialCredits((current) => mergeTrialCredits(current, credits))
         }
-        if (workflowCredits) {
-          setTrialCredits((current) => mergeTrialCredits(current, workflowCredits))
-        }
+      })
+      .catch((error) => {
+        console.warn("Failed to refresh VERIS trial credits", error)
       })
 
     return () => {
@@ -1634,13 +1578,6 @@ export default function AiScreeningPage() {
           }
         })
         .catch(() => undefined)
-      fetchWorkflowTrialCreditsSnapshot()
-        .then((credits) => {
-          if (credits) {
-            setTrialCredits((current) => mergeTrialCredits(current, credits))
-          }
-        })
-        .catch(() => undefined)
       invalidateDashboardOverviewCache()
       const apiMatches = (payload.data?.matches ?? []) as MatchRow[]
       const scopedMatches = filterMatchesToCandidateScope(
@@ -1784,13 +1721,6 @@ export default function AiScreeningPage() {
       if (payload.data?.trialCredits) {
         setTrialCredits((current) => mergeTrialCredits(current, payload.data.trialCredits))
       }
-      fetchWorkflowTrialCreditsSnapshot()
-        .then((credits) => {
-          if (credits) {
-            setTrialCredits((current) => mergeTrialCredits(current, credits))
-          }
-        })
-        .catch(() => undefined)
       invalidateDashboardOverviewCache()
       setSendResults(payload.data?.results ?? [])
       setNotice(`${payload.data?.sentCount ?? 0} interview invitations sent.`)

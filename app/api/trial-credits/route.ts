@@ -1,6 +1,6 @@
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
 import { errorResponse, successResponse } from "@/lib/server/response"
-import { createInitialTrialCreditSnapshot, getOrCreateTrialCredits } from "@/lib/server/services/trial-credits"
+import { getOrCreateTrialCredits } from "@/lib/server/services/trial-credits"
 
 export const runtime = "nodejs"
 
@@ -20,10 +20,7 @@ export async function GET(request: Request) {
     response.headers.set("Pragma", "no-cache")
     return response
   } catch (error) {
-    console.warn("Trial credits bootstrap failed; returning initial snapshot", error)
-    const response = successResponse(createInitialTrialCreditSnapshot(auth.organizationId))
-    response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
-    response.headers.set("Pragma", "no-cache")
-    return response
+    console.error("Trial credits bootstrap failed", error)
+    return errorResponse(error)
   }
 }

@@ -131,24 +131,6 @@ function mergeTrialCredits(current, incoming) {
   };
 }
 
-function deriveTrialCreditsFromOverview(overview) {
-  if (!overview) {
-    return null;
-  }
-
-  const invites = Number(overview?.workflowMetrics?.invites ?? 0);
-  const screeningRuns = Number(overview?.workflowMetrics?.screeningRuns ?? 0);
-
-  if (!Number.isFinite(invites) && !Number.isFinite(screeningRuns)) {
-    return null;
-  }
-
-  return {
-    interviewCreditsRemaining: Math.max(0, 5 - Math.max(0, Number.isFinite(invites) ? Math.floor(invites) : 0)),
-    screeningCreditsRemaining: Math.max(0, 15 - Math.max(0, Number.isFinite(screeningRuns) ? Math.floor(screeningRuns) : 0)),
-  };
-}
-
 function DashboardContent({ profile, overview, isLoading }) {
   const searchParams = useAuthSearchParams();
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -168,14 +150,6 @@ function DashboardContent({ profile, overview, isLoading }) {
       setTrialCredits((current) => mergeTrialCredits(current, overview.trialCredits));
     }
   }, [overview?.trialCredits]);
-
-  useEffect(() => {
-    const derivedTrialCredits = deriveTrialCreditsFromOverview(fullOverview);
-
-    if (derivedTrialCredits) {
-      setTrialCredits((current) => mergeTrialCredits(current, derivedTrialCredits));
-    }
-  }, [fullOverview?.workflowMetrics?.invites, fullOverview?.workflowMetrics?.screeningRuns]);
 
   useEffect(() => {
     let active = true;

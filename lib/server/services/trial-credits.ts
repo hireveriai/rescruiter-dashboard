@@ -118,6 +118,35 @@ async function reconcileScreeningCreditsFromRuns(organizationId: string, client:
   `)
 }
 
+async function reconcileTrialCreditRow(organizationId: string, client: QueryClient = prisma) {
+  const usage = await getTrialCreditUsage(organizationId, client)
+  const interviewCreditsRemaining = Math.max(0, FREE_TRIAL_INTERVIEW_CREDITS - usage.usedInterviewCredits)
+  const screeningCreditsRemaining = Math.max(0, FREE_TRIAL_SCREENING_CREDITS - usage.usedScreeningCredits)
+
+  const rows = await client.$queryRaw<TrialCreditRow[]>(Prisma.sql`
+    update public.workspace_trial_credits
+    set
+      interview_credits_remaining = least(interview_credits_remaining, ${interviewCreditsRemaining}),
+      screening_credits_remaining = least(screening_credits_remaining, ${screeningCreditsRemaining}),
+      updated_at = case
+        when interview_credits_remaining > ${interviewCreditsRemaining}
+          or screening_credits_remaining > ${screeningCreditsRemaining}
+        then now()
+        else updated_at
+      end
+    where organization_id = ${organizationId}::uuid
+    returning
+      organization_id::text,
+      interview_credits_remaining,
+      screening_credits_remaining
+  `)
+
+  return {
+    row: rows[0] ?? null,
+    usage,
+  }
+}
+
 async function getUsedScreeningCredits(organizationId: string, client: QueryClient = prisma) {
   let usedFromRuns = 0
 
@@ -202,8 +231,33 @@ async function getUsedInterviewCredits(organizationId: string, client: QueryClie
   return Math.max(normalizeCount(interviewRows[0]?.used_interview_credits), usedFromInvites)
 }
 
+async function getUsedTrialCreditsFromEvents(organizationId: string, client: QueryClient = prisma): Promise<TrialCreditUsage> {
+  if (!(await tableExists("workspace_trial_credit_events", client))) {
+    return {
+      usedInterviewCredits: 0,
+      usedScreeningCredits: 0,
+    }
+  }
+
+  const rows = await client.$queryRaw<Array<{
+    used_interview_credits: number
+    used_screening_credits: number
+  }>>(Prisma.sql`
+    select
+      coalesce(sum(amount) filter (where kind = 'INTERVIEW'), 0)::int as used_interview_credits,
+      coalesce(sum(amount) filter (where kind = 'SCREENING'), 0)::int as used_screening_credits
+    from public.workspace_trial_credit_events
+    where organization_id = ${organizationId}::uuid
+  `)
+
+  return {
+    usedInterviewCredits: normalizeCount(rows[0]?.used_interview_credits),
+    usedScreeningCredits: normalizeCount(rows[0]?.used_screening_credits),
+  }
+}
+
 async function getTrialCreditUsage(organizationId: string, client: QueryClient = prisma): Promise<TrialCreditUsage> {
-  const [usedInterviewCredits, usedScreeningCredits] = await Promise.all([
+  const [usedInterviewCredits, usedScreeningCredits, eventUsage] = await Promise.all([
     getUsedInterviewCredits(organizationId, client).catch((error) => {
       console.warn("Trial credit interview usage lookup skipped", error)
       return 0
@@ -212,11 +266,18 @@ async function getTrialCreditUsage(organizationId: string, client: QueryClient =
       console.warn("Trial credit screening usage lookup skipped", error)
       return 0
     }),
+    getUsedTrialCreditsFromEvents(organizationId, client).catch((error) => {
+      console.warn("Trial credit event usage lookup skipped", error)
+      return {
+        usedInterviewCredits: 0,
+        usedScreeningCredits: 0,
+      }
+    }),
   ])
 
   return {
-    usedInterviewCredits,
-    usedScreeningCredits,
+    usedInterviewCredits: Math.max(usedInterviewCredits, eventUsage.usedInterviewCredits),
+    usedScreeningCredits: Math.max(usedScreeningCredits, eventUsage.usedScreeningCredits),
   }
 }
 
@@ -249,6 +310,32 @@ export async function ensureTrialCreditSchema(client: QueryClient = prisma) {
     await client.$executeRaw(Prisma.sql`
     create index if not exists workspace_trial_credits_updated_at_idx
       on public.workspace_trial_credits (updated_at desc)
+  `)
+
+    await client.$executeRaw(Prisma.sql`
+    create table if not exists public.workspace_trial_credit_events (
+      id uuid primary key default gen_random_uuid(),
+      organization_id uuid not null references public.organizations(organization_id) on delete cascade,
+      kind text not null,
+      amount integer not null,
+      source text,
+      source_id text,
+      metadata jsonb not null default '{}'::jsonb,
+      created_at timestamptz not null default now(),
+      constraint workspace_trial_credit_events_kind_check check (kind in ('INTERVIEW', 'SCREENING')),
+      constraint workspace_trial_credit_events_amount_positive check (amount > 0)
+    )
+  `)
+
+    await client.$executeRaw(Prisma.sql`
+    create index if not exists workspace_trial_credit_events_org_kind_created_idx
+      on public.workspace_trial_credit_events (organization_id, kind, created_at desc)
+  `)
+
+    await client.$executeRaw(Prisma.sql`
+    create unique index if not exists workspace_trial_credit_events_source_uidx
+      on public.workspace_trial_credit_events (organization_id, kind, source, source_id)
+      where source_id is not null
   `)
   })()
 
@@ -321,19 +408,10 @@ export async function getOrCreateTrialCredits(organizationId: string, client: Qu
     set updated_at = public.workspace_trial_credits.updated_at
   `)
 
-  try {
-    await reconcileInterviewCreditsFromInterviews(organizationId, client)
-  } catch (error) {
-    console.warn("Trial credit interview reconciliation skipped", error)
-  }
-
-  try {
-    await reconcileScreeningCreditsFromRuns(organizationId, client)
-  } catch (error) {
-    console.warn("Trial credit screening reconciliation skipped", error)
-  }
-
-  const rows = await client.$queryRaw<TrialCreditRow[]>(Prisma.sql`
+  const reconciled = await reconcileTrialCreditRow(organizationId, client)
+  const rows = reconciled.row
+    ? [reconciled.row]
+    : await client.$queryRaw<TrialCreditRow[]>(Prisma.sql`
     select
       organization_id::text,
       interview_credits_remaining,
@@ -348,8 +426,7 @@ export async function getOrCreateTrialCredits(organizationId: string, client: Qu
     throw new ApiError(500, "TRIAL_CREDITS_UNAVAILABLE", "Unable to load free trial credits.")
   }
 
-  const usage = await getTrialCreditUsage(organizationId, client)
-  return mapTrialCreditRow(row, usage)
+  return mapTrialCreditRow(row, reconciled.usage)
 }
 
 export async function getTrialCreditsDashboardSnapshot(organizationId: string, client: QueryClient = prisma) {
@@ -360,6 +437,7 @@ export async function getTrialCreditsDashboardSnapshot(organizationId: string, c
 
   try {
     await ensureTrialCreditSchema(client)
+    await ensureTrialCreditOrganization(organizationId, client)
 
     const insertedRows = await client.$queryRaw<TrialCreditRow[]>(Prisma.sql`
       insert into public.workspace_trial_credits (
@@ -391,19 +469,10 @@ export async function getTrialCreditsDashboardSnapshot(organizationId: string, c
         limit 1
       `)
 
-    try {
-      await reconcileInterviewCreditsFromInterviews(organizationId, client)
-    } catch (error) {
-      console.warn("Trial credit dashboard interview reconciliation skipped", error)
-    }
-
-    try {
-      await reconcileScreeningCreditsFromRuns(organizationId, client)
-    } catch (error) {
-      console.warn("Trial credit dashboard screening reconciliation skipped", error)
-    }
-
-    const reconciledRows = await client.$queryRaw<TrialCreditRow[]>(Prisma.sql`
+    const reconciled = await reconcileTrialCreditRow(organizationId, client)
+    const reconciledRows = reconciled.row
+      ? [reconciled.row]
+      : await client.$queryRaw<TrialCreditRow[]>(Prisma.sql`
       select
         organization_id::text,
         interview_credits_remaining,
@@ -414,9 +483,8 @@ export async function getTrialCreditsDashboardSnapshot(organizationId: string, c
     `)
 
     const row = reconciledRows[0] ?? rows[0]
-    const usage = await getTrialCreditUsage(organizationId, client)
     const snapshot = row
-      ? mapTrialCreditRow(row, usage)
+      ? mapTrialCreditRow(row, reconciled.usage)
       : createInitialTrialCreditSnapshot(organizationId)
 
     if (client === prisma) {
@@ -439,14 +507,10 @@ export async function assertTrialCreditsAvailable(input: {
   amount?: number
 }) {
   const amount = Math.max(1, Math.floor(input.amount ?? 1))
-  let credits: TrialCreditSnapshot
-
-  try {
-    credits = await getOrCreateTrialCredits(input.organizationId)
-  } catch (error) {
-    console.warn("Trial credit availability check used initial snapshot fallback", error)
-    credits = createInitialTrialCreditSnapshot(input.organizationId)
-  }
+  const credits = await getOrCreateTrialCredits(input.organizationId).catch((error) => {
+    console.error("Trial credit availability check failed", error)
+    throw new ApiError(503, "TRIAL_CREDITS_UNAVAILABLE", "Unable to verify free trial credits. Please try again.")
+  })
 
   const remaining =
     input.kind === "INTERVIEW" ? credits.interviewCreditsRemaining : credits.screeningCreditsRemaining
@@ -462,16 +526,14 @@ export async function deductTrialCredits(input: {
   organizationId: string
   kind: TrialCreditKind
   amount?: number
+  source?: string | null
+  sourceId?: string | null
 }) {
   const amount = Math.max(1, Math.floor(input.amount ?? 1))
-  let creditsBeforeDeduction: TrialCreditSnapshot
-
-  try {
-    creditsBeforeDeduction = await getOrCreateTrialCredits(input.organizationId)
-  } catch (error) {
-    console.warn("Trial credit deduction used initial snapshot fallback", error)
-    creditsBeforeDeduction = createInitialTrialCreditSnapshot(input.organizationId)
-  }
+  const creditsBeforeDeduction = await getOrCreateTrialCredits(input.organizationId).catch((error) => {
+    console.error("Trial credit deduction preflight failed", error)
+    throw new ApiError(503, "TRIAL_CREDITS_UNAVAILABLE", "Unable to update free trial credits. Please try again.")
+  })
 
   const remainingBeforeDeduction =
     input.kind === "INTERVIEW"
@@ -483,36 +545,62 @@ export async function deductTrialCredits(input: {
   }
 
   try {
-    const rows = input.kind === "INTERVIEW"
-      ? await prisma.$queryRaw<TrialCreditRow[]>(Prisma.sql`
-        update public.workspace_trial_credits
-        set
-          interview_credits_remaining = interview_credits_remaining - ${amount},
-          updated_at = now()
-        where organization_id = ${input.organizationId}::uuid
-          and interview_credits_remaining >= ${amount}
-        returning
-          organization_id::text,
-          interview_credits_remaining,
-          screening_credits_remaining
-      `)
-      : await prisma.$queryRaw<TrialCreditRow[]>(Prisma.sql`
-        update public.workspace_trial_credits
-        set
-          screening_credits_remaining = screening_credits_remaining - ${amount},
-          updated_at = now()
-        where organization_id = ${input.organizationId}::uuid
-          and screening_credits_remaining >= ${amount}
-        returning
-          organization_id::text,
-          interview_credits_remaining,
-          screening_credits_remaining
+    const row = await prisma.$transaction(async (tx) => {
+      const rows = input.kind === "INTERVIEW"
+        ? await tx.$queryRaw<TrialCreditRow[]>(Prisma.sql`
+          update public.workspace_trial_credits
+          set
+            interview_credits_remaining = interview_credits_remaining - ${amount},
+            updated_at = now()
+          where organization_id = ${input.organizationId}::uuid
+            and interview_credits_remaining >= ${amount}
+          returning
+            organization_id::text,
+            interview_credits_remaining,
+            screening_credits_remaining
+        `)
+        : await tx.$queryRaw<TrialCreditRow[]>(Prisma.sql`
+          update public.workspace_trial_credits
+          set
+            screening_credits_remaining = screening_credits_remaining - ${amount},
+            updated_at = now()
+          where organization_id = ${input.organizationId}::uuid
+            and screening_credits_remaining >= ${amount}
+          returning
+            organization_id::text,
+            interview_credits_remaining,
+            screening_credits_remaining
+        `)
+
+      const updatedRow = rows[0]
+      if (!updatedRow) {
+        throw new ApiError(402, "FREE_TRIAL_LIMIT_REACHED", FREE_TRIAL_LIMIT_MESSAGE)
+      }
+
+      await tx.$executeRaw(Prisma.sql`
+        insert into public.workspace_trial_credit_events (
+          organization_id,
+          kind,
+          amount,
+          source,
+          source_id,
+          metadata
+        )
+        values (
+          ${input.organizationId}::uuid,
+          ${input.kind},
+          ${amount},
+          ${input.source ?? "deduction"},
+          ${input.sourceId ?? null},
+          ${JSON.stringify({ remainingAfter: {
+            interviewCreditsRemaining: updatedRow.interview_credits_remaining,
+            screeningCreditsRemaining: updatedRow.screening_credits_remaining,
+          } })}::jsonb
+        )
       `)
 
-    const row = rows[0]
-    if (!row) {
-      throw new ApiError(402, "FREE_TRIAL_LIMIT_REACHED", FREE_TRIAL_LIMIT_MESSAGE)
-    }
+      return updatedRow
+    })
 
     const usage = await getTrialCreditUsage(input.organizationId)
     const snapshot = mapTrialCreditRow(row, usage)
@@ -523,26 +611,8 @@ export async function deductTrialCredits(input: {
       throw error
     }
 
-    console.warn("Trial credit table update skipped; returning fallback deduction snapshot", error)
+    console.error("Trial credit table update failed", error)
     invalidateTrialCreditDashboardCache(input.organizationId)
-    return {
-      ...creditsBeforeDeduction,
-      interviewCreditsRemaining:
-        input.kind === "INTERVIEW"
-          ? Math.max(0, creditsBeforeDeduction.interviewCreditsRemaining - amount)
-          : creditsBeforeDeduction.interviewCreditsRemaining,
-      screeningCreditsRemaining:
-        input.kind === "SCREENING"
-          ? Math.max(0, creditsBeforeDeduction.screeningCreditsRemaining - amount)
-          : creditsBeforeDeduction.screeningCreditsRemaining,
-      canSendInterview:
-        input.kind === "INTERVIEW"
-          ? creditsBeforeDeduction.interviewCreditsRemaining - amount > 0
-          : creditsBeforeDeduction.interviewCreditsRemaining > 0,
-      canStartScreening:
-        input.kind === "SCREENING"
-          ? creditsBeforeDeduction.screeningCreditsRemaining - amount > 0
-          : creditsBeforeDeduction.screeningCreditsRemaining > 0,
-    }
+    throw new ApiError(503, "TRIAL_CREDITS_UPDATE_FAILED", "Unable to update free trial credits. Please try again.")
   }
 }
