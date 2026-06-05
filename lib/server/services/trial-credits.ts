@@ -36,7 +36,7 @@ type TrialCreditCacheEntry = {
 }
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const TRIAL_CREDIT_DASHBOARD_CACHE_TTL_MS = 30000
+const TRIAL_CREDIT_DASHBOARD_CACHE_TTL_MS = 0
 const trialCreditDashboardCache = new Map<string, TrialCreditCacheEntry>()
 let ensureTrialCreditSchemaPromise: Promise<void> | null = null
 
@@ -181,12 +181,25 @@ async function reconcileInterviewCreditsFromInterviews(organizationId: string, c
 }
 
 async function getUsedInterviewCredits(organizationId: string, client: QueryClient = prisma) {
-  const rows = await client.$queryRaw<Array<{ used_interview_credits: number }>>(Prisma.sql`
+  const interviewRows = await client.$queryRaw<Array<{ used_interview_credits: number }>>(Prisma.sql`
     select count(distinct i.interview_id)::int as used_interview_credits
     from public.interviews i
     where i.organization_id = ${organizationId}::uuid
   `)
-  return normalizeCount(rows[0]?.used_interview_credits)
+
+  let usedFromInvites = 0
+  if ((await tableExists("interview_invites", client)) && (await tableExists("interviews", client))) {
+    const inviteRows = await client.$queryRaw<Array<{ used_interview_credits: number }>>(Prisma.sql`
+      select count(distinct ii.interview_id)::int as used_interview_credits
+      from public.interview_invites ii
+      inner join public.interviews i
+        on i.interview_id = ii.interview_id
+        and i.organization_id = ${organizationId}::uuid
+    `)
+    usedFromInvites = normalizeCount(inviteRows[0]?.used_interview_credits)
+  }
+
+  return Math.max(normalizeCount(interviewRows[0]?.used_interview_credits), usedFromInvites)
 }
 
 async function getTrialCreditUsage(organizationId: string, client: QueryClient = prisma): Promise<TrialCreditUsage> {
