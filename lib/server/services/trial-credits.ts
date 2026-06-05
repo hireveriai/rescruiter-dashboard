@@ -119,41 +119,49 @@ async function reconcileScreeningCreditsFromRuns(organizationId: string, client:
 }
 
 async function getUsedScreeningCredits(organizationId: string, client: QueryClient = prisma) {
-  if (!(await tableExists("screening_runs", client))) {
-    return 0
-  }
+  let usedFromRuns = 0
 
-  if (!(await columnExists("screening_runs", "organization_id", client))) {
-    return 0
-  }
+  if ((await tableExists("screening_runs", client)) && (await columnExists("screening_runs", "organization_id", client))) {
+    if (!(await columnExists("screening_runs", "total_candidates", client))) {
+      await client.$executeRaw(Prisma.sql`
+        alter table public.screening_runs
+          add column if not exists total_candidates integer not null default 0
+      `)
+    }
 
-  if (!(await columnExists("screening_runs", "total_candidates", client))) {
-    await client.$executeRaw(Prisma.sql`
-      alter table public.screening_runs
-        add column if not exists total_candidates integer not null default 0
+    const rows = await client.$queryRaw<Array<{ used_screening_credits: number }>>(Prisma.sql`
+      with run_usage as (
+        select
+          sr.id,
+          greatest(
+            coalesce(sr.total_candidates, 0),
+            count(distinct srm.candidate_id)::int,
+            count(srm.id)::int
+          ) as candidate_count
+        from public.screening_runs sr
+        left join public.screening_run_matches srm
+          on srm.run_id = sr.id
+          and srm.organization_id = sr.organization_id
+        where sr.organization_id = ${organizationId}::uuid
+        group by sr.id, sr.total_candidates
+      )
+      select coalesce(sum(greatest(candidate_count, 0)), 0)::int as used_screening_credits
+      from run_usage
     `)
+    usedFromRuns = normalizeCount(rows[0]?.used_screening_credits)
   }
 
-  const rows = await client.$queryRaw<Array<{ used_screening_credits: number }>>(Prisma.sql`
-    with run_usage as (
-      select
-        sr.id,
-        greatest(
-          coalesce(sr.total_candidates, 0),
-          count(distinct srm.candidate_id)::int,
-          count(srm.id)::int
-        ) as candidate_count
-      from public.screening_runs sr
-      left join public.screening_run_matches srm
-        on srm.run_id = sr.id
-        and srm.organization_id = sr.organization_id
-      where sr.organization_id = ${organizationId}::uuid
-      group by sr.id, sr.total_candidates
-    )
-    select coalesce(sum(greatest(candidate_count, 0)), 0)::int as used_screening_credits
-    from run_usage
-  `)
-  return normalizeCount(rows[0]?.used_screening_credits)
+  let usedFromSavedMatches = 0
+  if ((await tableExists("candidate_job_matches", client)) && (await columnExists("candidate_job_matches", "organization_id", client))) {
+    const rows = await client.$queryRaw<Array<{ used_screening_credits: number }>>(Prisma.sql`
+      select count(*)::int as used_screening_credits
+      from public.candidate_job_matches
+      where organization_id = ${organizationId}::uuid
+    `)
+    usedFromSavedMatches = normalizeCount(rows[0]?.used_screening_credits)
+  }
+
+  return Math.max(usedFromRuns, usedFromSavedMatches)
 }
 
 async function reconcileInterviewCreditsFromInterviews(organizationId: string, client: QueryClient = prisma) {
@@ -374,6 +382,12 @@ export async function getTrialCreditsDashboardSnapshot(organizationId: string, c
       await reconcileInterviewCreditsFromInterviews(organizationId, client)
     } catch (error) {
       console.warn("Trial credit dashboard interview reconciliation skipped", error)
+    }
+
+    try {
+      await reconcileScreeningCreditsFromRuns(organizationId, client)
+    } catch (error) {
+      console.warn("Trial credit dashboard screening reconciliation skipped", error)
     }
 
     const reconciledRows = await client.$queryRaw<TrialCreditRow[]>(Prisma.sql`

@@ -661,8 +661,18 @@ function normalizeTrialCredits(credits: Partial<TrialCredits> | null | undefined
   }
 }
 
+function mergeTrialCredits(current: TrialCredits, incoming: Partial<TrialCredits> | null | undefined): TrialCredits {
+  const normalizedIncoming = normalizeTrialCredits(incoming)
+
+  return {
+    ...normalizedIncoming,
+    interviewCreditsRemaining: Math.min(current.interviewCreditsRemaining, normalizedIncoming.interviewCreditsRemaining),
+    screeningCreditsRemaining: Math.min(current.screeningCreditsRemaining, normalizedIncoming.screeningCreditsRemaining),
+  }
+}
+
 async function fetchTrialCreditsSnapshot() {
-  const response = await fetch(authUrl("/api/trial-credits"), {
+  const response = await fetch(authUrl(`/api/trial-credits?refresh=${Date.now()}`), {
     credentials: "include",
     cache: "no-store",
   })
@@ -764,7 +774,7 @@ export default function AiScreeningPage() {
             credentials: "include",
             cache: "no-store",
           }),
-          fetch(authUrl("/api/trial-credits"), {
+          fetch(authUrl(`/api/trial-credits?refresh=${Date.now()}`), {
             credentials: "include",
             cache: "no-store",
           }),
@@ -797,7 +807,7 @@ export default function AiScreeningPage() {
         }
 
         if (trialCreditsPayload?.success) {
-          setTrialCredits(normalizeTrialCredits(trialCreditsPayload.data))
+          setTrialCredits((current) => mergeTrialCredits(current, trialCreditsPayload.data))
         }
       } catch (loadError) {
         console.error("Failed to load VERIS screening data", loadError)
@@ -817,7 +827,7 @@ export default function AiScreeningPage() {
     fetchTrialCreditsSnapshot()
       .then((credits) => {
         if (active && credits) {
-          setTrialCredits(credits)
+          setTrialCredits((current) => mergeTrialCredits(current, credits))
         }
       })
       .catch((error) => {
@@ -1553,7 +1563,7 @@ export default function AiScreeningPage() {
       })
       const payload = await readJsonResponse(response)
       if (payload.data?.trialCredits) {
-        setTrialCredits(normalizeTrialCredits(payload.data.trialCredits))
+        setTrialCredits((current) => mergeTrialCredits(current, payload.data.trialCredits))
       } else {
         const fallbackDeduction = Number(payload.data?.matchedCount ?? candidateIds.length ?? 1)
         setTrialCredits((current) => ({
@@ -1564,7 +1574,7 @@ export default function AiScreeningPage() {
       fetchTrialCreditsSnapshot()
         .then((credits) => {
           if (credits) {
-            setTrialCredits(credits)
+            setTrialCredits((current) => mergeTrialCredits(current, credits))
           }
         })
         .catch(() => undefined)
@@ -1709,7 +1719,7 @@ export default function AiScreeningPage() {
       }
 
       if (payload.data?.trialCredits) {
-        setTrialCredits(normalizeTrialCredits(payload.data.trialCredits))
+        setTrialCredits((current) => mergeTrialCredits(current, payload.data.trialCredits))
       }
       invalidateDashboardOverviewCache()
       setSendResults(payload.data?.results ?? [])

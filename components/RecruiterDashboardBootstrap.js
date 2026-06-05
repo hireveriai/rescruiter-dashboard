@@ -13,6 +13,18 @@ const DASHBOARD_CACHE_KEY = "hireveri-overview"
 const DASHBOARD_INVALIDATED_EVENT = "hireveri:dashboard-data-invalidated"
 const DASHBOARD_INVALIDATED_KEY = "hireveri-overview-invalidated"
 
+function withoutVolatileOverviewFields(overview) {
+  if (!overview) {
+    return null
+  }
+
+  return {
+    ...overview,
+    trialCredits: null,
+    veris: undefined,
+  }
+}
+
 function getOverviewSignature(overview) {
   if (!overview) {
     return ""
@@ -26,7 +38,6 @@ function getOverviewSignature(overview) {
     pendingInterviews: overview.pendingInterviews,
     candidates: overview.candidates,
     alerts: overview.alerts,
-    trialCredits: overview.trialCredits,
   })
 }
 
@@ -37,7 +48,7 @@ function readCachedOverview() {
 
   try {
     const cached = window.sessionStorage.getItem(DASHBOARD_CACHE_KEY)
-    return cached ? JSON.parse(cached) : null
+    return cached ? withoutVolatileOverviewFields(JSON.parse(cached)) : null
   } catch (error) {
     console.warn("Failed to read cached recruiter overview", error)
     return null
@@ -50,7 +61,7 @@ function writeCachedOverview(overview) {
   }
 
   try {
-    window.sessionStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify(overview))
+    window.sessionStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify(withoutVolatileOverviewFields(overview)))
   } catch (error) {
     console.warn("Failed to cache recruiter overview", error)
   }

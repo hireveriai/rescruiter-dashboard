@@ -4,7 +4,7 @@ import Link from "next/link"
 import { useEffect, useState } from "react"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
-import { buildAuthUrl, hasAuthQuery } from "@/lib/client/auth-query"
+import { buildAuthUrl } from "@/lib/client/auth-query"
 import { CardSkeleton, TimelineSkeleton } from "@/components/system/skeletons"
 
 const DASHBOARD_SUMMARY_LIMIT = 4
@@ -65,11 +65,6 @@ export default function VerisSummary({ initialSummaries, isLoading = false }) {
       return
     }
 
-    if (!hasAuthQuery(searchParams)) {
-      setIsFetching(false)
-      return
-    }
-
     let isMounted = true
     let cancelScheduled = () => {}
     let loaderCeilingTimer = null
@@ -82,9 +77,9 @@ export default function VerisSummary({ initialSummaries, isLoading = false }) {
     }, 1200)
 
     const fetchSummaries = () => {
-      fetch(buildAuthUrl("/api/dashboard/veris", searchParams), {
+      fetch(buildAuthUrl(`/api/dashboard/veris?refresh=${Date.now()}`, searchParams), {
         credentials: "include",
-        cache: "default",
+        cache: "no-store",
       })
         .then((res) => res.json())
         .then((data) => {

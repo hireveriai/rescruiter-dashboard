@@ -109,6 +109,28 @@ function normalizeDashboardOverview(overview) {
   };
 }
 
+function mergeTrialCredits(current, incoming) {
+  if (!incoming) {
+    return current;
+  }
+
+  if (!current) {
+    return incoming;
+  }
+
+  return {
+    ...incoming,
+    interviewCreditsRemaining: Math.min(
+      Number(current.interviewCreditsRemaining ?? incoming.interviewCreditsRemaining ?? 0),
+      Number(incoming.interviewCreditsRemaining ?? current.interviewCreditsRemaining ?? 0)
+    ),
+    screeningCreditsRemaining: Math.min(
+      Number(current.screeningCreditsRemaining ?? incoming.screeningCreditsRemaining ?? 0),
+      Number(incoming.screeningCreditsRemaining ?? current.screeningCreditsRemaining ?? 0)
+    ),
+  };
+}
+
 function DashboardContent({ profile, overview, isLoading }) {
   const searchParams = useAuthSearchParams();
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -125,7 +147,7 @@ function DashboardContent({ profile, overview, isLoading }) {
 
   useEffect(() => {
     if (overview?.trialCredits) {
-      setTrialCredits(overview.trialCredits);
+      setTrialCredits((current) => mergeTrialCredits(current, overview.trialCredits));
     }
   }, [overview?.trialCredits]);
 
@@ -134,7 +156,7 @@ function DashboardContent({ profile, overview, isLoading }) {
 
     async function loadTrialCredits() {
       try {
-        const response = await fetch(buildAuthUrl("/api/trial-credits", searchParams), {
+        const response = await fetch(buildAuthUrl(`/api/trial-credits?refresh=${Date.now()}`, searchParams), {
           credentials: "include",
           cache: "no-store",
         });
@@ -144,7 +166,7 @@ function DashboardContent({ profile, overview, isLoading }) {
           return;
         }
 
-        setTrialCredits(payload.data);
+        setTrialCredits((current) => mergeTrialCredits(current, payload.data));
       } catch (error) {
         console.warn("Failed to load trial credits from dashboard fallback", error);
       }
@@ -160,7 +182,7 @@ function DashboardContent({ profile, overview, isLoading }) {
   useEffect(() => {
     function handleTrialCreditsUpdated(event) {
       if (event.detail) {
-        setTrialCredits(event.detail);
+        setTrialCredits((current) => mergeTrialCredits(current, event.detail));
       }
     }
 
@@ -219,7 +241,7 @@ function DashboardContent({ profile, overview, isLoading }) {
             <CandidateList initialCandidates={fullOverview?.candidates} isLoading={false} />
           </Suspense>
           <Suspense fallback={null}>
-            <VerisSummary initialSummaries={isPartialOverview ? [] : fullOverview?.veris} isLoading={false} />
+            <VerisSummary initialSummaries={isPartialOverview ? undefined : fullOverview?.veris} isLoading={false} />
           </Suspense>
           <WarRoomButton organizationId={displayProfile?.organizationId} />
         </div>

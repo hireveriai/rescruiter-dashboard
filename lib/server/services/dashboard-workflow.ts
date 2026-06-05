@@ -54,30 +54,43 @@ async function tableExists(tableName: string) {
     select to_regclass(${`public.${tableName}`})::text as regclass
   `
   const exists = Boolean(rows[0]?.regclass)
-  tableExistenceCache.set(tableName, exists)
+  if (exists) {
+    tableExistenceCache.set(tableName, true)
+  }
   return exists
 }
 
 async function getScreeningWorkflowMetrics(organizationId: string) {
-  if (!(await tableExists("screening_runs"))) {
-    return {
-      screeningRuns: 0,
-      shortlistedCandidates: 0,
-    }
+  let screeningRuns = 0
+  let shortlistedCandidates = 0
+
+  if (await tableExists("screening_runs")) {
+    const rows = await prisma.$queryRaw<Array<{ screening_runs: number; shortlisted_candidates: number }>>`
+      select
+        count(*)::int as screening_runs,
+        coalesce(sum(strong_fit_count), 0)::int as shortlisted_candidates
+      from public.screening_runs
+      where organization_id = ${organizationId}::uuid
+    `
+
+    screeningRuns = Number(rows[0]?.screening_runs ?? 0)
+    shortlistedCandidates = Number(rows[0]?.shortlisted_candidates ?? 0)
   }
 
-  const rows = await prisma.$queryRaw<Array<{ screening_runs: number; shortlisted_candidates: number }>>`
-    select
-      count(*)::int as screening_runs,
-      coalesce(sum(strong_fit_count), 0)::int as shortlisted_candidates
-    from public.screening_runs
-    where organization_id = ${organizationId}::uuid
-  `
+  if (await tableExists("candidate_job_matches")) {
+    const rows = await prisma.$queryRaw<Array<{ screened_candidates: number; shortlisted_candidates: number }>>`
+      select
+        count(*)::int as screened_candidates,
+        count(*) filter (where recommendation = 'STRONG_FIT')::int as shortlisted_candidates
+      from public.candidate_job_matches
+      where organization_id = ${organizationId}::uuid
+    `
 
-  return {
-    screeningRuns: Number(rows[0]?.screening_runs ?? 0),
-    shortlistedCandidates: Number(rows[0]?.shortlisted_candidates ?? 0),
+    screeningRuns = Math.max(screeningRuns, Number(rows[0]?.screened_candidates ?? 0))
+    shortlistedCandidates = Math.max(shortlistedCandidates, Number(rows[0]?.shortlisted_candidates ?? 0))
   }
+
+  return { screeningRuns, shortlistedCandidates }
 }
 
 type InterviewWorkflowRow = {

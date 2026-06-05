@@ -20,7 +20,8 @@ export async function GET(request: Request) {
       data: cards,
     })
 
-    response.headers.set("Cache-Control", "private, max-age=30, stale-while-revalidate=120")
+    response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+    response.headers.set("Pragma", "no-cache")
     response.headers.set("Server-Timing", `veris;dur=${Date.now() - startedAt}`)
     return response
   } catch (error) {
