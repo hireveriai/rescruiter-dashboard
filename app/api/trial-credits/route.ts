@@ -15,9 +15,15 @@ export async function GET(request: Request) {
 
   try {
     const credits = await getOrCreateTrialCredits(auth.organizationId)
-    return successResponse(credits)
+    const response = successResponse(credits)
+    response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+    response.headers.set("Pragma", "no-cache")
+    return response
   } catch (error) {
     console.warn("Trial credits bootstrap failed; returning initial snapshot", error)
-    return successResponse(createInitialTrialCreditSnapshot(auth.organizationId))
+    const response = successResponse(createInitialTrialCreditSnapshot(auth.organizationId))
+    response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+    response.headers.set("Pragma", "no-cache")
+    return response
   }
 }
