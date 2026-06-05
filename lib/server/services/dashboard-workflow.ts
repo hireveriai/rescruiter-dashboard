@@ -4,7 +4,6 @@ import { deriveDashboardState } from "@/lib/dashboard/dashboard-state-engine"
 import { prisma } from "@/lib/server/prisma"
 import { getDashboardPipelineData } from "@/lib/server/services/dashboard-pipeline"
 import { jobPositionsSupportIsActive } from "@/lib/server/services/jobs"
-import { ensureRecruiterDecisionsTable } from "@/lib/server/services/recruiter-decisions"
 
 export type DashboardWorkflowSnapshot = {
   pipeline: {
@@ -123,8 +122,6 @@ async function getJobWorkflowMetrics(organizationId: string) {
 }
 
 async function getInterviewWorkflowMetrics(organizationId: string) {
-  await ensureRecruiterDecisionsTable()
-
   const rows = await prisma.$queryRaw<InterviewWorkflowRow[]>(Prisma.sql`
     with latest_attempts as (
       select distinct on (ia.interview_id)

@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client"
 import { NextResponse } from "next/server"
 
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
@@ -12,6 +13,7 @@ import {
   getTrialCreditsDashboardSnapshot,
   type TrialCreditSnapshot,
 } from "@/lib/server/services/trial-credits"
+import { prisma } from "@/lib/server/prisma"
 
 type OverviewPayload = {
   partial?: boolean
@@ -118,26 +120,133 @@ function emptyPipeline() {
   }
 }
 
+type QuickWorkflowMetricsRow = {
+  jobs: number
+  active_jobs: number
+  invites: number
+  interviews_running: number
+  completed_interviews: number
+}
+
+function buildWorkflowMetricsFromQuickRow(row?: QuickWorkflowMetricsRow | null): OverviewPayload["workflowMetrics"] {
+  const jobs = Number(row?.jobs ?? 0)
+  const activeJobs = Number(row?.active_jobs ?? jobs)
+  const invites = Number(row?.invites ?? 0)
+  const interviewsRunning = Number(row?.interviews_running ?? 0)
+  const completedInterviews = Number(row?.completed_interviews ?? 0)
+
+  return {
+    jobs,
+    activeJobs,
+    invites,
+    screeningRuns: 0,
+    shortlistedCandidates: 0,
+    screeningStarted: false,
+    screeningCompleted: false,
+    interviewsRunning,
+    completedInterviews,
+    pendingReports: completedInterviews,
+    reviewedReports: 0,
+    decisionsPending: completedInterviews,
+  }
+}
+
+function buildPipelineFromWorkflowMetrics(metrics: OverviewPayload["workflowMetrics"]): OverviewPayload["pipeline"] {
+  const pending = Math.max(0, metrics.invites - metrics.interviewsRunning - metrics.completedInterviews)
+
+  return {
+    pending,
+    inProgress: metrics.interviewsRunning,
+    completed: metrics.completedInterviews,
+    flagged: 0,
+    reviewed: metrics.reviewedReports,
+    reviewRequired: metrics.decisionsPending,
+  }
+}
+
+async function getQuickWorkflowMetrics(organizationId: string): Promise<OverviewPayload["workflowMetrics"]> {
+  const rows = await prisma.$queryRaw<QuickWorkflowMetricsRow[]>(Prisma.sql`
+    with job_counts as (
+      select
+        count(*)::int as jobs,
+        count(*) filter (
+          where coalesce(nullif(to_jsonb(jp)->>'is_active', '')::boolean, true) = true
+        )::int as active_jobs
+      from public.job_positions jp
+      where jp.organization_id = ${organizationId}::uuid
+    ),
+    invite_counts as (
+      select count(*)::int as invites
+      from public.interview_invites inv
+      inner join public.interviews i
+        on i.interview_id = inv.interview_id
+        and i.organization_id = ${organizationId}::uuid
+    ),
+    interview_counts as (
+      select
+        count(*) filter (
+          where ia.attempt_id is not null
+            and coalesce(ia.ended_at, null) is null
+            and upper(coalesce(ia.status, '')) not in ('COMPLETED', 'SUBMITTED', 'EVALUATED', 'FAILED', 'INTERRUPTED')
+        )::int as interviews_running,
+        count(*) filter (
+          where upper(coalesce(i.status, ia.status, '')) in ('COMPLETED', 'SUBMITTED', 'EVALUATED')
+             or ia.ended_at is not null
+        )::int as completed_interviews
+      from public.interviews i
+      left join public.interview_invites inv on inv.interview_id = i.interview_id
+      left join lateral (
+        select *
+        from public.interview_attempts latest_attempt
+        where latest_attempt.interview_id = i.interview_id
+        order by latest_attempt.attempt_number desc, latest_attempt.started_at desc
+        limit 1
+      ) ia on true
+      where i.organization_id = ${organizationId}::uuid
+    )
+    select
+      job_counts.jobs,
+      job_counts.active_jobs,
+      invite_counts.invites,
+      interview_counts.interviews_running,
+      interview_counts.completed_interviews
+    from job_counts
+    cross join invite_counts
+    cross join interview_counts
+  `)
+
+  return buildWorkflowMetricsFromQuickRow(rows[0])
+}
+
 async function buildFastOverview(
   auth: Awaited<ReturnType<typeof getRecruiterRequestContext>>
 ): Promise<OverviewPayload> {
-  const [profileStep, alertsStep, trialCreditsStep] = await Promise.all([
+  const [profileStep, alertsStep, trialCreditsStep, quickWorkflowStep] = await Promise.all([
     timedStep("profile", () => getRecruiterProfile(auth)),
     safeTimedStep("alerts", () => getDashboardAlerts(auth.organizationId, 8, auth.userId), []),
     safeTimedStep<TrialCreditSnapshot | null>("trialCredits", () => getTrialCreditsDashboardSnapshot(auth.organizationId), null),
+    safeTimedStep("quickWorkflow", () => getQuickWorkflowMetrics(auth.organizationId), buildWorkflowMetricsFromQuickRow()),
   ])
   const profile = profileStep.result
   const alerts = alertsStep.result
   const trialCredits = trialCreditsStep.result
+  const quickWorkflowMetrics = quickWorkflowStep.result
+  const quickDashboardState = deriveDashboardState({
+    jobs_count: quickWorkflowMetrics.jobs,
+    active_jobs_count: quickWorkflowMetrics.activeJobs,
+    interview_links_count: quickWorkflowMetrics.invites,
+    interviews_count: quickWorkflowMetrics.interviewsRunning + quickWorkflowMetrics.completedInterviews,
+    pending_reviews_count: quickWorkflowMetrics.decisionsPending,
+  })
 
   return {
     partial: true,
     profile,
-    pipeline: undefined as unknown as OverviewPayload["pipeline"],
-    workflowMetrics: undefined as unknown as OverviewPayload["workflowMetrics"],
-    dashboardState: emptyDashboardState(),
-    pendingInterviews: undefined as unknown as OverviewPayload["pendingInterviews"],
-    pendingInterviewsTotal: undefined as unknown as OverviewPayload["pendingInterviewsTotal"],
+    pipeline: buildPipelineFromWorkflowMetrics(quickWorkflowMetrics),
+    workflowMetrics: quickWorkflowMetrics,
+    dashboardState: quickDashboardState,
+    pendingInterviews: [],
+    pendingInterviewsTotal: buildPipelineFromWorkflowMetrics(quickWorkflowMetrics).pending,
     candidates: undefined as unknown as Awaited<ReturnType<typeof getCandidatesDashboard>>,
     alerts,
     trialCredits,

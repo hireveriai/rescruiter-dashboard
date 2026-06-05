@@ -26,6 +26,7 @@ type AlertRow = {
 }
 
 let ensureAlertReadsPromise: Promise<void> | null = null
+let alertReadsTableExistsCache: boolean | null = null
 
 async function ensureDashboardAlertReadsTable() {
   if (!ensureAlertReadsPromise) {
@@ -63,6 +64,8 @@ async function ensureDashboardAlertReadsTable() {
         create index if not exists dashboard_alert_reads_alert_idx
           on public.dashboard_alert_reads (alert_id)
       `)
+
+      alertReadsTableExistsCache = true
     })().catch((error) => {
       ensureAlertReadsPromise = null
       throw error
@@ -70,6 +73,24 @@ async function ensureDashboardAlertReadsTable() {
   }
 
   return ensureAlertReadsPromise
+}
+
+async function dashboardAlertReadsTableExists() {
+  if (alertReadsTableExistsCache !== null) {
+    return alertReadsTableExistsCache
+  }
+
+  try {
+    const rows = await prisma.$queryRaw<Array<{ regclass: string | null }>>(Prisma.sql`
+      select to_regclass('public.dashboard_alert_reads')::text as regclass
+    `)
+    alertReadsTableExistsCache = Boolean(rows[0]?.regclass)
+  } catch (error) {
+    console.warn("Dashboard alert read table lookup failed", error)
+    alertReadsTableExistsCache = false
+  }
+
+  return alertReadsTableExistsCache
 }
 
 function normalizeStatus(value: string | null | undefined) {
@@ -142,9 +163,7 @@ function buildAlert(row: AlertRow): DashboardAlert {
 }
 
 export async function getDashboardAlerts(organizationId: string, limit = 8, userId?: string): Promise<DashboardAlert[]> {
-  if (userId) {
-    await ensureDashboardAlertReadsTable()
-  }
+  const canFilterReadAlerts = Boolean(userId) && await dashboardAlertReadsTableExists()
 
   const rows = await prisma.$queryRaw<AlertRow[]>(Prisma.sql`
     with latest_attempts as (
@@ -187,16 +206,15 @@ export async function getDashboardAlerts(organizationId: string, limit = 8, user
     select *
     from alert_source
     where alert_type is not null
-      and (
-        ${userId ?? null}::text is null
-        or not exists (
+      ${canFilterReadAlerts
+        ? Prisma.sql`and not exists (
           select 1
           from public.dashboard_alert_reads dar
           where dar.organization_id = ${organizationId}::uuid
-            and dar.user_id = ${userId ?? null}::uuid
+            and dar.user_id = ${userId}::uuid
             and dar.alert_id = alert_source.alert_id
-        )
-      )
+        )`
+        : Prisma.empty}
     order by occurred_at desc nulls last
     limit ${Math.max(1, Math.min(limit, 25))}
   `)

@@ -10,7 +10,6 @@ import {
   fetchAnswerSummaries,
   InterviewAnswerSummary,
 } from "@/lib/server/services/interview-summary"
-import { ensureRecruiterDecisionsTable } from "@/lib/server/services/recruiter-decisions"
 
 type CandidatesDashboardOptions = {
   organizationId: string
@@ -178,8 +177,6 @@ export async function getCandidatesDashboard(
   if (options.finalizeStale !== false) {
     await finalizeStaleInterviewAttempts(options.organizationId)
   }
-  await ensureRecruiterDecisionsTable()
-
   const take = options.limit === "all" || options.limit === undefined ? undefined : options.limit
 
   const rows = await prisma.$queryRaw<CandidateDashboardRow[]>(Prisma.sql`

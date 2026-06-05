@@ -36,6 +36,10 @@ const TRIAL_CREDIT_DASHBOARD_CACHE_TTL_MS = 30000
 const trialCreditDashboardCache = new Map<string, TrialCreditCacheEntry>()
 let ensureTrialCreditSchemaPromise: Promise<void> | null = null
 
+function invalidateTrialCreditDashboardCache(organizationId: string) {
+  trialCreditDashboardCache.delete(organizationId)
+}
+
 function normalizeCount(value: unknown) {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0
@@ -105,9 +109,23 @@ async function reconcileScreeningCreditsFromRuns(organizationId: string, client:
   }
 
   const rows = await client.$queryRaw<Array<{ used_screening_credits: number }>>(Prisma.sql`
-    select coalesce(sum(greatest(coalesce(total_candidates, 0), 0)), 0)::int as used_screening_credits
-    from public.screening_runs
-    where organization_id = ${organizationId}::uuid
+    with run_usage as (
+      select
+        sr.id,
+        greatest(
+          coalesce(sr.total_candidates, 0),
+          count(distinct srm.candidate_id)::int,
+          count(srm.id)::int
+        ) as candidate_count
+      from public.screening_runs sr
+      left join public.screening_run_matches srm
+        on srm.run_id = sr.id
+        and srm.organization_id = sr.organization_id
+      where sr.organization_id = ${organizationId}::uuid
+      group by sr.id, sr.total_candidates
+    )
+    select coalesce(sum(greatest(candidate_count, 0)), 0)::int as used_screening_credits
+    from run_usage
   `)
   const usedScreeningCredits = normalizeCount(rows[0]?.used_screening_credits)
   const reconciledRemaining = Math.max(0, FREE_TRIAL_SCREENING_CREDITS - usedScreeningCredits)
@@ -118,6 +136,27 @@ async function reconcileScreeningCreditsFromRuns(organizationId: string, client:
       screening_credits_remaining = least(screening_credits_remaining, ${reconciledRemaining}),
       updated_at = case
         when screening_credits_remaining > ${reconciledRemaining} then now()
+        else updated_at
+      end
+    where organization_id = ${organizationId}::uuid
+  `)
+}
+
+async function reconcileInterviewCreditsFromInterviews(organizationId: string, client: QueryClient = prisma) {
+  const rows = await client.$queryRaw<Array<{ used_interview_credits: number }>>(Prisma.sql`
+    select count(distinct i.interview_id)::int as used_interview_credits
+    from public.interviews i
+    where i.organization_id = ${organizationId}::uuid
+  `)
+  const usedInterviewCredits = normalizeCount(rows[0]?.used_interview_credits)
+  const reconciledRemaining = Math.max(0, FREE_TRIAL_INTERVIEW_CREDITS - usedInterviewCredits)
+
+  await client.$executeRaw(Prisma.sql`
+    update public.workspace_trial_credits
+    set
+      interview_credits_remaining = least(interview_credits_remaining, ${reconciledRemaining}),
+      updated_at = case
+        when interview_credits_remaining > ${reconciledRemaining} then now()
         else updated_at
       end
     where organization_id = ${organizationId}::uuid
@@ -226,6 +265,12 @@ export async function getOrCreateTrialCredits(organizationId: string, client: Qu
   `)
 
   try {
+    await reconcileInterviewCreditsFromInterviews(organizationId, client)
+  } catch (error) {
+    console.warn("Trial credit interview reconciliation skipped", error)
+  }
+
+  try {
     await reconcileScreeningCreditsFromRuns(organizationId, client)
   } catch (error) {
     console.warn("Trial credit screening reconciliation skipped", error)
@@ -288,8 +333,25 @@ export async function getTrialCreditsDashboardSnapshot(organizationId: string, c
         limit 1
       `)
 
-    const snapshot = rows[0]
-      ? mapTrialCreditRow(rows[0])
+    try {
+      await reconcileInterviewCreditsFromInterviews(organizationId, client)
+    } catch (error) {
+      console.warn("Trial credit dashboard interview reconciliation skipped", error)
+    }
+
+    const reconciledRows = await client.$queryRaw<TrialCreditRow[]>(Prisma.sql`
+      select
+        organization_id::text,
+        interview_credits_remaining,
+        screening_credits_remaining
+      from public.workspace_trial_credits
+      where organization_id = ${organizationId}::uuid
+      limit 1
+    `)
+
+    const row = reconciledRows[0] ?? rows[0]
+    const snapshot = row
+      ? mapTrialCreditRow(row)
       : createInitialTrialCreditSnapshot(organizationId)
 
     if (client === prisma) {
@@ -387,13 +449,16 @@ export async function deductTrialCredits(input: {
       throw new ApiError(402, "FREE_TRIAL_LIMIT_REACHED", FREE_TRIAL_LIMIT_MESSAGE)
     }
 
-    return mapTrialCreditRow(row)
+    const snapshot = mapTrialCreditRow(row)
+    invalidateTrialCreditDashboardCache(input.organizationId)
+    return snapshot
   } catch (error) {
     if (error instanceof ApiError) {
       throw error
     }
 
     console.warn("Trial credit table update skipped; returning fallback deduction snapshot", error)
+    invalidateTrialCreditDashboardCache(input.organizationId)
     return {
       ...creditsBeforeDeduction,
       interviewCreditsRemaining:

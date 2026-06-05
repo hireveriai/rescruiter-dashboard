@@ -5,7 +5,6 @@ import { prisma } from "@/lib/server/prisma"
 import { deriveInterviewStatus, isInviteUsable } from "@/lib/server/services/interview-status"
 import { ensureInterviewRecoverySchema } from "@/lib/server/services/interview-recovery"
 import { finalizeStaleInterviewAttempts } from "@/lib/server/services/interview-stale-finalizer"
-import { ensureRecruiterDecisionsTable } from "@/lib/server/services/recruiter-decisions"
 
 type DashboardPipelineOptions = {
   organizationId: string
@@ -210,7 +209,6 @@ export async function getDashboardPipelineData(
   if (options.finalizeStale !== false) {
     await finalizeStaleInterviewAttempts(options.organizationId)
   }
-  await ensureRecruiterDecisionsTable()
   const appUrl = getInterviewAppUrl().replace(/\/$/, "")
   const take = options.limit === "all" || options.limit === undefined ? undefined : options.limit
 
