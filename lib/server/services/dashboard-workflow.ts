@@ -187,6 +187,15 @@ export async function getDashboardWorkflowSnapshot(
   organizationId: string,
   existingPipelineData?: DashboardPipelineSnapshot
 ): Promise<DashboardWorkflowSnapshot> {
+  const interviewMetricsPromise =
+    existingPipelineData?.pipeline.reviewed !== undefined && existingPipelineData.pipeline.reviewRequired !== undefined
+      ? Promise.resolve({
+          pendingReports: existingPipelineData.pipeline.reviewRequired,
+          reviewedReports: existingPipelineData.pipeline.reviewed,
+          decisionsPending: existingPipelineData.pipeline.reviewRequired,
+        })
+      : getInterviewWorkflowMetrics(organizationId)
+
   const [jobMetrics, invites, screeningMetrics, interviewMetrics, pipelineData] = await Promise.all([
     getJobWorkflowMetrics(organizationId),
     prisma.interviewInvite.count({
@@ -197,7 +206,7 @@ export async function getDashboardWorkflowSnapshot(
       },
     }),
     getScreeningWorkflowMetrics(organizationId),
-    getInterviewWorkflowMetrics(organizationId),
+    interviewMetricsPromise,
     existingPipelineData ?? getDashboardPipelineData({ organizationId, limit: 5, finalizeStale: false, ensureRecoverySchema: false }),
   ])
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 
-import { buildAuthUrl, hasAuthQuery } from "@/lib/client/auth-query"
+import { buildAuthUrl } from "@/lib/client/auth-query"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import CreateJobModal from "./CreateJobModal"
@@ -25,10 +25,6 @@ export default function Sidebar({ initialProfile = null, overview = null }) {
 
   useEffect(() => {
     if (overview) {
-      return
-    }
-
-    if (!hasAuthQuery(searchParams)) {
       return
     }
 
@@ -69,7 +65,7 @@ export default function Sidebar({ initialProfile = null, overview = null }) {
       setOpenSendInterview(true)
     }
 
-    if (!initialProfile && hasAuthQuery(searchParams)) {
+    if (!initialProfile) {
       fetch(buildAuthUrl("/api/me", searchParams), {
         credentials: "include",
         cache: "no-store",

@@ -26,8 +26,15 @@ type TrialCreditRow = {
 }
 
 type QueryClient = typeof prisma | Prisma.TransactionClient
+type TrialCreditCacheEntry = {
+  value: TrialCreditSnapshot
+  expiresAt: number
+}
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const TRIAL_CREDIT_DASHBOARD_CACHE_TTL_MS = 30000
+const trialCreditDashboardCache = new Map<string, TrialCreditCacheEntry>()
+let ensureTrialCreditSchemaPromise: Promise<void> | null = null
 
 function normalizeCount(value: unknown) {
   const parsed = Number(value)
@@ -118,7 +125,12 @@ async function reconcileScreeningCreditsFromRuns(organizationId: string, client:
 }
 
 export async function ensureTrialCreditSchema(client: QueryClient = prisma) {
-  await client.$executeRaw(Prisma.sql`
+  if (client === prisma && ensureTrialCreditSchemaPromise) {
+    return ensureTrialCreditSchemaPromise
+  }
+
+  const ensurePromise = (async () => {
+    await client.$executeRaw(Prisma.sql`
     create table if not exists public.workspace_trial_credits (
       organization_id uuid primary key references public.organizations(organization_id) on delete cascade,
       interview_credits_remaining integer not null default ${FREE_TRIAL_INTERVIEW_CREDITS},
@@ -130,7 +142,7 @@ export async function ensureTrialCreditSchema(client: QueryClient = prisma) {
     )
   `)
 
-  await client.$executeRaw(Prisma.sql`
+    await client.$executeRaw(Prisma.sql`
     alter table public.workspace_trial_credits
       add column if not exists interview_credits_remaining integer not null default ${FREE_TRIAL_INTERVIEW_CREDITS},
       add column if not exists screening_credits_remaining integer not null default ${FREE_TRIAL_SCREENING_CREDITS},
@@ -138,10 +150,22 @@ export async function ensureTrialCreditSchema(client: QueryClient = prisma) {
       add column if not exists updated_at timestamptz not null default now()
   `)
 
-  await client.$executeRaw(Prisma.sql`
+    await client.$executeRaw(Prisma.sql`
     create index if not exists workspace_trial_credits_updated_at_idx
       on public.workspace_trial_credits (updated_at desc)
   `)
+  })()
+
+  if (client !== prisma) {
+    return ensurePromise
+  }
+
+  ensureTrialCreditSchemaPromise = ensurePromise.catch((error) => {
+    ensureTrialCreditSchemaPromise = null
+    throw error
+  })
+
+  return ensureTrialCreditSchemaPromise
 }
 
 export async function ensureTrialCreditOrganization(organizationId: string, client: QueryClient = prisma) {
@@ -223,6 +247,63 @@ export async function getOrCreateTrialCredits(organizationId: string, client: Qu
   }
 
   return mapTrialCreditRow(row)
+}
+
+export async function getTrialCreditsDashboardSnapshot(organizationId: string, client: QueryClient = prisma) {
+  const cached = client === prisma ? trialCreditDashboardCache.get(organizationId) : null
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value
+  }
+
+  try {
+    await ensureTrialCreditSchema(client)
+
+    const insertedRows = await client.$queryRaw<TrialCreditRow[]>(Prisma.sql`
+      insert into public.workspace_trial_credits (
+        organization_id,
+        interview_credits_remaining,
+        screening_credits_remaining
+      )
+      values (
+        ${organizationId}::uuid,
+        ${FREE_TRIAL_INTERVIEW_CREDITS},
+        ${FREE_TRIAL_SCREENING_CREDITS}
+      )
+      on conflict (organization_id) do nothing
+      returning
+        organization_id::text,
+        interview_credits_remaining,
+        screening_credits_remaining
+    `)
+
+    const rows = insertedRows.length > 0
+      ? insertedRows
+      : await client.$queryRaw<TrialCreditRow[]>(Prisma.sql`
+        select
+          organization_id::text,
+          interview_credits_remaining,
+          screening_credits_remaining
+        from public.workspace_trial_credits
+        where organization_id = ${organizationId}::uuid
+        limit 1
+      `)
+
+    const snapshot = rows[0]
+      ? mapTrialCreditRow(rows[0])
+      : createInitialTrialCreditSnapshot(organizationId)
+
+    if (client === prisma) {
+      trialCreditDashboardCache.set(organizationId, {
+        value: snapshot,
+        expiresAt: Date.now() + TRIAL_CREDIT_DASHBOARD_CACHE_TTL_MS,
+      })
+    }
+
+    return snapshot
+  } catch (error) {
+    console.warn("Trial credit dashboard snapshot used initial fallback", error)
+    return createInitialTrialCreditSnapshot(organizationId)
+  }
 }
 
 export async function assertTrialCreditsAvailable(input: {

@@ -9,7 +9,7 @@ import { getRecruiterProfile } from "@/lib/server/services/recruiter-profile"
 import { getDashboardAlerts, type DashboardAlert } from "@/lib/server/services/dashboard-alerts"
 import { getDashboardWorkflowSnapshot } from "@/lib/server/services/dashboard-workflow"
 import {
-  getOrCreateTrialCredits,
+  getTrialCreditsDashboardSnapshot,
   type TrialCreditSnapshot,
 } from "@/lib/server/services/trial-credits"
 
@@ -124,7 +124,7 @@ async function buildFastOverview(
   const [profileStep, alertsStep, trialCreditsStep] = await Promise.all([
     timedStep("profile", () => getRecruiterProfile(auth)),
     safeTimedStep("alerts", () => getDashboardAlerts(auth.organizationId, 8, auth.userId), []),
-    safeTimedStep<TrialCreditSnapshot | null>("trialCredits", () => getOrCreateTrialCredits(auth.organizationId), null),
+    safeTimedStep<TrialCreditSnapshot | null>("trialCredits", () => getTrialCreditsDashboardSnapshot(auth.organizationId), null),
   ])
   const profile = profileStep.result
   const alerts = alertsStep.result
@@ -165,7 +165,7 @@ async function buildOverview(
     }), []),
     pipelinePromise,
     safeTimedStep("alerts", () => getDashboardAlerts(auth.organizationId, 8, auth.userId), []),
-    safeTimedStep<TrialCreditSnapshot | null>("trialCredits", () => getOrCreateTrialCredits(auth.organizationId), null),
+    safeTimedStep<TrialCreditSnapshot | null>("trialCredits", () => getTrialCreditsDashboardSnapshot(auth.organizationId), null),
   ])
   const profile = profileStep.result
   const candidates = candidatesStep.result
@@ -276,15 +276,16 @@ export async function GET(request: Request) {
       return response
     }
 
-    let overviewPromise = forceRefresh ? null : inFlight.get(cacheKey)
+    const inFlightKey = forceRefresh ? `${cacheKey}:refresh:${fullOverview ? "full" : "partial"}` : cacheKey
+    let overviewPromise = inFlight.get(inFlightKey)
     if (!overviewPromise) {
       overviewPromise = buildOverview(auth)
-      inFlight.set(cacheKey, overviewPromise)
+      inFlight.set(inFlightKey, overviewPromise)
     }
 
     const dataStartedAt = Date.now()
     const overview = await overviewPromise.finally(() => {
-      inFlight.delete(cacheKey)
+      inFlight.delete(inFlightKey)
     })
     const dataMs = Date.now() - dataStartedAt
 

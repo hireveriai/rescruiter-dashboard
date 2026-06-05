@@ -958,18 +958,6 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
     const recruiterJwt = decodeVerifiedRecruiterJwt(jwt)
 
     if (!recruiterJwt) {
-      const authServiceRecruiter = await lookupRecruiterViaAuthTokenService(jwt)
-
-      if (authServiceRecruiter?.user_id && authServiceRecruiter.organization_id) {
-        return {
-          userId: authServiceRecruiter.user_id,
-          organizationId: authServiceRecruiter.organization_id,
-          sessionCookiePresent,
-          sessionCookieMatched: sessionCookiePresent,
-          sessionValidatedVia: "jwt",
-        }
-      }
-
       continue
     }
 
@@ -992,7 +980,7 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
 
   const jwtIdentityCandidates = uniqueNormalizedValues(jwtCandidates.map((jwt) => decodeJwtSub(jwt)))
 
-  if (!sessionCookiePresent && jwtIdentityCandidates.length === 0) {
+  if (!sessionCookiePresent && jwtCandidates.length === 0 && jwtIdentityCandidates.length === 0) {
     if (DEV_AUTH_BYPASS) {
       const recruiter = await lookupDevBypassRecruiter()
       if (recruiter?.user_id && recruiter.organization_id) {
@@ -1062,6 +1050,24 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
         sessionCookiePresent,
         sessionCookieMatched: Boolean(sessionCookiePresent || jwtIdentityCandidates.includes(identityId)),
         sessionValidatedVia: jwtIdentityCandidates.includes(identityId) ? "jwt" : "identity_cookie",
+      }
+    }
+  }
+
+  for (const jwt of jwtCandidates) {
+    if (decodeVerifiedRecruiterJwt(jwt)) {
+      continue
+    }
+
+    const authServiceRecruiter = await lookupRecruiterViaAuthTokenService(jwt)
+
+    if (authServiceRecruiter?.user_id && authServiceRecruiter.organization_id) {
+      return {
+        userId: authServiceRecruiter.user_id,
+        organizationId: authServiceRecruiter.organization_id,
+        sessionCookiePresent,
+        sessionCookieMatched: sessionCookiePresent,
+        sessionValidatedVia: "jwt",
       }
     }
   }

@@ -1,3 +1,5 @@
+import { Prisma } from "@prisma/client"
+
 import { getInterviewAppUrl } from "@/lib/server/interview-url"
 import { prisma } from "@/lib/server/prisma"
 import { deriveInterviewStatus, isInviteUsable } from "@/lib/server/services/interview-status"
@@ -51,7 +53,13 @@ type DashboardPipelineData = {
 }
 
 type PipelineRow = {
-  interview_id: string
+  total_pending: number
+  total_in_progress: number
+  total_completed: number
+  total_flagged: number
+  total_reviewed: number
+  total_review_required: number
+  interview_id: string | null
   interview_status: string | null
   question_status: string | null
   email_status: string | null
@@ -81,6 +89,9 @@ type PipelineRow = {
   completion_percentage: string | number | null
   timer_remaining_seconds: number | null
   recruiter_decision_status: string | null
+}
+type PendingPipelineRow = PipelineRow & {
+  interview_id: string
 }
 
 let recoverySchemaReady: Promise<void> | null = null
@@ -157,7 +168,7 @@ function isPendingQueueRow(row: PipelineRow, displayStatus: string, recovery: Re
   )
 }
 
-function buildPendingItem(row: PipelineRow, appUrl: string, displayStatus: string, recovery: ReturnType<typeof getRecovery>): DashboardPipelineItem {
+function buildPendingItem(row: PendingPipelineRow, appUrl: string, displayStatus: string, recovery: ReturnType<typeof getRecovery>): DashboardPipelineItem {
   const normalizedEmailStatus = String(row.email_status ?? "").toUpperCase()
   const normalizedDisplayStatus = String(displayStatus).toUpperCase()
   const status = recovery
@@ -204,117 +215,189 @@ export async function getDashboardPipelineData(
   const take = options.limit === "all" || options.limit === undefined ? undefined : options.limit
 
   const rows = await prisma.$queryRaw<PipelineRow[]>`
+    with base as (
+      select
+        i.interview_id,
+        i.status as interview_status,
+        i.question_status,
+        i.email_status,
+        i.failure_reason,
+        i.last_error,
+        i.created_at,
+        i.max_attempts,
+        i.recovery_allowed,
+        i.recovery_used,
+        c.full_name as candidate_name,
+        jp.job_title,
+        inv.invite_id,
+        inv.token as latest_invite_token,
+        inv.access_type as latest_invite_access_type,
+        inv.start_time as latest_invite_start_time,
+        inv.end_time as latest_invite_end_time,
+        inv.expires_at as latest_invite_expires_at,
+        inv.created_at as latest_invite_created_at,
+        inv.status as latest_invite_status,
+        inv.used_at as latest_invite_used_at,
+        ia.attempt_id,
+        ia.status as latest_attempt_status,
+        ia.started_at as latest_attempt_started_at,
+        ia.ended_at as latest_attempt_ended_at,
+        ia.attempt_number as recovery_attempt_number,
+        ia.interruption_reason,
+        ia.completion_percentage,
+        ia.timer_remaining_seconds,
+        rd.status as recruiter_decision_status
+      from public.interviews i
+      left join public.candidates c on c.candidate_id = i.candidate_id
+      left join public.job_positions jp on jp.job_id = i.job_id
+      left join lateral (
+        select *
+        from public.interview_invites latest_invite
+        where latest_invite.interview_id = i.interview_id
+        order by latest_invite.created_at desc
+        limit 1
+      ) inv on true
+      left join lateral (
+        select *
+        from public.interview_attempts latest
+        where latest.interview_id = i.interview_id
+        order by latest.attempt_number desc, latest.started_at desc
+        limit 1
+      ) ia on true
+      left join public.candidate_recruiter_decisions rd
+        on rd.organization_id = i.organization_id
+        and rd.candidate_id = i.candidate_id
+        and rd.interview_id = i.interview_id
+      where i.organization_id = ${options.organizationId}::uuid
+    ),
+    classified as (
+      select
+        *,
+        case
+          when upper(coalesce(latest_attempt_status, '')) in ('INTERRUPTED', 'RECOVERY_ALLOWED') then true
+          else false
+        end as has_recovery,
+        case
+          when upper(coalesce(interview_status, '')) = 'FAILED' or upper(coalesce(question_status, '')) = 'FAILED' then 'PREPARATION_FAILED'
+          when upper(coalesce(interview_status, '')) = 'PREPARING' or upper(coalesce(question_status, '')) = 'GENERATING' then 'PREPARING_INTERVIEW'
+          when upper(coalesce(interview_status, '')) = 'COMPLETED' or upper(coalesce(latest_attempt_status, '')) = 'COMPLETED' or latest_attempt_ended_at is not null then 'COMPLETED'
+          when upper(coalesce(interview_status, '')) = 'FLAGGED' then 'FLAGGED'
+          when attempt_id is not null then 'IN_PROGRESS'
+          when upper(coalesce(interview_status, '')) = 'READY' and upper(coalesce(email_status, '')) = 'FAILED' then 'EMAIL_FAILED'
+          when upper(coalesce(email_status, '')) = 'SENDING' then 'SENDING_EMAIL'
+          when invite_id is not null
+            and upper(coalesce(latest_invite_status, '')) <> ''
+            and (
+              upper(coalesce(latest_invite_status, 'ACTIVE')) <> 'ACTIVE'
+              or latest_invite_used_at is not null
+              or (latest_invite_expires_at is not null and latest_invite_expires_at <= now())
+            )
+            then case
+              when latest_invite_expires_at is not null and latest_invite_expires_at <= now() and latest_invite_used_at is null then 'EXPIRED'
+              else upper(coalesce(latest_invite_status, ''))
+            end
+          when upper(coalesce(interview_status, '')) = 'READY' then 'READY'
+          else coalesce(upper(nullif(interview_status, '')), 'PENDING')
+        end as display_status
+      from base
+    ),
+    counted as (
+      select
+        *,
+        (
+          has_recovery
+          or display_status = 'PREPARATION_FAILED'
+          or (
+            upper(coalesce(interview_status, '')) = 'READY'
+            and invite_id is not null
+            and upper(coalesce(latest_invite_status, 'ACTIVE')) = 'ACTIVE'
+            and latest_invite_used_at is null
+            and (latest_invite_expires_at is null or latest_invite_expires_at > now())
+          )
+        ) as is_pending_queue
+      from classified
+    ),
+    aggregate as (
+      select
+        count(*) filter (where display_status in ('FLAGGED', 'PREPARATION_FAILED'))::int as total_flagged,
+        count(*) filter (where display_status <> 'FLAGGED' and is_pending_queue)::int as total_pending,
+        count(*) filter (where display_status <> 'FLAGGED' and display_status = 'IN_PROGRESS')::int as total_in_progress,
+        count(*) filter (where display_status <> 'FLAGGED' and display_status = 'COMPLETED')::int as total_completed,
+        count(*) filter (where display_status <> 'FLAGGED' and display_status = 'COMPLETED' and recruiter_decision_status is not null)::int as total_reviewed,
+        count(*) filter (where display_status <> 'FLAGGED' and display_status = 'COMPLETED' and recruiter_decision_status is null)::int as total_review_required
+      from counted
+    ),
+    pending_rows as (
+      select *
+      from counted
+      where display_status <> 'FLAGGED'
+        and is_pending_queue
+      order by created_at desc
+      ${take ? Prisma.sql`limit ${take}` : Prisma.empty}
+    )
     select
-      i.interview_id::text,
-      i.status as interview_status,
-      i.question_status,
-      i.email_status,
-      i.failure_reason,
-      i.last_error,
-      i.created_at,
-      i.max_attempts,
-      i.recovery_allowed,
-      i.recovery_used,
-      c.full_name as candidate_name,
-      jp.job_title,
-      inv.invite_id::text as latest_invite_id,
-      inv.token as latest_invite_token,
-      inv.access_type as latest_invite_access_type,
-      inv.start_time as latest_invite_start_time,
-      inv.end_time as latest_invite_end_time,
-      inv.expires_at as latest_invite_expires_at,
-      inv.created_at as latest_invite_created_at,
-      inv.status as latest_invite_status,
-      inv.used_at as latest_invite_used_at,
-      ia.attempt_id::text as latest_attempt_id,
-      ia.status as latest_attempt_status,
-      ia.started_at as latest_attempt_started_at,
-      ia.ended_at as latest_attempt_ended_at,
-      ia.attempt_number as recovery_attempt_number,
-      ia.interruption_reason,
-      ia.completion_percentage,
-      ia.timer_remaining_seconds,
-      rd.status as recruiter_decision_status
-    from public.interviews i
-    left join public.candidates c on c.candidate_id = i.candidate_id
-    left join public.job_positions jp on jp.job_id = i.job_id
-    left join lateral (
-      select *
-      from public.interview_invites latest_invite
-      where latest_invite.interview_id = i.interview_id
-      order by latest_invite.created_at desc
-      limit 1
-    ) inv on true
-    left join lateral (
-      select *
-      from public.interview_attempts latest
-      where latest.interview_id = i.interview_id
-      order by latest.attempt_number desc, latest.started_at desc
-      limit 1
-    ) ia on true
-    left join public.candidate_recruiter_decisions rd
-      on rd.organization_id = i.organization_id
-      and rd.candidate_id = i.candidate_id
-      and rd.interview_id = i.interview_id
-    where i.organization_id = ${options.organizationId}::uuid
-    order by i.created_at desc
+      aggregate.total_pending,
+      aggregate.total_in_progress,
+      aggregate.total_completed,
+      aggregate.total_flagged,
+      aggregate.total_reviewed,
+      aggregate.total_review_required,
+      pending_rows.interview_id::text,
+      pending_rows.interview_status,
+      pending_rows.question_status,
+      pending_rows.email_status,
+      pending_rows.failure_reason,
+      pending_rows.last_error,
+      pending_rows.created_at,
+      pending_rows.max_attempts,
+      pending_rows.recovery_allowed,
+      pending_rows.recovery_used,
+      pending_rows.candidate_name,
+      pending_rows.job_title,
+      pending_rows.invite_id::text as latest_invite_id,
+      pending_rows.latest_invite_token,
+      pending_rows.latest_invite_access_type,
+      pending_rows.latest_invite_start_time,
+      pending_rows.latest_invite_end_time,
+      pending_rows.latest_invite_expires_at,
+      pending_rows.latest_invite_created_at,
+      pending_rows.latest_invite_status,
+      pending_rows.latest_invite_used_at,
+      pending_rows.attempt_id::text as latest_attempt_id,
+      pending_rows.latest_attempt_status,
+      pending_rows.latest_attempt_started_at,
+      pending_rows.latest_attempt_ended_at,
+      pending_rows.recovery_attempt_number,
+      pending_rows.interruption_reason,
+      pending_rows.completion_percentage,
+      pending_rows.timer_remaining_seconds,
+      pending_rows.recruiter_decision_status
+    from aggregate
+    left join pending_rows on true
   `
 
   const pendingInterviews: DashboardPipelineItem[] = []
-  let pending = 0
-  let inProgress = 0
-  let completed = 0
-  let flagged = 0
-  let reviewed = 0
-  let reviewRequired = 0
+  const firstRow = rows[0]
+  const pending = Number(firstRow?.total_pending ?? 0)
+  const inProgress = Number(firstRow?.total_in_progress ?? 0)
+  const completed = Number(firstRow?.total_completed ?? 0)
+  const flagged = Number(firstRow?.total_flagged ?? 0)
+  const reviewed = Number(firstRow?.total_reviewed ?? 0)
+  const reviewRequired = Number(firstRow?.total_review_required ?? 0)
 
   rows.forEach((row) => {
+    if (!row.interview_id) {
+      return
+    }
+
     const displayStatus = getDisplayStatus(row)
     const normalizedDisplayStatus = String(displayStatus).toUpperCase()
     const recovery = getRecovery(row)
 
-    if (normalizedDisplayStatus === "FLAGGED") {
-      flagged += 1
-      return
-    }
+    const pendingRow = row as PendingPipelineRow
 
-    if (recovery) {
-      pending += 1
-      if (!take || pendingInterviews.length < take) {
-        pendingInterviews.push(buildPendingItem(row, appUrl, displayStatus, recovery))
-      }
-      return
-    }
-
-    if (normalizedDisplayStatus === "PREPARATION_FAILED") {
-      pending += 1
-      flagged += 1
-      if (!take || pendingInterviews.length < take) {
-        pendingInterviews.push(buildPendingItem(row, appUrl, displayStatus, null))
-      }
-      return
-    }
-
-    if (normalizedDisplayStatus === "COMPLETED") {
-      completed += 1
-      if (row.recruiter_decision_status) {
-        reviewed += 1
-      } else {
-        reviewRequired += 1
-      }
-      return
-    }
-
-    if (normalizedDisplayStatus === "IN_PROGRESS") {
-      inProgress += 1
-      return
-    }
-
-    if (isPendingQueueRow(row, displayStatus, recovery)) {
-      pending += 1
-      if (!take || pendingInterviews.length < take) {
-        pendingInterviews.push(buildPendingItem(row, appUrl, displayStatus, null))
-      }
+    if (isPendingQueueRow(pendingRow, displayStatus, recovery)) {
+      pendingInterviews.push(buildPendingItem(pendingRow, appUrl, displayStatus, recovery))
     }
   })
 

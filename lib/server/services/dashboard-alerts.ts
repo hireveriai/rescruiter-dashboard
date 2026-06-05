@@ -156,6 +156,9 @@ export async function getDashboardAlerts(organizationId: string, limit = 8, user
         ia.ended_at,
         ia.interruption_reason
       from public.interview_attempts ia
+      inner join public.interviews attempt_interview
+        on attempt_interview.interview_id = ia.interview_id
+        and attempt_interview.organization_id = ${organizationId}::uuid
       order by ia.interview_id, ia.started_at desc
     ),
     alert_source as (
