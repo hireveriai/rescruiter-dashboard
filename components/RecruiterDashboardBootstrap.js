@@ -241,8 +241,7 @@ export default function RecruiterDashboardBootstrap({ children }) {
           overviewSignatureRef.current !== nextSignature
         ) {
           writeCachedOverview(overview)
-          setUpdateAvailable(true)
-          return
+          overviewSignatureRef.current = nextSignature
         }
 
         if (!overview?.partial) {

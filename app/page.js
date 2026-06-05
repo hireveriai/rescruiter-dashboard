@@ -130,10 +130,6 @@ function DashboardContent({ profile, overview, isLoading }) {
   }, [overview?.trialCredits]);
 
   useEffect(() => {
-    if (trialCredits) {
-      return;
-    }
-
     let active = true;
 
     async function loadTrialCredits() {
@@ -159,7 +155,7 @@ function DashboardContent({ profile, overview, isLoading }) {
     return () => {
       active = false;
     };
-  }, [searchParams, trialCredits]);
+  }, [searchParams]);
 
   useEffect(() => {
     function handleTrialCreditsUpdated(event) {
