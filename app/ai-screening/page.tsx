@@ -4,6 +4,7 @@ import Link from "next/link"
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react"
 
 import Navbar from "@/components/Navbar"
+import FreeTrialUsage from "@/components/FreeTrialUsage"
 import SendInterviewModal from "@/components/SendInterviewModal"
 import UpgradeLimitDialog from "@/components/UpgradeLimitDialog"
 import { InsightTooltip } from "@/components/ui/InsightTooltip"
@@ -677,8 +678,16 @@ function normalizeTrialCredits(credits: Partial<TrialCredits> | null | undefined
   }
 }
 
-function mergeTrialCredits(current: TrialCredits, incoming: Partial<TrialCredits> | null | undefined): TrialCredits {
+function mergeTrialCredits(current: TrialCredits | null, incoming: Partial<TrialCredits> | null | undefined): TrialCredits | null {
+  if (!incoming) {
+    return current
+  }
+
   const normalizedIncoming = normalizeTrialCredits(incoming)
+
+  if (!current) {
+    return normalizedIncoming
+  }
 
   return {
     ...normalizedIncoming,
@@ -757,7 +766,7 @@ export default function AiScreeningPage() {
   const [duplicateInviteWarnings, setDuplicateInviteWarnings] = useState<DuplicateInviteWarning[]>([])
   const [selectedInsight, setSelectedInsight] = useState<SelectedInsight | null>(null)
   const [screeningRuns, setScreeningRuns] = useState<ScreeningRun[]>([])
-  const [trialCredits, setTrialCredits] = useState<TrialCredits>(() => normalizeTrialCredits(null))
+  const [trialCredits, setTrialCredits] = useState<TrialCredits | null>(null)
   const [upgradeLimitOpen, setUpgradeLimitOpen] = useState(false)
   const [selectedRunId, setSelectedRunId] = useState("")
   const [loadingRunId, setLoadingRunId] = useState("")
@@ -858,12 +867,13 @@ export default function AiScreeningPage() {
   useEffect(() => {
     if (
       upgradeLimitOpen &&
+      trialCredits &&
       trialCredits.interviewCreditsRemaining > 0 &&
       trialCredits.screeningCreditsRemaining > 0
     ) {
       setUpgradeLimitOpen(false)
     }
-  }, [trialCredits.interviewCreditsRemaining, trialCredits.screeningCreditsRemaining, upgradeLimitOpen])
+  }, [trialCredits?.interviewCreditsRemaining, trialCredits?.screeningCreditsRemaining, upgradeLimitOpen])
 
   useEffect(() => {
     if (!flowStateHydrated || typeof window === "undefined") {
@@ -1183,8 +1193,8 @@ export default function AiScreeningPage() {
   }, [selectedInsight])
 
   const isBusy = uploading || isProcessingJD || isMatching || savingNewJob || sending || cleanupBusy || isSwitchingRuns
-  const screeningLimitReached = trialCredits.screeningCreditsRemaining <= 0
-  const interviewLimitReached = trialCredits.interviewCreditsRemaining <= 0
+  const screeningLimitReached = trialCredits ? trialCredits.screeningCreditsRemaining <= 0 : false
+  const interviewLimitReached = trialCredits ? trialCredits.interviewCreditsRemaining <= 0 : false
   const allTrialCreditsReached = screeningLimitReached && interviewLimitReached
   const canShowCleanupActions = matches.length > 0 || Boolean(currentBatchId) || uploadedCandidateIds.length > 0
   const canAnalyzeJob = hasUploadedResumes && hasSelectedJob && flowStep !== "JD_PROCESSED" && flowStep !== "MATCHED" && !isBusy
@@ -1599,10 +1609,14 @@ export default function AiScreeningPage() {
         setTrialCredits((current) => mergeTrialCredits(current, payload.data.trialCredits))
       } else {
         const fallbackDeduction = Number(payload.data?.matchedCount ?? candidateIds.length ?? 1)
-        setTrialCredits((current) => ({
-          ...current,
-          screeningCreditsRemaining: Math.max(0, current.screeningCreditsRemaining - Math.max(1, fallbackDeduction)),
-        }))
+        setTrialCredits((current) => {
+          const snapshot = current ?? normalizeTrialCredits(null)
+
+          return {
+            ...snapshot,
+            screeningCreditsRemaining: Math.max(0, snapshot.screeningCreditsRemaining - Math.max(1, fallbackDeduction)),
+          }
+        })
       }
       fetchTrialCreditsSnapshot()
         .then((credits) => {
@@ -2165,28 +2179,9 @@ export default function AiScreeningPage() {
           </section>
         ) : null}
 
-        <section className="mt-6 rounded-2xl border border-slate-800 bg-[#0f172a] px-5 py-4">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Free Trial Remaining</p>
-              <p className="mt-2 text-sm text-slate-300">
-                AI Interviews Left: {trialCredits.interviewCreditsRemaining} · AI Screenings Left: {trialCredits.screeningCreditsRemaining}
-              </p>
-            </div>
-            {allTrialCreditsReached ? (
-              <div className="flex flex-col gap-3 rounded-xl border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100 sm:flex-row sm:items-center">
-                <span>{trialCredits.upgradeMessage}</span>
-                <button
-                  type="button"
-                  onClick={() => setUpgradeLimitOpen(true)}
-                  className="inline-flex shrink-0 items-center justify-center rounded-xl border border-amber-200/35 bg-amber-300/12 px-4 py-2 text-sm font-semibold text-amber-50 transition hover:border-amber-100/60"
-                >
-                  View Subscription Plans
-                </button>
-              </div>
-            ) : null}
-          </div>
-        </section>
+        <div className="mt-6">
+          <FreeTrialUsage credits={trialCredits} />
+        </div>
 
         <div className="mt-8 grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
           <section className="rounded-[28px] border border-slate-800 bg-[#0f172a] p-6 shadow-[0_16px_60px_rgba(2,6,23,0.3)]">
@@ -3406,7 +3401,7 @@ export default function AiScreeningPage() {
         isOpen={upgradeLimitOpen}
         onClose={() => setUpgradeLimitOpen(false)}
         credits={trialCredits}
-        message={trialCredits.upgradeMessage}
+        message={trialCredits?.upgradeMessage || UPGRADE_MESSAGE}
       />
 
       <SendInterviewModal isOpen={openSendInterview} onClose={() => setOpenSendInterview(false)} />
