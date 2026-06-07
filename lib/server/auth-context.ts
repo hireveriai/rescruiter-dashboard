@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from "crypto"
 
 import { ApiError } from "@/lib/server/errors"
 import { prisma } from "@/lib/server/prisma"
+import { getOrCreateTrialCredits } from "@/lib/server/services/trial-credits"
 
 export type RecruiterRequestContext = {
   userId: string
@@ -230,6 +231,8 @@ async function ensureRecruiterOrganization(input: {
       )
       on conflict (organization_id) do nothing
     `)
+
+    await getOrCreateTrialCredits(input.organizationId)
 
     return true
   } catch (error) {

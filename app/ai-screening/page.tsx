@@ -639,11 +639,27 @@ function getScoreColor(score: number) {
   return "text-rose-300"
 }
 
+class ApiResponseError extends Error {
+  code: string
+  status: number
+
+  constructor(message: string, code: string, status: number) {
+    super(message)
+    this.name = "ApiResponseError"
+    this.code = code
+    this.status = status
+  }
+}
+
 async function readJsonResponse(response: Response) {
   const payload = await response.json().catch(() => null)
 
   if (!response.ok || !payload?.success) {
-    throw new Error(payload?.error?.message || payload?.message || "Request failed")
+    throw new ApiResponseError(
+      payload?.error?.message || payload?.message || "Request failed",
+      payload?.error?.code || "REQUEST_FAILED",
+      response.status
+    )
   }
 
   return payload
@@ -838,6 +854,16 @@ export default function AiScreeningPage() {
       active = false
     }
   }, [searchParams])
+
+  useEffect(() => {
+    if (
+      upgradeLimitOpen &&
+      trialCredits.interviewCreditsRemaining > 0 &&
+      trialCredits.screeningCreditsRemaining > 0
+    ) {
+      setUpgradeLimitOpen(false)
+    }
+  }, [trialCredits.interviewCreditsRemaining, trialCredits.screeningCreditsRemaining, upgradeLimitOpen])
 
   useEffect(() => {
     if (!flowStateHydrated || typeof window === "undefined") {
@@ -1159,6 +1185,7 @@ export default function AiScreeningPage() {
   const isBusy = uploading || isProcessingJD || isMatching || savingNewJob || sending || cleanupBusy || isSwitchingRuns
   const screeningLimitReached = trialCredits.screeningCreditsRemaining <= 0
   const interviewLimitReached = trialCredits.interviewCreditsRemaining <= 0
+  const allTrialCreditsReached = screeningLimitReached && interviewLimitReached
   const canShowCleanupActions = matches.length > 0 || Boolean(currentBatchId) || uploadedCandidateIds.length > 0
   const canAnalyzeJob = hasUploadedResumes && hasSelectedJob && flowStep !== "JD_PROCESSED" && flowStep !== "MATCHED" && !isBusy
   const canRunMatching = Boolean(
@@ -1256,7 +1283,10 @@ export default function AiScreeningPage() {
 
   async function handleUpload() {
     if (screeningLimitReached) {
-      setUpgradeLimitOpen(true)
+      if (allTrialCreditsReached) {
+        setUpgradeLimitOpen(true)
+      }
+      setError("AI screenings are exhausted for this workspace.")
       return
     }
 
@@ -1508,7 +1538,10 @@ export default function AiScreeningPage() {
     }
 
     if (screeningLimitReached) {
-      setUpgradeLimitOpen(true)
+      if (allTrialCreditsReached) {
+        setUpgradeLimitOpen(true)
+      }
+      setError("AI screenings are exhausted for this workspace.")
       setPipelineErrorStep("match")
       return false
     }
@@ -1612,7 +1645,11 @@ export default function AiScreeningPage() {
       return true
     } catch (matchError) {
       const message = matchError instanceof Error ? matchError.message : "Candidate matching failed"
-      if (message === UPGRADE_MESSAGE || message.toLowerCase().includes("free trial limit")) {
+      if (
+        matchError instanceof ApiResponseError &&
+        matchError.code === "FREE_TRIAL_LIMIT_REACHED" &&
+        allTrialCreditsReached
+      ) {
         setUpgradeLimitOpen(true)
         setError("")
         return false
@@ -1727,7 +1764,11 @@ export default function AiScreeningPage() {
       return "sent"
     } catch (sendError) {
       const message = sendError instanceof Error ? sendError.message : "Bulk interview send failed"
-      if (message === UPGRADE_MESSAGE || message.toLowerCase().includes("free trial limit")) {
+      if (
+        sendError instanceof ApiResponseError &&
+        sendError.code === "FREE_TRIAL_LIMIT_REACHED" &&
+        allTrialCreditsReached
+      ) {
         setUpgradeLimitOpen(true)
         setError("")
         return "failed"
@@ -1794,7 +1835,10 @@ export default function AiScreeningPage() {
 
   function openSendConfirmation(candidateIds: string[]) {
     if (interviewLimitReached) {
-      setUpgradeLimitOpen(true)
+      if (allTrialCreditsReached) {
+        setUpgradeLimitOpen(true)
+      }
+      setError("AI interview credits are exhausted for this workspace.")
       return
     }
 
@@ -2129,7 +2173,7 @@ export default function AiScreeningPage() {
                 AI Interviews Left: {trialCredits.interviewCreditsRemaining} · AI Screenings Left: {trialCredits.screeningCreditsRemaining}
               </p>
             </div>
-            {(screeningLimitReached || interviewLimitReached) ? (
+            {allTrialCreditsReached ? (
               <div className="flex flex-col gap-3 rounded-xl border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100 sm:flex-row sm:items-center">
                 <span>{trialCredits.upgradeMessage}</span>
                 <button
@@ -2306,10 +2350,10 @@ export default function AiScreeningPage() {
                       {(!canRunMatching || screeningLimitReached) && !isBusy ? (
                         <button
                           type="button"
-                          onClick={() => screeningLimitReached ? setUpgradeLimitOpen(true) : undefined}
-                          className={`mt-2 text-left text-xs ${screeningLimitReached ? "font-semibold text-amber-200 hover:text-amber-100" : "text-slate-500"}`}
+                          onClick={() => allTrialCreditsReached ? setUpgradeLimitOpen(true) : undefined}
+                          className={`mt-2 text-left text-xs ${allTrialCreditsReached ? "font-semibold text-amber-200 hover:text-amber-100" : "text-slate-500"}`}
                         >
-                          {screeningLimitReached ? "View Subscription Plans" : matchHelpText}
+                          {allTrialCreditsReached ? "View Subscription Plans" : screeningLimitReached ? "AI screenings are exhausted." : matchHelpText}
                         </button>
                       ) : null}
                     </div>

@@ -25,7 +25,7 @@ export default function FreeTrialUsage({ credits }) {
     Number.isFinite(Number(credits?.screeningCreditsRemaining))
   const interviewCredits = hasCreditSnapshot ? Math.max(0, Number(credits.interviewCreditsRemaining)) : null
   const screeningCredits = hasCreditSnapshot ? Math.max(0, Number(credits.screeningCreditsRemaining)) : null
-  const hasReachedLimit = hasCreditSnapshot && (interviewCredits === 0 || screeningCredits === 0)
+  const hasReachedLimit = hasCreditSnapshot && interviewCredits === 0 && screeningCredits === 0
 
   return (
     <section className="mb-5 rounded-[28px] border border-slate-800 bg-[#0f172a] p-5 shadow-[0_16px_54px_rgba(2,6,23,0.24)]">
