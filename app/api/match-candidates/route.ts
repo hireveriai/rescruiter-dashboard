@@ -161,13 +161,15 @@ export async function GET(request: Request) {
     matches = includeAllCandidates ? matches : filterMatchesToCandidateIds(matches, scopedCandidateIds)
 
     if (matches.length === 0 && !includeAllCandidates && effectiveBatchId && scopedCandidateIds.length > 0) {
-      matches = await getMatchResults(auth.organizationId, jobId, {
-        uploadBatchId: effectiveBatchId,
-        candidateIds: scopedCandidateIds,
-        fileNames: uploadFileNames,
-        includeAllCandidates: false,
+      return NextResponse.json({
+        success: true,
+        data: {
+          job,
+          matchScope,
+          source: "batch",
+          matches: [],
+        },
       })
-      matches = filterMatchesToCandidateIds(matches, scopedCandidateIds)
     }
 
     if (matches.length === 0 && !includeAllCandidates && uploadFileNames.length > 0 && scopedCandidateIds.length > 0) {
@@ -280,20 +282,30 @@ export async function POST(request: Request) {
 
     const source = includeAllCandidates ? "full_db" : "batch"
     let usedBatchFallback = false
-    let candidates = await getCandidatesForMatching({
-      organizationId: auth.organizationId,
-      candidateIds: scopedCandidateIds,
-      uploadBatchId: effectiveBatchId || null,
-      includeAllCandidates,
-    })
+    let candidates = !includeAllCandidates && scopedCandidateIds.length === 0 && uploadFileNames.length > 0
+      ? await getCandidatesForMatchingByUploadFiles({
+          organizationId: auth.organizationId,
+          userId: auth.userId,
+          uploadBatchId: effectiveBatchId || null,
+          fileNames: uploadFileNames,
+        })
+      : await getCandidatesForMatching({
+          organizationId: auth.organizationId,
+          candidateIds: scopedCandidateIds,
+          uploadBatchId: effectiveBatchId || null,
+          includeAllCandidates,
+        })
+
+    if (!includeAllCandidates && scopedCandidateIds.length === 0 && uploadFileNames.length > 0 && candidates.length > 0) {
+      usedBatchFallback = true
+    }
 
     if (candidates.length === 0 && !includeAllCandidates && effectiveBatchId && scopedCandidateIds.length > 0) {
-      candidates = await getCandidatesForMatching({
-        organizationId: auth.organizationId,
-        uploadBatchId: effectiveBatchId,
-        includeAllCandidates: false,
-      })
-      usedBatchFallback = candidates.length > 0
+      throw new ApiError(
+        400,
+        "CURRENT_UPLOAD_CANDIDATES_NOT_FOUND",
+        "The current upload candidate scope could not be found. Please refresh and upload the resumes again."
+      )
     }
 
     if (candidates.length === 0 && !includeAllCandidates && uploadFileNames.length > 0) {
@@ -317,6 +329,11 @@ export async function POST(request: Request) {
     const resolvedCandidateIds = scopedCandidateIds.length > 0 && !usedBatchFallback
       ? scopedCandidateIds
       : candidates.map((candidate) => candidate.candidate_id)
+
+    if (!includeAllCandidates && scopedCandidateIds.length > 0) {
+      const scopedCandidateSet = new Set(scopedCandidateIds)
+      candidates = candidates.filter((candidate) => scopedCandidateSet.has(candidate.candidate_id))
+    }
 
     if (candidates.length === 0) {
       console.warn("VERIS screening matching found no candidates", {
