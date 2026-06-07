@@ -300,6 +300,22 @@ export async function POST(request: Request) {
       usedBatchFallback = true
     }
 
+    if (
+      candidates.length === 0 &&
+      !includeAllCandidates &&
+      effectiveBatchId &&
+      scopedCandidateIds.length > 0 &&
+      uploadFileNames.length > 0
+    ) {
+      candidates = await getCandidatesForMatchingByUploadFiles({
+        organizationId: auth.organizationId,
+        userId: auth.userId,
+        uploadBatchId: effectiveBatchId || null,
+        fileNames: uploadFileNames,
+      })
+      usedBatchFallback = candidates.length > 0
+    }
+
     if (candidates.length === 0 && !includeAllCandidates && effectiveBatchId && scopedCandidateIds.length > 0) {
       throw new ApiError(
         400,
