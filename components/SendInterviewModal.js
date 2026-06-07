@@ -112,6 +112,11 @@ function normalizeTrialCredits(credits) {
     interviewCreditsRemaining: Math.max(0, Number(credits?.interviewCreditsRemaining ?? 5)),
     screeningCreditsRemaining: Math.max(0, Number(credits?.screeningCreditsRemaining ?? 15)),
     upgradeMessage: credits?.upgradeMessage || UPGRADE_MESSAGE,
+    source: credits?.source || "trial",
+    subscriptionId: credits?.subscriptionId || null,
+    planId: credits?.planId || null,
+    subscriptionStatus: credits?.subscriptionStatus || null,
+    subscriptionExpiresAt: credits?.subscriptionExpiresAt || null,
   }
 }
 

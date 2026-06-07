@@ -114,7 +114,7 @@ function mergeTrialCredits(current, incoming) {
     return current;
   }
 
-  if (!current) {
+  if (!current || incoming.source === "subscription" || current.source !== incoming.source) {
     return incoming;
   }
 

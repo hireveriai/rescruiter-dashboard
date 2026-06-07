@@ -9,6 +9,7 @@ export const FREE_TRIAL_LIMIT_MESSAGE =
   "You’ve reached your free trial limit. Upgrade your workspace to continue conducting interviews and screenings."
 
 export type TrialCreditKind = "INTERVIEW" | "SCREENING"
+export type CreditBalanceSource = "trial" | "subscription"
 
 export type TrialCreditSnapshot = {
   organizationId: string
@@ -17,12 +18,27 @@ export type TrialCreditSnapshot = {
   canSendInterview: boolean
   canStartScreening: boolean
   upgradeMessage: string
+  source: CreditBalanceSource
+  subscriptionId?: string | null
+  planId?: string | null
+  subscriptionStatus?: string | null
+  subscriptionExpiresAt?: string | null
 }
 
 type TrialCreditRow = {
   organization_id: string
   interview_credits_remaining: number
   screening_credits_remaining: number
+}
+
+type SubscriptionCreditRow = {
+  id: string
+  organization_id: string
+  plan_id: string | null
+  status: string | null
+  interview_credits_remaining: number
+  screening_credits_remaining: number
+  expires_at: Date | string | null
 }
 
 type QueryClient = typeof prisma | Prisma.TransactionClient
@@ -56,6 +72,26 @@ function mapTrialCreditRow(row: TrialCreditRow): TrialCreditSnapshot {
     canSendInterview: interviewCreditsRemaining > 0,
     canStartScreening: screeningCreditsRemaining > 0,
     upgradeMessage: FREE_TRIAL_LIMIT_MESSAGE,
+    source: "trial",
+  }
+}
+
+function mapSubscriptionCreditRow(row: SubscriptionCreditRow): TrialCreditSnapshot {
+  const interviewCreditsRemaining = normalizeCount(row.interview_credits_remaining)
+  const screeningCreditsRemaining = normalizeCount(row.screening_credits_remaining)
+
+  return {
+    organizationId: row.organization_id,
+    interviewCreditsRemaining,
+    screeningCreditsRemaining,
+    canSendInterview: interviewCreditsRemaining > 0,
+    canStartScreening: screeningCreditsRemaining > 0,
+    upgradeMessage: "",
+    source: "subscription",
+    subscriptionId: row.id,
+    planId: row.plan_id,
+    subscriptionStatus: row.status,
+    subscriptionExpiresAt: row.expires_at ? new Date(row.expires_at).toISOString() : null,
   }
 }
 
@@ -67,6 +103,7 @@ export function createInitialTrialCreditSnapshot(organizationId: string): TrialC
     canSendInterview: true,
     canStartScreening: true,
     upgradeMessage: FREE_TRIAL_LIMIT_MESSAGE,
+    source: "trial",
   }
 }
 
@@ -227,6 +264,11 @@ export async function ensureTrialCreditOrganization(organizationId: string, clie
 
 export async function getOrCreateTrialCredits(organizationId: string, client: QueryClient = prisma) {
   await ensureTrialCreditOrganization(organizationId, client)
+  const subscriptionCredits = await getActiveSubscriptionCredits(organizationId, client)
+  if (subscriptionCredits) {
+    return subscriptionCredits
+  }
+
   let rows = await upsertTrialCreditRow(organizationId, client).catch(async (error) => {
     console.warn("Trial credit balance table read failed; attempting schema setup", error)
     await ensureTrialCreditSchema(client)
@@ -239,6 +281,31 @@ export async function getOrCreateTrialCredits(organizationId: string, client: Qu
   }
 
   return mapTrialCreditRow(row)
+}
+
+async function getActiveSubscriptionCredits(organizationId: string, client: QueryClient = prisma) {
+  const rows = await client.$queryRaw<SubscriptionCreditRow[]>(Prisma.sql`
+    select
+      id,
+      "organizationId"::text as organization_id,
+      "planId" as plan_id,
+      status,
+      "totalCredits" as interview_credits_remaining,
+      "screeningCredits" as screening_credits_remaining,
+      "expiresAt" as expires_at
+    from public.hireveri_user_subscriptions
+    where "organizationId" = ${organizationId}::uuid
+      and lower(coalesce(status, '')) = 'active'
+      and ("expiresAt" is null or "expiresAt" > now())
+    order by "activatedAt" desc nulls last, "updatedAt" desc nulls last
+    limit 1
+  `).catch((error) => {
+    console.warn("Subscription credit read skipped", error)
+    return [] as SubscriptionCreditRow[]
+  })
+
+  const row = rows[0]
+  return row ? mapSubscriptionCreditRow(row) : null
 }
 
 async function upsertTrialCreditRow(organizationId: string, client: QueryClient = prisma) {
@@ -271,6 +338,62 @@ async function upsertTrialCreditRow(organizationId: string, client: QueryClient 
       where organization_id = ${organizationId}::uuid
       limit 1
     `)
+}
+
+async function deductSubscriptionCredits(input: {
+  organizationId: string
+  kind: TrialCreditKind
+  amount: number
+  subscriptionId: string
+}) {
+  const rows = input.kind === "INTERVIEW"
+    ? await prisma.$queryRaw<SubscriptionCreditRow[]>(Prisma.sql`
+      update public.hireveri_user_subscriptions
+      set
+        "totalCredits" = "totalCredits" - ${input.amount},
+        "usedCredits" = coalesce("usedCredits", 0) + ${input.amount},
+        "updatedAt" = now()
+      where id = ${input.subscriptionId}
+        and "organizationId" = ${input.organizationId}::uuid
+        and lower(coalesce(status, '')) = 'active'
+        and ("expiresAt" is null or "expiresAt" > now())
+        and "totalCredits" >= ${input.amount}
+      returning
+        id,
+        "organizationId"::text as organization_id,
+        "planId" as plan_id,
+        status,
+        "totalCredits" as interview_credits_remaining,
+        "screeningCredits" as screening_credits_remaining,
+        "expiresAt" as expires_at
+    `)
+    : await prisma.$queryRaw<SubscriptionCreditRow[]>(Prisma.sql`
+      update public.hireveri_user_subscriptions
+      set
+        "screeningCredits" = "screeningCredits" - ${input.amount},
+        "updatedAt" = now()
+      where id = ${input.subscriptionId}
+        and "organizationId" = ${input.organizationId}::uuid
+        and lower(coalesce(status, '')) = 'active'
+        and ("expiresAt" is null or "expiresAt" > now())
+        and "screeningCredits" >= ${input.amount}
+      returning
+        id,
+        "organizationId"::text as organization_id,
+        "planId" as plan_id,
+        status,
+        "totalCredits" as interview_credits_remaining,
+        "screeningCredits" as screening_credits_remaining,
+        "expiresAt" as expires_at
+    `)
+
+  const row = rows[0]
+  if (!row) {
+    throw new ApiError(402, "SUBSCRIPTION_CREDITS_EXHAUSTED", "Your subscription does not have enough credits for this action.")
+  }
+
+  invalidateTrialCreditDashboardCache(input.organizationId)
+  return mapSubscriptionCreditRow(row)
 }
 
 export async function getTrialCreditsDashboardSnapshot(organizationId: string, client: QueryClient = prisma) {
@@ -346,6 +469,29 @@ export async function deductTrialCredits(input: {
         ? FREE_TRIAL_LIMIT_MESSAGE
         : `This action needs ${amount} ${label} credit${amount === 1 ? "" : "s"}, but your workspace has ${remainingBeforeDeduction} left. Reduce the selection or upgrade your workspace.`
     )
+  }
+
+  if (creditsBeforeDeduction.source === "subscription") {
+    if (!creditsBeforeDeduction.subscriptionId) {
+      throw new ApiError(503, "SUBSCRIPTION_CREDITS_UNAVAILABLE", "Unable to update subscription credits. Please try again.")
+    }
+
+    try {
+      return await deductSubscriptionCredits({
+        organizationId: input.organizationId,
+        kind: input.kind,
+        amount,
+        subscriptionId: creditsBeforeDeduction.subscriptionId,
+      })
+    } catch (error) {
+      if (error instanceof ApiError) {
+        throw error
+      }
+
+      console.error("Subscription credit table update failed", error)
+      invalidateTrialCreditDashboardCache(input.organizationId)
+      throw new ApiError(503, "SUBSCRIPTION_CREDITS_UPDATE_FAILED", "Unable to update subscription credits. Please try again.")
+    }
   }
 
   try {

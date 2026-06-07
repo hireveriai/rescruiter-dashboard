@@ -81,6 +81,11 @@ type TrialCredits = {
   interviewCreditsRemaining: number
   screeningCreditsRemaining: number
   upgradeMessage: string
+  source?: "trial" | "subscription"
+  subscriptionId?: string | null
+  planId?: string | null
+  subscriptionStatus?: string | null
+  subscriptionExpiresAt?: string | null
 }
 
 type UploadRow = {
@@ -675,6 +680,11 @@ function normalizeTrialCredits(credits: Partial<TrialCredits> | null | undefined
     interviewCreditsRemaining: Math.max(0, Number(credits?.interviewCreditsRemaining ?? 5)),
     screeningCreditsRemaining: Math.max(0, Number(credits?.screeningCreditsRemaining ?? 15)),
     upgradeMessage: credits?.upgradeMessage || UPGRADE_MESSAGE,
+    source: credits?.source ?? "trial",
+    subscriptionId: credits?.subscriptionId ?? null,
+    planId: credits?.planId ?? null,
+    subscriptionStatus: credits?.subscriptionStatus ?? null,
+    subscriptionExpiresAt: credits?.subscriptionExpiresAt ?? null,
   }
 }
 
@@ -685,7 +695,7 @@ function mergeTrialCredits(current: TrialCredits | null, incoming: Partial<Trial
 
   const normalizedIncoming = normalizeTrialCredits(incoming)
 
-  if (!current) {
+  if (!current || normalizedIncoming.source === "subscription" || current.source !== normalizedIncoming.source) {
     return normalizedIncoming
   }
 
