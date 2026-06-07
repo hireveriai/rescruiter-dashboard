@@ -226,9 +226,22 @@ export async function ensureTrialCreditOrganization(organizationId: string, clie
 }
 
 export async function getOrCreateTrialCredits(organizationId: string, client: QueryClient = prisma) {
-  await ensureTrialCreditSchema(client)
   await ensureTrialCreditOrganization(organizationId, client)
+  let rows = await upsertTrialCreditRow(organizationId, client).catch(async (error) => {
+    console.warn("Trial credit balance table read failed; attempting schema setup", error)
+    await ensureTrialCreditSchema(client)
+    return upsertTrialCreditRow(organizationId, client)
+  })
 
+  const row = rows[0]
+  if (!row) {
+    throw new ApiError(500, "TRIAL_CREDITS_UNAVAILABLE", "Unable to load free trial credits.")
+  }
+
+  return mapTrialCreditRow(row)
+}
+
+async function upsertTrialCreditRow(organizationId: string, client: QueryClient = prisma) {
   const insertedRows = await client.$queryRaw<TrialCreditRow[]>(Prisma.sql`
     insert into public.workspace_trial_credits (
       organization_id,
@@ -247,7 +260,7 @@ export async function getOrCreateTrialCredits(organizationId: string, client: Qu
       screening_credits_remaining
   `)
 
-  const rows = insertedRows.length > 0
+  return insertedRows.length > 0
     ? insertedRows
     : await client.$queryRaw<TrialCreditRow[]>(Prisma.sql`
       select
@@ -258,13 +271,6 @@ export async function getOrCreateTrialCredits(organizationId: string, client: Qu
       where organization_id = ${organizationId}::uuid
       limit 1
     `)
-
-  const row = rows[0]
-  if (!row) {
-    throw new ApiError(500, "TRIAL_CREDITS_UNAVAILABLE", "Unable to load free trial credits.")
-  }
-
-  return mapTrialCreditRow(row)
 }
 
 export async function getTrialCreditsDashboardSnapshot(organizationId: string, client: QueryClient = prisma) {

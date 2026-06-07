@@ -1,4 +1,5 @@
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
+import { ApiError } from "@/lib/server/errors"
 import { errorResponse, successResponse } from "@/lib/server/response"
 import { getOrCreateTrialCredits } from "@/lib/server/services/trial-credits"
 
@@ -21,6 +22,10 @@ export async function GET(request: Request) {
     return response
   } catch (error) {
     console.error("Trial credits bootstrap failed", error)
-    return errorResponse(error)
+    return errorResponse(
+      error instanceof ApiError
+        ? error
+        : new ApiError(503, "TRIAL_CREDITS_UNAVAILABLE", "Unable to load free trial credits from the workspace balance table.")
+    )
   }
 }
