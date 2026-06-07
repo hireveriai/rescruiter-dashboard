@@ -97,66 +97,13 @@ export async function ensureTrialCreditSchema(client: QueryClient = prisma) {
   `)
 
     await client.$executeRaw(Prisma.sql`
-    create index if not exists workspace_trial_credits_updated_at_idx
-      on public.workspace_trial_credits (updated_at desc)
-  `)
+      create index if not exists workspace_trial_credits_updated_at_idx
+        on public.workspace_trial_credits (updated_at desc)
+    `).catch((error) => {
+      console.warn("Trial credit balance index setup skipped", error)
+    })
 
-    await client.$executeRawUnsafe(`
-    create or replace function public.ensure_workspace_trial_credits()
-    returns trigger
-    language plpgsql
-    as $$
-    begin
-      insert into public.workspace_trial_credits (
-        organization_id,
-        interview_credits_remaining,
-        screening_credits_remaining
-      )
-      values (
-        new.organization_id,
-        ${FREE_TRIAL_INTERVIEW_CREDITS},
-        ${FREE_TRIAL_SCREENING_CREDITS}
-      )
-      on conflict (organization_id) do nothing;
-
-      return new;
-    end;
-    $$;
-  `)
-
-    await client.$executeRawUnsafe(`
-    drop trigger if exists organizations_seed_workspace_trial_credits on public.organizations;
-    create trigger organizations_seed_workspace_trial_credits
-      after insert on public.organizations
-      for each row
-      execute function public.ensure_workspace_trial_credits();
-  `)
-
-    await client.$executeRaw(Prisma.sql`
-    create table if not exists public.workspace_trial_credit_events (
-      id uuid primary key default gen_random_uuid(),
-      organization_id uuid not null references public.organizations(organization_id) on delete cascade,
-      kind text not null,
-      amount integer not null,
-      source text,
-      source_id text,
-      metadata jsonb not null default '{}'::jsonb,
-      created_at timestamptz not null default now(),
-      constraint workspace_trial_credit_events_kind_check check (kind in ('INTERVIEW', 'SCREENING')),
-      constraint workspace_trial_credit_events_amount_positive check (amount > 0)
-    )
-  `)
-
-    await client.$executeRaw(Prisma.sql`
-    create index if not exists workspace_trial_credit_events_org_kind_created_idx
-      on public.workspace_trial_credit_events (organization_id, kind, created_at desc)
-  `)
-
-    await client.$executeRaw(Prisma.sql`
-    create unique index if not exists workspace_trial_credit_events_source_uidx
-      on public.workspace_trial_credit_events (organization_id, kind, source, source_id)
-      where source_id is not null
-  `)
+    await ensureTrialCreditOptionalSchema(client)
   })()
 
   if (client !== prisma) {
@@ -169,6 +116,75 @@ export async function ensureTrialCreditSchema(client: QueryClient = prisma) {
   })
 
   return ensureTrialCreditSchemaPromise
+}
+
+async function ensureTrialCreditOptionalSchema(client: QueryClient = prisma) {
+  await client.$executeRawUnsafe(`
+  create or replace function public.ensure_workspace_trial_credits()
+  returns trigger
+  language plpgsql
+  as $$
+  begin
+    insert into public.workspace_trial_credits (
+      organization_id,
+      interview_credits_remaining,
+      screening_credits_remaining
+    )
+    values (
+      new.organization_id,
+      ${FREE_TRIAL_INTERVIEW_CREDITS},
+      ${FREE_TRIAL_SCREENING_CREDITS}
+    )
+    on conflict (organization_id) do nothing;
+
+    return new;
+  end;
+  $$;
+`).catch((error) => {
+    console.warn("Trial credit organization trigger function setup skipped", error)
+  })
+
+  await client.$executeRawUnsafe(`
+  drop trigger if exists organizations_seed_workspace_trial_credits on public.organizations;
+  create trigger organizations_seed_workspace_trial_credits
+    after insert on public.organizations
+    for each row
+    execute function public.ensure_workspace_trial_credits();
+`).catch((error) => {
+    console.warn("Trial credit organization trigger setup skipped", error)
+  })
+
+  await client.$executeRaw(Prisma.sql`
+  create table if not exists public.workspace_trial_credit_events (
+    id uuid primary key default gen_random_uuid(),
+    organization_id uuid not null references public.organizations(organization_id) on delete cascade,
+    kind text not null,
+    amount integer not null,
+    source text,
+    source_id text,
+    metadata jsonb not null default '{}'::jsonb,
+    created_at timestamptz not null default now(),
+    constraint workspace_trial_credit_events_kind_check check (kind in ('INTERVIEW', 'SCREENING')),
+    constraint workspace_trial_credit_events_amount_positive check (amount > 0)
+  )
+`).catch((error) => {
+    console.warn("Trial credit audit table setup skipped", error)
+  })
+
+  await client.$executeRaw(Prisma.sql`
+    create index if not exists workspace_trial_credit_events_org_kind_created_idx
+      on public.workspace_trial_credit_events (organization_id, kind, created_at desc)
+  `).catch((error) => {
+    console.warn("Trial credit audit index setup skipped", error)
+  })
+
+  await client.$executeRaw(Prisma.sql`
+    create unique index if not exists workspace_trial_credit_events_source_uidx
+      on public.workspace_trial_credit_events (organization_id, kind, source, source_id)
+      where source_id is not null
+  `).catch((error) => {
+    console.warn("Trial credit audit unique index setup skipped", error)
+  })
 }
 
 export async function ensureTrialCreditOrganization(organizationId: string, client: QueryClient = prisma) {
@@ -327,61 +343,44 @@ export async function deductTrialCredits(input: {
   }
 
   try {
-    const row = await prisma.$transaction(async (tx) => {
-      const rows = input.kind === "INTERVIEW"
-        ? await tx.$queryRaw<TrialCreditRow[]>(Prisma.sql`
-          update public.workspace_trial_credits
-          set
-            interview_credits_remaining = interview_credits_remaining - ${amount},
-            updated_at = now()
-          where organization_id = ${input.organizationId}::uuid
-            and interview_credits_remaining >= ${amount}
-          returning
-            organization_id::text,
-            interview_credits_remaining,
-            screening_credits_remaining
-        `)
-        : await tx.$queryRaw<TrialCreditRow[]>(Prisma.sql`
-          update public.workspace_trial_credits
-          set
-            screening_credits_remaining = screening_credits_remaining - ${amount},
-            updated_at = now()
-          where organization_id = ${input.organizationId}::uuid
-            and screening_credits_remaining >= ${amount}
-          returning
-            organization_id::text,
-            interview_credits_remaining,
-            screening_credits_remaining
-        `)
-
-      const updatedRow = rows[0]
-      if (!updatedRow) {
-        throw new ApiError(402, "FREE_TRIAL_LIMIT_REACHED", FREE_TRIAL_LIMIT_MESSAGE)
-      }
-
-      await tx.$executeRaw(Prisma.sql`
-        insert into public.workspace_trial_credit_events (
-          organization_id,
-          kind,
-          amount,
-          source,
-          source_id,
-          metadata
-        )
-        values (
-          ${input.organizationId}::uuid,
-          ${input.kind},
-          ${amount},
-          ${input.source ?? "deduction"},
-          ${input.sourceId ?? null},
-          ${JSON.stringify({ remainingAfter: {
-            interviewCreditsRemaining: updatedRow.interview_credits_remaining,
-            screeningCreditsRemaining: updatedRow.screening_credits_remaining,
-          } })}::jsonb
-        )
+    const rows = input.kind === "INTERVIEW"
+      ? await prisma.$queryRaw<TrialCreditRow[]>(Prisma.sql`
+        update public.workspace_trial_credits
+        set
+          interview_credits_remaining = interview_credits_remaining - ${amount},
+          updated_at = now()
+        where organization_id = ${input.organizationId}::uuid
+          and interview_credits_remaining >= ${amount}
+        returning
+          organization_id::text,
+          interview_credits_remaining,
+          screening_credits_remaining
+      `)
+      : await prisma.$queryRaw<TrialCreditRow[]>(Prisma.sql`
+        update public.workspace_trial_credits
+        set
+          screening_credits_remaining = screening_credits_remaining - ${amount},
+          updated_at = now()
+        where organization_id = ${input.organizationId}::uuid
+          and screening_credits_remaining >= ${amount}
+        returning
+          organization_id::text,
+          interview_credits_remaining,
+          screening_credits_remaining
       `)
 
-      return updatedRow
+    const row = rows[0]
+    if (!row) {
+      throw new ApiError(402, "FREE_TRIAL_LIMIT_REACHED", FREE_TRIAL_LIMIT_MESSAGE)
+    }
+
+    await recordTrialCreditEvent({
+      organizationId: input.organizationId,
+      kind: input.kind,
+      amount,
+      source: input.source ?? "deduction",
+      sourceId: input.sourceId ?? null,
+      remainingAfter: row,
     })
 
     const snapshot = mapTrialCreditRow(row)
@@ -396,4 +395,37 @@ export async function deductTrialCredits(input: {
     invalidateTrialCreditDashboardCache(input.organizationId)
     throw new ApiError(503, "TRIAL_CREDITS_UPDATE_FAILED", "Unable to update free trial credits. Please try again.")
   }
+}
+
+async function recordTrialCreditEvent(input: {
+  organizationId: string
+  kind: TrialCreditKind
+  amount: number
+  source: string
+  sourceId: string | null
+  remainingAfter: TrialCreditRow
+}) {
+  await prisma.$executeRaw(Prisma.sql`
+    insert into public.workspace_trial_credit_events (
+      organization_id,
+      kind,
+      amount,
+      source,
+      source_id,
+      metadata
+    )
+    values (
+      ${input.organizationId}::uuid,
+      ${input.kind},
+      ${input.amount},
+      ${input.source},
+      ${input.sourceId},
+      ${JSON.stringify({ remainingAfter: {
+        interviewCreditsRemaining: input.remainingAfter.interview_credits_remaining,
+        screeningCreditsRemaining: input.remainingAfter.screening_credits_remaining,
+      } })}::jsonb
+    )
+  `).catch((error) => {
+    console.warn("Trial credit audit event write skipped", error)
+  })
 }
