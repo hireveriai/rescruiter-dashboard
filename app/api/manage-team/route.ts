@@ -27,6 +27,7 @@ type TeamMemberRow = {
   recruiter_role_code: string | null
   recruiter_role_description: string | null
   permission_details: PermissionDetail[] | null
+  is_admin: boolean
   invite_status: "PENDING" | "ACCEPTED" | "EXPIRED" | null
   invite_expires_at: string | null
 }
@@ -280,6 +281,8 @@ async function getActor(auth: RecruiterAuth) {
 }
 
 async function assertCanManageUsers(auth: RecruiterAuth) {
+  await ensureCurrentRecruiterAdminIfNoAdmin(auth)
+
   const rows = await prisma.$queryRaw<{ can_manage: boolean }[]>(Prisma.sql`
     select exists (
       select 1
@@ -295,6 +298,113 @@ async function assertCanManageUsers(auth: RecruiterAuth) {
   if (!rows[0]?.can_manage) {
     throw new ApiError(403, "INSUFFICIENT_PERMISSION", "users.manage is required")
   }
+}
+
+async function getDefaultAdminRoleId() {
+  const rows = await prisma.$queryRaw<{ recruiter_role_id: number }[]>(Prisma.sql`
+    select role_candidates.recruiter_role_id
+    from (
+      select rrp.recruiter_role_id, 0 as priority
+      from public.recruiter_role_pool rrp
+      where lower(coalesce(rrp.code, '')) in ('super_admin', 'super-admin', 'founder', 'founder/ceo', 'org_owner', 'org-owner')
+         or lower(coalesce(rrp.code, '')) like '%founder%'
+         or lower(coalesce(rrp.code, '')) like '%owner%'
+      union all
+      select rp.recruiter_role_id, 1 as priority
+      from public.role_permissions rp
+      group by rp.recruiter_role_id
+      having bool_or(rp.permission = 'users.manage')
+         and bool_or(rp.permission = 'organization.settings')
+    ) role_candidates
+    order by role_candidates.priority, role_candidates.recruiter_role_id
+    limit 1
+  `).catch(() => [] as { recruiter_role_id: number }[])
+
+  return rows[0]?.recruiter_role_id ?? null
+}
+
+async function ensureCurrentRecruiterAdminIfNoAdmin(auth: RecruiterAuth) {
+  const [hasRecruiterProfiles, hasRolePermissions] = await Promise.all([
+    tableExists("recruiter_profiles"),
+    tableExists("role_permissions"),
+  ])
+
+  if (!hasRecruiterProfiles || !hasRolePermissions) {
+    return
+  }
+
+  const rows = await prisma.$queryRaw<{ has_admin: boolean; current_has_admin: boolean }[]>(Prisma.sql`
+    select
+      exists (
+        select 1
+        from public.users admin_user
+        inner join public.recruiter_profiles admin_profile
+          on admin_profile.recruiter_id = admin_user.user_id
+          and admin_profile.organization_id = admin_user.organization_id
+        inner join public.role_permissions admin_perms
+          on admin_perms.recruiter_role_id = admin_profile.recruiter_role_id
+        where admin_user.organization_id = ${auth.organizationId}::uuid
+          and admin_user.role in ('RECRUITER', 'ADMIN', 'ORG_OWNER')
+          and admin_user.is_active = true
+          and admin_perms.permission in ('users.manage', 'organization.settings')
+        group by admin_user.user_id
+        having bool_or(admin_perms.permission = 'users.manage')
+           and bool_or(admin_perms.permission = 'organization.settings')
+        limit 1
+      ) as has_admin,
+      exists (
+        select 1
+        from public.recruiter_profiles current_profile
+        inner join public.role_permissions current_perms
+          on current_perms.recruiter_role_id = current_profile.recruiter_role_id
+        where current_profile.recruiter_id = ${auth.userId}::uuid
+          and current_profile.organization_id = ${auth.organizationId}::uuid
+          and current_perms.permission in ('users.manage', 'organization.settings')
+        group by current_profile.recruiter_id
+        having bool_or(current_perms.permission = 'users.manage')
+           and bool_or(current_perms.permission = 'organization.settings')
+        limit 1
+      ) as current_has_admin
+  `).catch(() => [] as { has_admin: boolean; current_has_admin: boolean }[])
+  const state = rows[0]
+
+  if (state?.has_admin || state?.current_has_admin) {
+    return
+  }
+
+  const roleId = await getDefaultAdminRoleId()
+
+  if (!roleId) {
+    return
+  }
+
+  await prisma.$executeRaw(Prisma.sql`
+    insert into public.recruiter_profiles (
+      recruiter_id,
+      company_name,
+      recruiter_role_id,
+      organization_id
+    )
+    select
+      u.user_id,
+      coalesce(o.organization_name, 'Organization'),
+      ${roleId}::smallint,
+      u.organization_id
+    from public.users u
+    left join public.organizations o
+      on o.organization_id = u.organization_id
+    where u.user_id = ${auth.userId}::uuid
+      and u.organization_id = ${auth.organizationId}::uuid
+      and u.role in ('RECRUITER', 'ADMIN', 'ORG_OWNER')
+      and u.is_active = true
+    on conflict (recruiter_id) do update
+    set
+      recruiter_role_id = excluded.recruiter_role_id,
+      company_name = coalesce(public.recruiter_profiles.company_name, excluded.company_name),
+      organization_id = excluded.organization_id
+  `).catch((error) => {
+    console.warn("First recruiter admin repair skipped", error)
+  })
 }
 
 async function getExistingUserByEmail(email: string) {
@@ -339,6 +449,8 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
       console.error("Failed to ensure recruiter profile for manage-team", error)
     }
   }
+
+  await ensureCurrentRecruiterAdminIfNoAdmin(auth)
 
   const hasRoleSystem =
     hasRecruiterProfiles && hasRecruiterRoles && hasRecruiterRolePool && hasRolePermissions && hasPermissions
@@ -396,6 +508,10 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
           rp.recruiter_role_id,
           coalesce(hrr.name, rrp.code) as recruiter_role_code,
           rrp.description as recruiter_role_description,
+          (
+            bool_or(perms.permission = 'users.manage')
+            and bool_or(perms.permission = 'organization.settings')
+          ) as is_admin,
           latest_invite.status as invite_status,
           latest_invite.expires_at::text as invite_expires_at,
           coalesce(
@@ -461,6 +577,7 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
           null::smallint as recruiter_role_id,
           null::text as recruiter_role_code,
           null::text as recruiter_role_description,
+          (u.role in ('ADMIN', 'ORG_OWNER')) as is_admin,
           null::text as invite_status,
           null::text as invite_expires_at,
           '[]'::jsonb as permission_details
@@ -526,6 +643,7 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
     organizationRoleCode: member.recruiter_role_code,
     organizationRoleDescription: member.recruiter_role_description,
     permissions: member.permission_details ?? [],
+    isAdmin: Boolean(member.is_admin),
     inviteStatus: getInviteStatus(member.invite_status, member.invite_expires_at),
     inviteExpiresAt: member.invite_expires_at,
     isCurrentUser: member.user_id === auth.userId,

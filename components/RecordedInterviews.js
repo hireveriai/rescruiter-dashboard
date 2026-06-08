@@ -4,13 +4,16 @@ import { useEffect, useMemo, useState } from "react"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl, hasAuthQuery } from "@/lib/client/auth-query"
+import { canAccessFeature } from "@/lib/client/permissions"
 import { openWarRoom } from "@/lib/client/war-room"
 import { CardSkeleton } from "@/components/system/skeletons"
 import RecordedInterviewCard from "@/components/interviews/RecordedInterviewCard"
 
 const DASHBOARD_INVALIDATED_EVENT = "hireveri:dashboard-data-invalidated"
 
-function RecordedInterviewsModal({ isOpen, onClose, interviews, organizationId }) {
+function RecordedInterviewsModal({ isOpen, onClose, interviews, organizationId, profile }) {
+  const canOpenWarRoom = canAccessFeature(profile, "warRoom")
+
   if (!isOpen) {
     return null
   }
@@ -49,6 +52,7 @@ function RecordedInterviewsModal({ isOpen, onClose, interviews, organizationId }
                   key={item.recordingId}
                   item={item}
                   compact
+                  canOpenWarRoom={canOpenWarRoom}
                   onOpenWarRoom={() => openWarRoom(organizationId)}
                 />
               ))
@@ -60,13 +64,14 @@ function RecordedInterviewsModal({ isOpen, onClose, interviews, organizationId }
   )
 }
 
-export default function RecordedInterviews({ initialRecordedInterviews, organizationId = "", isLoading = false }) {
+export default function RecordedInterviews({ initialRecordedInterviews, organizationId = "", profile = null, isLoading = false }) {
   const searchParams = useAuthSearchParams()
   const [interviews, setInterviews] = useState(() => initialRecordedInterviews ?? [])
   const [isFetching, setIsFetching] = useState(initialRecordedInterviews === undefined)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const displayInterviews = interviews
   const isBusy = isLoading || isFetching
+  const canOpenWarRoom = canAccessFeature(profile, "warRoom")
 
   useEffect(() => {
     if (initialRecordedInterviews !== undefined) {
@@ -221,6 +226,7 @@ export default function RecordedInterviews({ initialRecordedInterviews, organiza
                 key={item.recordingId}
                 item={item}
                 organizationId={organizationId}
+                canOpenWarRoom={canOpenWarRoom}
                 onOpenWarRoom={() => openWarRoom(organizationId)}
               />
             ))
@@ -234,6 +240,7 @@ export default function RecordedInterviews({ initialRecordedInterviews, organiza
         onClose={() => setIsModalOpen(false)}
         interviews={sortedInterviews}
         organizationId={organizationId}
+        profile={profile}
       />
     </>
   )

@@ -7,6 +7,7 @@ import Navbar from "../components/Navbar";
 import DashboardIntelligenceBanner from "../components/DashboardIntelligenceBanner";
 import FreeTrialUsage from "../components/FreeTrialUsage";
 import RecruiterDashboardBootstrap from "../components/RecruiterDashboardBootstrap";
+import { canAccessFeature } from "../lib/client/permissions";
 import { buildAuthUrl } from "../lib/client/auth-query";
 import { useAuthSearchParams } from "../lib/client/use-auth-search-params";
 
@@ -139,6 +140,13 @@ function DashboardContent({ profile, overview, isLoading }) {
   const [trialCredits, setTrialCredits] = useState(overview?.trialCredits ?? null);
   const activeInterviewCount = fullOverview?.pendingInterviewsTotal ?? fullOverview?.pendingInterviews?.length ?? 0;
   const candidateCount = fullOverview?.candidates?.length ?? 0;
+  const canCreateJob = canAccessFeature(displayProfile, "createJob");
+  const canSendInterview = canAccessFeature(displayProfile, "sendInterview");
+  const canViewCandidates = canAccessFeature(displayProfile, "candidates");
+  const canViewInterviews = canAccessFeature(displayProfile, "interviews");
+  const canViewReports = canAccessFeature(displayProfile, "reports");
+  const canUseAiScreening = canAccessFeature(displayProfile, "aiScreening");
+  const canViewWarRoom = canAccessFeature(displayProfile, "warRoom");
   const fraudAlerts = (overview?.alerts ?? []).filter((alert) => {
     const text = `${alert?.tone ?? ""} ${alert?.type ?? ""} ${alert?.title ?? ""} ${alert?.message ?? ""}`.toLowerCase();
     return text.includes("danger") || text.includes("fraud") || text.includes("flag") || text.includes("suspicion") || text.includes("anomaly");
@@ -197,6 +205,7 @@ function DashboardContent({ profile, overview, isLoading }) {
     <div className="relative min-h-screen bg-[#0b1220] text-white">
       <Navbar onSendInterviewClick={() => setIsModalOpen(true)} initialProfile={displayProfile} initialAlerts={overview?.alerts} />
       <CognitiveDock
+        profile={displayProfile}
         activeInterviewCount={activeInterviewCount}
         candidateCount={candidateCount}
         flaggedCount={fraudAlerts.length}
@@ -218,35 +227,46 @@ function DashboardContent({ profile, overview, isLoading }) {
 
           <DashboardIntelligenceBanner
             overview={fullOverview}
-            onCreateJob={() => window.dispatchEvent(new CustomEvent("hireveri:open-create-job"))}
-            onSendInterview={() => setIsModalOpen(true)}
+            profile={displayProfile}
+            onCreateJob={canCreateJob ? () => window.dispatchEvent(new CustomEvent("hireveri:open-create-job")) : undefined}
+            onSendInterview={canSendInterview ? () => setIsModalOpen(true) : undefined}
           />
           <FreeTrialUsage credits={trialCredits} />
 
           <Suspense fallback={null}>
             <Pipeline initialPipeline={fullOverview?.pipeline} isLoading={false} />
           </Suspense>
+          {canViewInterviews ? (
           <Suspense fallback={null}>
             <PendingInterviews
               initialPendingInterviews={fullOverview?.pendingInterviews}
               initialPendingTotal={fullOverview?.pendingInterviewsTotal}
+              profile={displayProfile}
               isLoading={false}
             />
           </Suspense>
+          ) : null}
+          {canViewInterviews || canViewReports ? (
           <Suspense fallback={null}>
             <RecordedInterviews
               initialRecordedInterviews={fullOverview?.recordedInterviews}
               organizationId={displayProfile?.organizationId}
+              profile={displayProfile}
               isLoading={false}
             />
           </Suspense>
+          ) : null}
+          {canViewCandidates ? (
           <Suspense fallback={null}>
             <CandidateList initialCandidates={fullOverview?.candidates} isLoading={false} />
           </Suspense>
+          ) : null}
+          {canUseAiScreening || canViewReports ? (
           <Suspense fallback={null}>
             <VerisSummary initialSummaries={fullOverview?.veris} isLoading={false} />
           </Suspense>
-          <WarRoomButton organizationId={displayProfile?.organizationId} />
+          ) : null}
+          {canViewWarRoom ? <WarRoomButton organizationId={displayProfile?.organizationId} /> : null}
         </div>
 
         <div className="min-w-0">
@@ -254,7 +274,7 @@ function DashboardContent({ profile, overview, isLoading }) {
         </div>
       </div>
 
-      {isModalOpen ? <SendInterviewModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} initialTrialCredits={trialCredits} /> : null}
+      {isModalOpen && canSendInterview ? <SendInterviewModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} initialTrialCredits={trialCredits} /> : null}
     </div>
   );
 }

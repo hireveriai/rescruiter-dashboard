@@ -20,18 +20,20 @@ function Stat({ label, value, depleted }) {
 
 export default function FreeTrialUsage({ credits }) {
   const [upgradeOpen, setUpgradeOpen] = useState(false)
+  const hasCreditSource = credits?.source === "subscription" || credits?.source === "trial"
   const isSubscription = credits?.source === "subscription"
   const hasCreditSnapshot =
+    hasCreditSource &&
     Number.isFinite(Number(credits?.interviewCreditsRemaining)) &&
     Number.isFinite(Number(credits?.screeningCreditsRemaining))
   const interviewCredits = hasCreditSnapshot ? Math.max(0, Number(credits.interviewCreditsRemaining)) : null
   const screeningCredits = hasCreditSnapshot ? Math.max(0, Number(credits.screeningCreditsRemaining)) : null
   const hasReachedLimit = !isSubscription && hasCreditSnapshot && interviewCredits === 0 && screeningCredits === 0
-  const eyebrow = isSubscription ? "Subscription Credits" : "Free Trial Remaining"
-  const title = isSubscription ? "Subscription Credits" : "Free Trial Usage"
-  const syncLabel = isSubscription ? "Syncing subscription usage..." : "Syncing trial usage..."
-  const interviewLabel = isSubscription ? "AI Interview Credits" : "AI Interviews Left"
-  const screeningLabel = isSubscription ? "VERIS Screening Credits" : "AI Screenings Left"
+  const eyebrow = !hasCreditSource ? "Workspace Credits" : isSubscription ? "Subscription Credits" : "Free Trial Remaining"
+  const title = !hasCreditSource ? "Loading Credits" : isSubscription ? "Subscription Credits" : "Free Trial Usage"
+  const syncLabel = !hasCreditSource ? "Syncing workspace credits..." : isSubscription ? "Syncing subscription usage..." : "Syncing trial usage..."
+  const interviewLabel = !hasCreditSource || isSubscription ? "AI Interview Credits" : "AI Interviews Left"
+  const screeningLabel = !hasCreditSource || isSubscription ? "VERIS Screening Credits" : "AI Screenings Left"
 
   return (
     <section className="mb-5 rounded-[28px] border border-slate-800 bg-[#0f172a] p-5 shadow-[0_16px_54px_rgba(2,6,23,0.24)]">

@@ -23,7 +23,7 @@ function getOrgRoleTone(code) {
 
   const normalized = code.toLowerCase();
 
-  if (normalized.includes("founder") || normalized.includes("super")) {
+  if (normalized.includes("admin") || normalized.includes("founder") || normalized.includes("super")) {
     return "bg-violet-500/10 text-violet-200 border-violet-400/20";
   }
 
@@ -32,6 +32,14 @@ function getOrgRoleTone(code) {
   }
 
   return "bg-emerald-500/10 text-emerald-200 border-emerald-400/20";
+}
+
+function getMemberRoleLabel(member) {
+  if (member?.isAdmin) {
+    return "Admin";
+  }
+
+  return member?.organizationRoleCode || "Unassigned";
 }
 
 function getRoleDisplayName(role) {
@@ -650,8 +658,8 @@ export default function ManageTeamPage() {
                   </div>
 
                   <div>
-                    <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] ${getOrgRoleTone(member.organizationRoleCode)}`}>
-                      {member.organizationRoleCode || "Unassigned"}
+                    <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] ${getOrgRoleTone(member.isAdmin ? "Admin" : member.organizationRoleCode)}`}>
+                      {getMemberRoleLabel(member)}
                     </span>
                     {member.organizationRoleDescription ? (
                       <p className="mt-2 text-sm text-slate-400">{member.organizationRoleDescription}</p>

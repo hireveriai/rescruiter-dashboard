@@ -16,6 +16,7 @@ type RecruiterProfileRow = {
   profile_company_name: string | null
   recruiter_role_id: number | null
   recruiter_profile_exists: boolean
+  permissions: string[] | null
 }
 
 export type RecruiterProfile = {
@@ -27,6 +28,8 @@ export type RecruiterProfile = {
   userId: string
   organizationId: string
   recruiterRoleId: number | null
+  permissions: string[]
+  isAdmin: boolean
   recruiterProfileExists: boolean
   sessionCookieMatched: boolean
   sessionValidatedVia: "auth_session" | "identity_cookie" | "jwt"
@@ -65,24 +68,36 @@ export async function getRecruiterProfile(auth: RecruiterRequestContext): Promis
   let profileCompanyName: string | null = null
   let recruiterRoleId: number | null = null
   let recruiterProfileExists = false
+  let permissions: string[] = []
 
-  void prisma.$queryRaw(Prisma.sql`
-    select public.fn_ensure_default_recruiter_profile(
-      ${auth.userId}::uuid,
-      ${auth.organizationId}::uuid
-    )
-  `).catch((healingError) => {
+  try {
+    await prisma.$queryRaw(Prisma.sql`
+      select public.fn_ensure_default_recruiter_profile(
+        ${auth.userId}::uuid,
+        ${auth.organizationId}::uuid
+      )
+    `)
+  } catch (healingError) {
     console.warn("Recruiter profile auto-heal skipped during /api/me bootstrap", healingError)
-  })
+  }
 
   try {
     const profileRows = await prisma.$queryRaw<RecruiterProfileRow[]>(Prisma.sql`
       select
         rp.company_name as profile_company_name,
         rp.recruiter_role_id,
-        (rp.recruiter_id is not null) as recruiter_profile_exists
+        (rp.recruiter_id is not null) as recruiter_profile_exists,
+        coalesce(
+          array_agg(distinct role_permissions.permission)
+            filter (where role_permissions.permission is not null),
+          array[]::text[]
+        ) as permissions
       from public.recruiter_profiles rp
+      left join public.role_permissions role_permissions
+        on role_permissions.recruiter_role_id = rp.recruiter_role_id
       where rp.recruiter_id::text = ${auth.userId}
+        and rp.organization_id::text = ${auth.organizationId}
+      group by rp.company_name, rp.recruiter_role_id, rp.recruiter_id
       limit 1
     `)
 
@@ -92,10 +107,13 @@ export async function getRecruiterProfile(auth: RecruiterRequestContext): Promis
       profileCompanyName = profile.profile_company_name
       recruiterRoleId = profile.recruiter_role_id
       recruiterProfileExists = Boolean(profile.recruiter_profile_exists)
+      permissions = profile.permissions ?? []
     }
   } catch (profileError) {
     console.warn("Recruiter profile lookup skipped during /api/me bootstrap", profileError)
   }
+
+  const uniquePermissions = [...new Set(permissions.filter(Boolean))]
 
   return {
     name: recruiter.recruiter_name ?? recruiter.recruiter_email,
@@ -106,6 +124,8 @@ export async function getRecruiterProfile(auth: RecruiterRequestContext): Promis
     userId: auth.userId,
     organizationId: auth.organizationId,
     recruiterRoleId,
+    permissions: uniquePermissions,
+    isAdmin: uniquePermissions.includes("users.manage"),
     recruiterProfileExists,
     sessionCookieMatched: auth.sessionCookieMatched,
     sessionValidatedVia: auth.sessionValidatedVia,

@@ -22,6 +22,7 @@ function withoutVolatileOverviewFields(overview) {
   return {
     ...overview,
     veris: undefined,
+    trialCredits: undefined,
   }
 }
 

@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { buildAuthUrl, hasAuthQuery } from "@/lib/client/auth-query";
 import { ACTION_FEEDBACK_EVENT } from "@/lib/client/action-feedback";
 import { logoutRecruiter } from "@/lib/client/logout";
+import { canAccessFeature } from "@/lib/client/permissions";
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params";
 import { useAmbientLoading } from "@/components/system/loading";
 
@@ -17,13 +18,13 @@ const CreateJobModal = dynamic(() => import("./CreateJobModal"), {
 });
 
 const navItems = [
-  { href: "/", label: "Dashboard", disabled: false },
-  { href: "/ai-screening", label: "VERIS Screening", disabled: false },
-  { href: "/jobs", label: "Jobs", disabled: false },
-  { href: "/candidates", label: "Candidates", disabled: false },
-  { href: "/interviews", label: "Interviews", disabled: false },
-  { href: "/reports", label: "Reports", disabled: false },
-  { href: "/billing", label: "Billing", disabled: false },
+  { href: "/", label: "Dashboard", feature: "dashboard" },
+  { href: "/ai-screening", label: "VERIS Screening", feature: "aiScreening" },
+  { href: "/jobs", label: "Jobs", feature: "jobs" },
+  { href: "/candidates", label: "Candidates", feature: "candidates" },
+  { href: "/interviews", label: "Interviews", feature: "interviews" },
+  { href: "/reports", label: "Reports", feature: "reports" },
+  { href: "/billing", label: "Billing", feature: "billing" },
 ];
 
 const navLoadingMessages = {
@@ -180,6 +181,14 @@ export default function Navbar({ onSendInterviewClick: _onSendInterviewClick, in
   const [feedback, setFeedback] = useState(null);
   const [profile, setProfile] = useState(initialProfile);
   const displayProfile = initialProfile?.name ? initialProfile : profile;
+  const visibleNavItems = useMemo(
+    () => navItems.filter((item) => canAccessFeature(displayProfile, item.feature)),
+    [displayProfile]
+  );
+  const canViewAlerts = canAccessFeature(displayProfile, "alerts");
+  const canManageTeam = canAccessFeature(displayProfile, "manageTeam");
+  const canViewBilling = canAccessFeature(displayProfile, "billing");
+  const canManageSettings = canAccessFeature(displayProfile, "settings");
   const alertReadStorageKey = useMemo(() => getAlertReadStorageKey(displayProfile), [displayProfile]);
 
   useEffect(() => {
@@ -512,7 +521,7 @@ export default function Navbar({ onSendInterviewClick: _onSendInterviewClick, in
             </Link>
 
             <nav className="hidden min-w-0 flex-1 flex-nowrap items-center justify-center gap-0.5 overflow-visible md:flex xl:gap-1">
-              {navItems.map((item) => {
+              {visibleNavItems.map((item) => {
                 const active = isActivePath(pathname, item.href);
 
                 return (
@@ -540,6 +549,7 @@ export default function Navbar({ onSendInterviewClick: _onSendInterviewClick, in
                 );
               })}
 
+              {canViewAlerts ? (
               <div className="relative shrink-0" ref={alertsRef}>
                 <button
                   type="button"
@@ -610,6 +620,7 @@ export default function Navbar({ onSendInterviewClick: _onSendInterviewClick, in
                   </div>
                 ) : null}
               </div>
+              ) : null}
             </nav>
           </div>
 
@@ -637,25 +648,33 @@ export default function Navbar({ onSendInterviewClick: _onSendInterviewClick, in
                   </div>
 
                   <div className="mt-2 grid gap-1">
+                    {canManageTeam ? (
                     <Link href={buildAuthUrl("/manage-team", searchParams)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-200 transition hover:bg-slate-800/70 hover:text-white" onClick={() => { setProfileOpen(false); handleNavigationClick("/manage-team"); }}>
                       <TeamIcon />
                       <span>Manage Team</span>
                     </Link>
+                    ) : null}
 
+                    {canViewBilling ? (
                     <Link href={buildAuthUrl("/billing", searchParams)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-200 transition hover:bg-slate-800/70 hover:text-white" onClick={() => { setProfileOpen(false); handleNavigationClick("/billing"); }}>
                       <BillingIcon />
                       <span>Billing & Orders</span>
                     </Link>
+                    ) : null}
 
+                    {canViewBilling ? (
                     <Link href={buildAuthUrl("/billing#usage", searchParams)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-200 transition hover:bg-slate-800/70 hover:text-white" onClick={() => { setProfileOpen(false); handleNavigationClick("/billing"); }}>
                       <CreditsIcon />
                       <span>Usage & Credits</span>
                     </Link>
+                    ) : null}
 
+                    {canManageSettings ? (
                     <Link href={buildAuthUrl("/settings", searchParams)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-200 transition hover:bg-slate-800/70 hover:text-white" onClick={() => { setProfileOpen(false); handleNavigationClick("/settings"); }}>
                       <CogIcon />
                       <span>Settings</span>
                     </Link>
+                    ) : null}
 
                     <Link href={buildAuthUrl("/contact-us", searchParams)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-200 transition hover:bg-slate-800/70 hover:text-white" onClick={() => { setProfileOpen(false); handleNavigationClick("/contact-us"); }}>
                       <MailIcon />

@@ -8,7 +8,8 @@ import WarRoomAction from "./WarRoomAction"
 type RecordedInterviewCardProps = {
   item: Record<string, any>
   organizationId?: string
-  onOpenWarRoom: () => void
+  onOpenWarRoom?: () => void
+  canOpenWarRoom?: boolean
   compact?: boolean
 }
 
@@ -35,7 +36,7 @@ function getTranscriptPreview(item: Record<string, any>) {
   return preview
 }
 
-export default function RecordedInterviewCard({ item, onOpenWarRoom, compact = false }: RecordedInterviewCardProps) {
+export default function RecordedInterviewCard({ item, onOpenWarRoom, canOpenWarRoom = true, compact = false }: RecordedInterviewCardProps) {
   const recordingUrl = getRecordingUrl(item)
   const hasRecording = Boolean(recordingUrl) && item?.hasRecordingFile !== false
 
@@ -100,7 +101,9 @@ export default function RecordedInterviewCard({ item, onOpenWarRoom, compact = f
 
         <div className="mt-4 grid gap-2">
           <InterviewReplayAction href={hasRecording ? recordingUrl : ""} candidateName={item.candidateName} compact={compact} />
-          <WarRoomAction onOpen={onOpenWarRoom} candidateName={item.candidateName} compact={compact} />
+          {canOpenWarRoom && onOpenWarRoom ? (
+            <WarRoomAction onOpen={onOpenWarRoom} candidateName={item.candidateName} compact={compact} />
+          ) : null}
         </div>
       </div>
     </article>

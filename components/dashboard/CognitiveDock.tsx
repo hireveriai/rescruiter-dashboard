@@ -22,6 +22,7 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { buildAuthUrl } from "@/lib/client/auth-query";
+import { canAccessFeature } from "@/lib/client/permissions";
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params";
 import DockItem from "./DockItem";
 import DockSection from "./DockSection";
@@ -40,6 +41,7 @@ type CognitiveDockProps = {
   flaggedCount?: number;
   alerts?: DashboardAlert[];
   overview?: Record<string, unknown> | null;
+  profile?: Record<string, unknown> | null;
   onSendInterviewClick?: () => void;
 };
 
@@ -110,6 +112,10 @@ function mergeWorkspaceData(current: WorkspaceData, next: WorkspacePayload): Wor
   };
 }
 
+function present<T>(value: T | null | undefined | false): value is T {
+  return Boolean(value);
+}
+
 async function fetchJsonWithTimeout(url: string, timeoutMs = 4500) {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
@@ -132,6 +138,7 @@ export default function CognitiveDock({
   flaggedCount = 0,
   alerts = [],
   overview = null,
+  profile = null,
   onSendInterviewClick,
 }: CognitiveDockProps) {
   const pathname = usePathname();
@@ -145,6 +152,13 @@ export default function CognitiveDock({
   const href = useCallback((path: string) => buildAuthUrl(path, searchParams), [searchParams]);
   const hasFlaggedCandidates = flaggedCount > 0;
   const hasLiveWorkspaceData = hasWorkspaceData(workspace);
+  const canCreateJob = canAccessFeature(profile, "createJob");
+  const canSendInterview = canAccessFeature(profile, "sendInterview");
+  const canViewCandidates = canAccessFeature(profile, "candidates");
+  const canViewInterviews = canAccessFeature(profile, "interviews");
+  const canViewReports = canAccessFeature(profile, "reports");
+  const canViewAlerts = canAccessFeature(profile, "alerts");
+  const canUseCopilot = canAccessFeature(profile, "copilot");
 
   const openCreateJob = useCallback(() => {
     window.dispatchEvent(new CustomEvent("hireveri:open-create-job"));
@@ -264,30 +278,30 @@ export default function CognitiveDock({
 
   const searchItems = useMemo<SearchItem[]>(() => {
     const items: SearchItem[] = [
-      {
+      ...(canCreateJob ? [{
         id: "action-create-job",
         type: "Action",
         title: "Create Job",
         meta: "Launch role configuration",
         action: openCreateJob,
         icon: SquarePlus,
-      },
-      {
+      } as SearchItem] : []),
+      ...(canSendInterview ? [{
         id: "action-send-interview",
         type: "Action",
         title: "Send Interview Link",
         meta: "Open secure candidate invite",
         action: openSendInterview,
         icon: Link2,
-      },
-      {
+      } as SearchItem] : []),
+      ...(canViewReports ? [{
         id: "report-overview",
         type: "Report",
         title: "Reports Snapshot",
         meta: "Open forensic analytics and decision trends",
         href: href("/reports"),
         icon: BarChart3,
-      },
+      } as SearchItem] : []),
     ];
 
     workspace.jobs.slice(0, 40).forEach((job) => {
@@ -317,7 +331,7 @@ export default function CognitiveDock({
         meta: [readText(candidate.jobTitle, "Unassigned role"), readText(candidate.status, "Pipeline"), candidate.decision ? `Decision: ${candidate.decision}` : null]
           .filter(Boolean)
           .join(" - "),
-        href: href("/candidates"),
+        href: canViewCandidates ? href("/candidates") : undefined,
         icon: Users,
         score,
       });
@@ -334,7 +348,7 @@ export default function CognitiveDock({
         meta: [readText(interview.jobTitle, "Interview"), readText(interview.status, "Status pending"), interview.decision ? `Decision: ${interview.decision}` : null]
           .filter(Boolean)
           .join(" - "),
-        href: href("/interviews"),
+        href: canViewInterviews ? href("/interviews") : undefined,
         icon: ClipboardList,
         score,
       });
@@ -348,7 +362,7 @@ export default function CognitiveDock({
     return items
       .filter((item) => normalizeSearch(`${item.type} ${item.title} ${item.meta}`).includes(normalizedQuery))
       .slice(0, 14);
-  }, [workspace, query, href, openCreateJob, openSendInterview]);
+  }, [workspace, query, href, openCreateJob, openSendInterview, canCreateJob, canSendInterview, canViewReports, canViewCandidates, canViewInterviews]);
 
   const copilot = useMemo(() => {
     const interviews = workspace.interviews;
@@ -417,40 +431,40 @@ export default function CognitiveDock({
     {
       label: "Quick Actions",
       items: [
-        { label: "Create Job", icon: SquarePlus, onClick: openCreateJob, active: false },
-        { label: "Send Interview Link", icon: Link2, onClick: openSendInterview, active: false },
-      ],
+        canCreateJob ? { label: "Create Job", icon: SquarePlus, onClick: openCreateJob, active: false } : null,
+        canSendInterview ? { label: "Send Interview Link", icon: Link2, onClick: openSendInterview, active: false } : null,
+      ].filter(present),
     },
     {
       label: "Operations",
       items: [
-        {
+        canViewInterviews ? {
           label: "Interview Queue",
           icon: ClipboardList,
           href: href("/interviews"),
           badge: activeInterviewCount,
           active: pathname.startsWith("/interviews"),
-        },
-        { label: "Candidates Queue", icon: Users, href: href("/candidates"), active: pathname.startsWith("/candidates") },
-        {
+        } : null,
+        canViewCandidates ? { label: "Candidates Queue", icon: Users, href: href("/candidates"), active: pathname.startsWith("/candidates") } : null,
+        canViewAlerts ? {
           label: "Fraud Alerts",
           icon: ShieldAlert,
           onClick: () => setPanel("alerts"),
           badge: flaggedCount,
           alert: hasFlaggedCandidates,
           active: panel === "alerts",
-        },
-        { label: "Reports Snapshot", icon: BarChart3, href: href("/reports"), active: pathname.startsWith("/reports") },
+        } : null,
+        canViewReports ? { label: "Reports Snapshot", icon: BarChart3, href: href("/reports"), active: pathname.startsWith("/reports") } : null,
         { label: "Universal Search", icon: Search, onClick: () => setPanel("search"), active: panel === "search" },
-      ],
+      ].filter(present),
     },
     {
       label: "Intelligence",
       items: [
-        { label: "VERIS Copilot", icon: BrainCircuit, onClick: () => setPanel("copilot"), active: panel === "copilot", featured: true },
-      ],
+        canUseCopilot ? { label: "VERIS Copilot", icon: BrainCircuit, onClick: () => setPanel("copilot"), active: panel === "copilot", featured: true } : null,
+      ].filter(present),
     },
-  ];
+  ].filter((section) => section.items.length > 0);
 
   return (
     <>
@@ -591,6 +605,10 @@ export default function CognitiveDock({
                             );
                           }
 
+                          if (!item.href) {
+                            return null;
+                          }
+
                           return (
                             <a
                               key={item.id}
@@ -664,15 +682,21 @@ export default function CognitiveDock({
                     </div>
 
                     <div className="grid gap-2 sm:grid-cols-3">
+                      {canSendInterview ? (
                       <button type="button" onClick={openSendInterview} className="rounded-2xl border border-cyan-300/15 bg-cyan-400/10 px-4 py-3 text-left text-sm font-semibold text-cyan-50 transition hover:border-cyan-300/30 hover:bg-cyan-400/15">
                         Send next invite
                       </button>
+                      ) : null}
+                      {canViewCandidates ? (
                       <a href={href("/candidates")} className="rounded-2xl border border-white/5 bg-white/[0.03] px-4 py-3 text-left text-sm font-semibold text-slate-200 transition hover:border-cyan-300/20 hover:bg-cyan-400/10">
                         Review queue
                       </a>
+                      ) : null}
+                      {canViewReports ? (
                       <a href={href("/reports")} className="rounded-2xl border border-white/5 bg-white/[0.03] px-4 py-3 text-left text-sm font-semibold text-slate-200 transition hover:border-cyan-300/20 hover:bg-cyan-400/10">
                         Open reports
                       </a>
+                      ) : null}
                     </div>
                   </div>
                 ) : null}

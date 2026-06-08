@@ -10,6 +10,7 @@ import {
   formatDateTime,
   toOrgDateTimeInputValue,
 } from "@/lib/client/date-format"
+import { canAccessFeature } from "@/lib/client/permissions"
 import { useOrgTimezone } from "@/components/OrgTimezoneProvider"
 import { TableSkeleton } from "@/components/system/skeletons"
 
@@ -271,14 +272,19 @@ function openDashboardAction(action) {
   window.dispatchEvent(new CustomEvent(action))
 }
 
-function GuidedInterviewEmptyState({ compact = false }) {
+function GuidedInterviewEmptyState({ compact = false, profile = null }) {
+  const canCreateJob = canAccessFeature(profile, "createJob")
+  const canSendInterview = canAccessFeature(profile, "sendInterview")
+
   return (
     <div className={`rounded-2xl border border-cyan-300/15 bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.12),transparent_34%),linear-gradient(135deg,rgba(15,23,42,0.82),rgba(2,6,23,0.72))] text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] ${compact ? "px-4 py-6" : "px-6 py-8"}`}>
       <p className="text-base font-semibold text-white">Start by creating a job and inviting candidates.</p>
       <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-400">
         Create a job and begin candidate evaluation.
       </p>
+      {canCreateJob || canSendInterview ? (
       <div className="mt-4 flex flex-wrap justify-center gap-3">
+        {canCreateJob ? (
         <button
           type="button"
           onClick={() => openDashboardAction("hireveri:open-create-job")}
@@ -286,6 +292,8 @@ function GuidedInterviewEmptyState({ compact = false }) {
         >
           Create Job
         </button>
+        ) : null}
+        {canSendInterview ? (
         <button
           type="button"
           onClick={() => openDashboardAction("hireveri:open-send-interview")}
@@ -293,12 +301,19 @@ function GuidedInterviewEmptyState({ compact = false }) {
         >
           Send Interview Link
         </button>
+        ) : null}
       </div>
+      ) : null}
     </div>
   )
 }
 
-function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, onEdit, onDelete, onRetryPreparation, onRetryEmail, onRecoveryAction, onViewRecoveryAudit, nowTick, copiedLink, busyInviteId }) {
+function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, onEdit, onDelete, onRetryPreparation, onRetryEmail, onRecoveryAction, onViewRecoveryAudit, nowTick, copiedLink, busyInviteId, profile }) {
+  const canEditInterview = canAccessFeature(profile, "editInterview")
+  const canDeleteInterview = canAccessFeature(profile, "deleteInterview")
+  const canRetryInterview = canAccessFeature(profile, "retryInterview")
+  const canViewWarRoom = canAccessFeature(profile, "warRoom")
+
   if (!isOpen) {
     return null
   }
@@ -338,7 +353,7 @@ function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, onEdit, o
 
           <div className="mt-4 space-y-3">
             {interviews.length === 0 ? (
-              <GuidedInterviewEmptyState />
+              <GuidedInterviewEmptyState profile={profile} />
             ) : (
               interviews.map((item) => (
                 <div
@@ -357,35 +372,43 @@ function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, onEdit, o
                   <div className="whitespace-nowrap text-slate-400">{formatDateTime(item.createdAt)}</div>
                   <div className="text-amber-300">{getExpiryLabel(item.expiresAt, nowTick)}</div>
                   <div className="flex flex-nowrap items-center gap-2 whitespace-nowrap">
-                    {String(item.status).toUpperCase() === "PREPARATION_FAILED" ? (
+                    {canRetryInterview && String(item.status).toUpperCase() === "PREPARATION_FAILED" ? (
                       <button type="button" disabled={busyInviteId === item.inviteId} onClick={() => onRetryPreparation(item)} className="shrink-0 rounded-full border border-rose-400/30 bg-rose-500/10 px-3 py-1.5 text-rose-100 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60">
                         {busyInviteId === item.inviteId ? "Retrying..." : "Retry Prep"}
                       </button>
                     ) : null}
-                    {String(item.status).toUpperCase() === "INTERRUPTED" ? (
+                    {String(item.status).toUpperCase() === "INTERRUPTED" && (canRetryInterview || canViewWarRoom) ? (
                       <>
+                        {canRetryInterview ? (
                         <button type="button" disabled={busyInviteId === item.inviteId || !item.recovery?.available} onClick={() => onRecoveryAction(item, "approve")} className="shrink-0 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3 py-1.5 text-emerald-100 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50">
                           {busyInviteId === item.inviteId ? "Issuing..." : "Send Recovery Link"}
                         </button>
+                        ) : null}
+                        {canViewWarRoom ? (
                         <button type="button" onClick={() => onViewRecoveryAudit(item)} className="shrink-0 rounded-full border border-fuchsia-400/30 bg-fuchsia-500/10 px-3 py-1.5 text-fuchsia-100 transition hover:bg-fuchsia-500/20">
                           Forensic Logs
                         </button>
+                        ) : null}
                       </>
                     ) : null}
                     <button type="button" disabled={!item.link} onClick={() => onCopy(item.link)} className="shrink-0 rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1.5 text-cyan-100 transition hover:bg-cyan-400/20 disabled:cursor-not-allowed disabled:opacity-50">
                       {copiedLink === item.link ? "Copied" : "Copy"}
                     </button>
-                    {String(item.status).toUpperCase() === "EMAIL_FAILED" ? (
+                    {canRetryInterview && String(item.status).toUpperCase() === "EMAIL_FAILED" ? (
                       <button type="button" disabled={busyInviteId === item.inviteId} onClick={() => onRetryEmail(item)} className="shrink-0 rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1.5 text-amber-100 transition hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-60">
                         {busyInviteId === item.inviteId ? "Sending..." : "Retry Email"}
                       </button>
                     ) : null}
+                    {canEditInterview ? (
                     <button type="button" disabled={String(item.status).toUpperCase() === "PREPARATION_FAILED"} onClick={() => onEdit(item)} className="shrink-0 rounded-full border border-indigo-400/30 bg-indigo-400/10 px-3 py-1.5 text-indigo-100 transition hover:bg-indigo-400/20 disabled:cursor-not-allowed disabled:opacity-50">
                       Edit
                     </button>
+                    ) : null}
+                    {canDeleteInterview ? (
                     <button type="button" disabled={busyInviteId === item.inviteId} onClick={() => onDelete(item)} className="shrink-0 rounded-full border border-rose-400/30 bg-rose-500/10 px-3 py-1.5 text-rose-100 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60">
                       {busyInviteId === item.inviteId ? "Deleting..." : "Delete"}
                     </button>
+                    ) : null}
                   </div>
                 </div>
               ))
@@ -397,7 +420,7 @@ function PendingInterviewsModal({ isOpen, onClose, interviews, onCopy, onEdit, o
   )
 }
 
-export default function PendingInterviews({ initialPendingInterviews, initialPendingTotal, isLoading = false }) {
+export default function PendingInterviews({ initialPendingInterviews, initialPendingTotal, profile = null, isLoading = false }) {
   const searchParams = useAuthSearchParams()
   const { timezone } = useOrgTimezone()
   const [interviews, setInterviews] = useState(() => initialPendingInterviews ?? [])
@@ -414,6 +437,10 @@ export default function PendingInterviews({ initialPendingInterviews, initialPen
   const [nowTick, setNowTick] = useState(() => Date.now())
   const [copiedLink, setCopiedLink] = useState("")
   const hasInitial = initialPendingInterviews !== undefined
+  const canEditInterview = canAccessFeature(profile, "editInterview")
+  const canDeleteInterview = canAccessFeature(profile, "deleteInterview")
+  const canRetryInterview = canAccessFeature(profile, "retryInterview")
+  const canViewWarRoom = canAccessFeature(profile, "warRoom")
 
   useEffect(() => {
     if (!hasInitial) {
@@ -838,7 +865,7 @@ export default function PendingInterviews({ initialPendingInterviews, initialPen
                 {previewInterviews.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="p-4">
-                    <GuidedInterviewEmptyState compact />
+                    <GuidedInterviewEmptyState compact profile={profile} />
                   </td>
                 </tr>
               ) : (
@@ -856,7 +883,7 @@ export default function PendingInterviews({ initialPendingInterviews, initialPen
                     <td className="p-4 text-yellow-400">{getExpiryLabel(item.expiresAt, nowTick)}</td>
                     <td className="p-4">
                       <div className="flex flex-nowrap items-center gap-3 whitespace-nowrap text-xs sm:text-sm">
-                        {String(item.status).toUpperCase() === "PREPARATION_FAILED" ? (
+                        {canRetryInterview && String(item.status).toUpperCase() === "PREPARATION_FAILED" ? (
                           <button className="shrink-0 text-rose-300" disabled={busyInviteId === item.inviteId} onClick={() => handleRetryPreparation(item)}>
                             {busyInviteId === item.inviteId ? "Retrying..." : "Retry Prep"}
                           </button>
@@ -864,27 +891,35 @@ export default function PendingInterviews({ initialPendingInterviews, initialPen
                         <button className="shrink-0 text-blue-400 disabled:text-slate-600" disabled={!item.link} onClick={() => handleCopy(item.link)}>
                           {copiedLink === item.link ? "Copied" : "Copy"}
                         </button>
-                        {String(item.status).toUpperCase() === "EMAIL_FAILED" ? (
+                        {canRetryInterview && String(item.status).toUpperCase() === "EMAIL_FAILED" ? (
                           <button className="shrink-0 text-amber-300" disabled={busyInviteId === item.inviteId} onClick={() => handleRetryEmail(item)}>
                             {busyInviteId === item.inviteId ? "Sending..." : "Retry Email"}
                           </button>
                         ) : null}
-                        {String(item.status).toUpperCase() === "INTERRUPTED" ? (
+                        {String(item.status).toUpperCase() === "INTERRUPTED" && (canRetryInterview || canViewWarRoom) ? (
                           <>
+                            {canRetryInterview ? (
                             <button className="shrink-0 text-emerald-300 disabled:text-slate-600" disabled={busyInviteId === item.inviteId || !item.recovery?.available} onClick={() => handleRecoveryAction(item, "approve")}>
                               {busyInviteId === item.inviteId ? "Issuing..." : "Send Recovery Link"}
                             </button>
+                            ) : null}
+                            {canViewWarRoom ? (
                             <button className="shrink-0 text-fuchsia-300" onClick={() => handleViewRecoveryAudit(item)}>
                               Forensic Logs
                             </button>
+                            ) : null}
                           </>
                         ) : null}
+                        {canEditInterview ? (
                         <button className="shrink-0 text-indigo-300 disabled:text-slate-600" disabled={String(item.status).toUpperCase() === "PREPARATION_FAILED"} onClick={() => handleEditOpen(item)}>
                           Edit
                         </button>
+                        ) : null}
+                        {canDeleteInterview ? (
                         <button className="shrink-0 text-rose-300" onClick={() => handleDeleteOpen(item)}>
                           {busyInviteId === item.inviteId ? "Deleting..." : "Delete"}
                         </button>
+                        ) : null}
                       </div>
                     </td>
                   </tr>
@@ -910,6 +945,7 @@ export default function PendingInterviews({ initialPendingInterviews, initialPen
         nowTick={nowTick}
         copiedLink={copiedLink}
         busyInviteId={busyInviteId}
+        profile={profile}
       />
 
       <EditInterviewModal

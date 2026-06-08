@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useMemo } from "react"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
+import { canAccessFeature } from "@/lib/client/permissions"
 import { deriveDashboardState } from "@/lib/dashboard/dashboard-state-engine"
 
 const stepThemes = {
@@ -352,7 +353,19 @@ function WorkflowAction({ step, searchParams, onAction, highlighted = false }) {
   )
 }
 
-function WorkflowStepCard({ step, status, searchParams, onAction }) {
+function WorkflowStepCard({ step, status, searchParams, onAction, profile }) {
+  const canUseStep =
+    (step.id === "create-job" && canAccessFeature(profile, "createJob")) ||
+    (step.id === "veris-screening" && canAccessFeature(profile, "aiScreening")) ||
+    (step.id === "send-link" && canAccessFeature(profile, "sendInterview")) ||
+    (step.id === "ai-interview" && canAccessFeature(profile, "interviews")) ||
+    (step.id === "review-reports" && canAccessFeature(profile, "reports")) ||
+    (step.id === "hiring-decision" && canAccessFeature(profile, "candidates"))
+
+  if (!canUseStep) {
+    return null
+  }
+
   const theme = stepThemes[step.theme]
   const isActive = status === "active"
   const isCompleted = status === "completed"
@@ -424,7 +437,7 @@ function WorkflowStepCard({ step, status, searchParams, onAction }) {
               <p className="mt-1.5 text-[11px] leading-4 text-slate-400">{step.description}</p>
               <div className="mt-2.5 flex flex-wrap gap-2">
                 <WorkflowAction step={step} searchParams={searchParams} onAction={onAction} highlighted={isActive} />
-                {step.secondaryCta && isActive ? (
+                {step.secondaryCta && isActive && canAccessFeature(profile, "sendInterview") ? (
                   <button
                     type="button"
                     className="inline-flex items-center justify-center rounded-lg border border-violet-300/15 px-2.5 py-1.5 text-[11px] font-semibold text-violet-200 transition duration-200 hover:border-violet-300/35 hover:bg-violet-500/10"
@@ -442,7 +455,7 @@ function WorkflowStepCard({ step, status, searchParams, onAction }) {
   )
 }
 
-export default function HiringWorkflow({ overview, searchParams, onAction }) {
+export default function HiringWorkflow({ overview, searchParams, profile = null, onAction }) {
   const state = useMemo(() => getWorkflowState(overview), [overview])
 
   const handleAction = (action) => {
@@ -484,6 +497,7 @@ export default function HiringWorkflow({ overview, searchParams, onAction }) {
                 status={status}
                 searchParams={searchParams}
                 onAction={handleAction}
+                profile={profile}
               />
             </div>
           )

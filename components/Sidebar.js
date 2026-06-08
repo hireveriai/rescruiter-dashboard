@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
+import { canAccessFeature } from "@/lib/client/permissions"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import CreateJobModal from "./CreateJobModal"
@@ -153,6 +154,8 @@ export default function Sidebar({ initialProfile = null, overview = null }) {
 
   const displayUser = initialProfile ?? user
   const displayProfileError = initialProfile ? "" : profileError
+  const canCreateJob = canAccessFeature(displayUser, "createJob")
+  const canSendInterview = canAccessFeature(displayUser, "sendInterview")
 
   const initials = useMemo(
     () =>
@@ -165,17 +168,23 @@ export default function Sidebar({ initialProfile = null, overview = null }) {
 
   const handleAction = (id) => {
     if (id === "create-job") {
-      setOpenCreateJob(true)
+      if (canCreateJob) {
+        setOpenCreateJob(true)
+      }
       return
     }
 
     if (id === "send-link") {
-      setOpenSendInterview(true)
+      if (canSendInterview) {
+        setOpenSendInterview(true)
+      }
       return
     }
 
     if (id === "skip-screening") {
-      setOpenSendInterview(true)
+      if (canSendInterview) {
+        setOpenSendInterview(true)
+      }
     }
   }
 
@@ -203,11 +212,11 @@ export default function Sidebar({ initialProfile = null, overview = null }) {
           </div>
         ) : null}
 
-        <HiringWorkflow overview={workflowOverview} searchParams={searchParams} onAction={handleAction} />
+        <HiringWorkflow overview={workflowOverview} searchParams={searchParams} profile={displayUser} onAction={handleAction} />
       </aside>
 
-      <CreateJobModal open={openCreateJob} setOpen={setOpenCreateJob} />
-      <SendInterviewModal isOpen={openSendInterview} onClose={() => setOpenSendInterview(false)} />
+      {canCreateJob ? <CreateJobModal open={openCreateJob} setOpen={setOpenCreateJob} /> : null}
+      {canSendInterview ? <SendInterviewModal isOpen={openSendInterview} onClose={() => setOpenSendInterview(false)} /> : null}
     </>
   )
 }

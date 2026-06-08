@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import { buildAuthUrl } from "@/lib/client/auth-query";
+import { canAccessFeature } from "@/lib/client/permissions";
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params";
 import { deriveDashboardState } from "@/lib/dashboard/dashboard-state-engine";
 
@@ -28,7 +29,11 @@ function ActionButton({ href, onClick, children, tone = "primary" }) {
   );
 }
 
-export default function DashboardIntelligenceBanner({ overview, onCreateJob, onSendInterview }) {
+export default function DashboardIntelligenceBanner({ overview, profile = null, onCreateJob, onSendInterview }) {
+  const canCreateJob = canAccessFeature(profile, "createJob");
+  const canSendInterview = canAccessFeature(profile, "sendInterview");
+  const canUseAiScreening = canAccessFeature(profile, "aiScreening");
+
   if (!overview) {
     return (
       <section className="mb-4 overflow-hidden rounded-2xl border border-cyan-400/10 bg-[linear-gradient(135deg,rgba(15,23,42,0.88),rgba(2,6,23,0.78))] px-5 py-4 shadow-[0_12px_34px_rgba(2,6,23,0.18)]">
@@ -77,8 +82,8 @@ export default function DashboardIntelligenceBanner({ overview, onCreateJob, onS
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap gap-3">
-            <ActionButton href="/ai-screening">Start VERIS Screening</ActionButton>
-            <ActionButton tone="secondary" onClick={onSendInterview}>Skip & Continue Interviews</ActionButton>
+            {canUseAiScreening ? <ActionButton href="/ai-screening">Start VERIS Screening</ActionButton> : null}
+            {canSendInterview && onSendInterview ? <ActionButton tone="secondary" onClick={onSendInterview}>Skip & Continue Interviews</ActionButton> : null}
           </div>
         </div>
       </section>
@@ -96,7 +101,7 @@ export default function DashboardIntelligenceBanner({ overview, onCreateJob, onS
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-3">
-          <ActionButton onClick={onCreateJob}>Create Job</ActionButton>
+          {canCreateJob && onCreateJob ? <ActionButton onClick={onCreateJob}>Create Job</ActionButton> : null}
         </div>
       </div>
     </section>
