@@ -369,6 +369,7 @@ export default function ManageTeamPage() {
   const [submitting, setSubmitting] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [rowActionUserId, setRowActionUserId] = useState("");
+  const [rowActionType, setRowActionType] = useState("");
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
@@ -509,6 +510,7 @@ export default function ManageTeamPage() {
     setNotice("");
     setError("");
     setRowActionUserId(member.userId);
+    setRowActionType("resend");
 
     try {
       const response = await fetch(buildAuthUrl("/api/manage-team", searchParams), {
@@ -533,6 +535,53 @@ export default function ManageTeamPage() {
       setError(resendErr.message || "Failed to resend access email");
     } finally {
       setRowActionUserId("");
+      setRowActionType("");
+    }
+  }
+
+  async function handleMemberAccessAction(member, action) {
+    const isRemove = action === "remove-member";
+    const message = isRemove
+      ? `Remove ${member.name || member.email} from this organization? This will disable access and hide the user from Manage Team.`
+      : action === "disable-member"
+        ? `Disable access for ${member.name || member.email}?`
+        : `Enable access for ${member.name || member.email}?`;
+
+    if (isRemove && typeof window !== "undefined" && !window.confirm(message)) {
+      return;
+    }
+
+    setNotice("");
+    setError("");
+    setRowActionUserId(member.userId);
+    setRowActionType(action);
+
+    try {
+      const response = await fetch(buildAuthUrl("/api/manage-team", searchParams), {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action,
+          userId: member.userId,
+        }),
+      });
+
+      const payload = await response.json();
+
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error?.message || payload.message || "Failed to update team member access");
+      }
+
+      setData(payload.data);
+      writeSessionJsonCache(`manage-team:${searchParams.toString()}`, payload.data);
+      setNotice(payload.message || "Team member access updated successfully.");
+    } catch (accessErr) {
+      setError(accessErr.message || "Failed to update team member access");
+    } finally {
+      setRowActionUserId("");
+      setRowActionType("");
     }
   }
 
@@ -621,7 +670,7 @@ export default function ManageTeamPage() {
           ) : null}
 
           <div className="mt-8 overflow-hidden rounded-[24px] border border-slate-800 bg-slate-950/30">
-            <div className="hidden grid-cols-[1.05fr_0.9fr_0.55fr_0.7fr_1.7fr_0.9fr] gap-4 border-b border-slate-800 px-6 py-4 text-xs uppercase tracking-[0.28em] text-slate-500 xl:grid">
+            <div className="hidden grid-cols-[minmax(250px,1.05fr)_minmax(190px,0.75fr)_minmax(132px,0.45fr)_minmax(110px,0.42fr)_minmax(340px,1.55fr)_minmax(154px,0.62fr)] items-start gap-5 border-b border-slate-800 px-6 py-4 text-xs uppercase tracking-[0.22em] text-slate-500 xl:grid">
               <div>Team Member</div>
               <div>Organization Role</div>
               <div>Status</div>
@@ -638,9 +687,9 @@ export default function ManageTeamPage() {
               team.map((member) => (
                 <div
                   key={member.userId}
-                  className="grid min-w-0 grid-cols-1 gap-4 border-b border-slate-900 px-4 py-5 last:border-b-0 sm:px-6 lg:grid-cols-2 xl:grid-cols-[1.05fr_0.9fr_0.55fr_0.7fr_1.7fr_0.9fr]"
+                  className="grid min-w-0 grid-cols-1 items-start gap-5 border-b border-slate-900 px-4 py-5 last:border-b-0 sm:px-6 lg:grid-cols-2 xl:grid-cols-[minmax(250px,1.05fr)_minmax(190px,0.75fr)_minmax(132px,0.45fr)_minmax(110px,0.42fr)_minmax(340px,1.55fr)_minmax(154px,0.62fr)]"
                 >
-                  <div className="min-w-0">
+                  <div className="min-w-0 self-start">
                     <div className="flex items-center gap-2">
                       <p className="truncate text-base font-semibold text-white">{member.name}</p>
                       {member.isCurrentUser ? (
@@ -650,36 +699,40 @@ export default function ManageTeamPage() {
                       ) : null}
                     </div>
                     <p className="mt-1 truncate text-sm text-slate-400">{member.email}</p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.16em] ${getPlatformRoleTone(member.platformRole)}`}>
+                    <div className="mt-3 flex min-w-0">
+                      <span className={`inline-flex max-w-full items-center whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.13em] ${getPlatformRoleTone(member.platformRole)}`}>
                         Platform: {member.platformRole}
                       </span>
                     </div>
                   </div>
 
-                  <div>
-                    <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] ${getOrgRoleTone(member.isAdmin ? "Admin" : member.organizationRoleCode)}`}>
+                  <div className="min-w-0 self-start">
+                    <span className={`inline-flex max-w-full items-center justify-center whitespace-nowrap rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] ${getOrgRoleTone(member.isAdmin ? "Admin" : member.organizationRoleCode)}`}>
                       {getMemberRoleLabel(member)}
                     </span>
                     {member.organizationRoleDescription ? (
-                      <p className="mt-2 text-sm text-slate-400">{member.organizationRoleDescription}</p>
+                      <p className="mt-2 max-w-[220px] text-sm leading-5 text-slate-400">{member.organizationRoleDescription}</p>
                     ) : (
-                      <p className="mt-2 text-sm text-slate-500">No organization role profile assigned</p>
+                      <p className="mt-2 text-sm leading-5 text-slate-500">No role profile assigned</p>
                     )}
                   </div>
 
-                  <div>
-                    <div className="flex flex-wrap gap-2">
-                      <span className={member.isActive ? "text-emerald-300" : "text-slate-500"}>
+                  <div className="self-start">
+                    <div className="flex flex-col items-start gap-2">
+                      <span className={`inline-flex min-w-[96px] items-center justify-center rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${
+                        member.isActive
+                          ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-200"
+                          : "border-slate-700 bg-slate-900/80 text-slate-400"
+                      }`}>
                         {member.isActive ? "Active" : "Inactive"}
                       </span>
-                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.14em] ${getInviteStatusTone(member.inviteStatus)}`}>
+                      <span className={`inline-flex min-w-[96px] items-center justify-center rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${getInviteStatusTone(member.inviteStatus)}`}>
                         {member.inviteStatus || "Accepted"}
                       </span>
                     </div>
                   </div>
 
-                  <div className="text-slate-300">{formatDate(member.joinedAt)}</div>
+                  <div className="self-start whitespace-nowrap text-sm text-slate-300">{formatDate(member.joinedAt)}</div>
 
                   <div className="grid content-start grid-cols-1 gap-1.5 sm:grid-cols-2 xl:grid-cols-2">
                     {member.permissions.length === 0 ? (
@@ -699,13 +752,13 @@ export default function ManageTeamPage() {
                     )}
                   </div>
 
-                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap xl:flex-col">
+                  <div className="grid min-w-0 content-start gap-2">
                     {canManageUsers && !member.isCurrentUser ? (
                       <>
                         <button
                           type="button"
                           onClick={() => openEditModal(member)}
-                          className="rounded-xl border border-slate-700 px-3 py-2 text-sm text-slate-200 transition hover:border-blue-400/30 hover:text-white"
+                          className="w-full rounded-xl border border-slate-700 px-3 py-2 text-sm text-slate-200 transition hover:border-blue-400/30 hover:text-white"
                         >
                           Edit Access
                         </button>
@@ -713,9 +766,34 @@ export default function ManageTeamPage() {
                           type="button"
                           disabled={rowActionUserId === member.userId}
                           onClick={() => handleResendInvite(member)}
-                          className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100 transition hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="w-full rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100 transition hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          {rowActionUserId === member.userId ? "Sending..." : "Resend Access"}
+                          {rowActionUserId === member.userId && rowActionType === "resend" ? "Sending..." : "Resend Access"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={rowActionUserId === member.userId}
+                          onClick={() => handleMemberAccessAction(member, member.isActive ? "disable-member" : "enable-member")}
+                          className={[
+                            "w-full rounded-xl border px-3 py-2 text-sm transition disabled:cursor-not-allowed disabled:opacity-60",
+                            member.isActive
+                              ? "border-amber-400/25 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20"
+                              : "border-emerald-400/25 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/20",
+                          ].join(" ")}
+                        >
+                          {rowActionUserId === member.userId && rowActionType !== "remove-member" && rowActionType !== "resend"
+                            ? "Updating..."
+                            : member.isActive
+                              ? "Disable"
+                              : "Enable"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={rowActionUserId === member.userId}
+                          onClick={() => handleMemberAccessAction(member, "remove-member")}
+                          className="w-full rounded-xl border border-rose-400/25 bg-rose-500/10 px-3 py-2 text-sm text-rose-100 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {rowActionUserId === member.userId && rowActionType === "remove-member" ? "Removing..." : "Delete"}
                         </button>
                       </>
                     ) : (

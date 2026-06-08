@@ -194,6 +194,32 @@ async function tableExists(tableName: string) {
   return rows[0]?.exists ?? false
 }
 
+async function columnExists(tableName: string, columnName: string) {
+  const rows = await prisma.$queryRaw<ExistsRow[]>(Prisma.sql`
+    select exists (
+      select 1
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = ${tableName}
+        and column_name = ${columnName}
+    ) as exists
+  `)
+
+  return rows[0]?.exists ?? false
+}
+
+async function ensureManageTeamUserColumns() {
+  await prisma.$executeRaw(Prisma.sql`
+    alter table public.users
+      add column if not exists team_removed_at timestamptz null
+  `)
+
+  await prisma.$executeRaw(Prisma.sql`
+    create index if not exists idx_users_org_role_team_removed
+      on public.users (organization_id, role, team_removed_at)
+  `)
+}
+
 async function ensureTeamInviteTables() {
   await prisma.$executeRaw(Prisma.sql`
     create table if not exists public.recruiter_team_invites (
@@ -401,6 +427,8 @@ async function ensureCurrentRecruiterAdminIfNoAdmin(auth: RecruiterAuth) {
 }
 
 async function getExistingUserByEmail(email: string) {
+  await ensureManageTeamUserColumns()
+
   const rows = await prisma.$queryRaw<ExistingUserRow[]>(Prisma.sql`
     select
       u.user_id::text,
@@ -420,6 +448,8 @@ async function getExistingUserByEmail(email: string) {
 }
 
 async function getTeamWorkspace(auth: RecruiterAuth) {
+  await ensureManageTeamUserColumns()
+
   const [hasEnsureProfileFn, hasRecruiterProfiles, hasRecruiterRoles, hasRecruiterRolePool, hasRolePermissions, hasPermissions] =
     await Promise.all([
       functionExists("fn_ensure_default_recruiter_profile"),
@@ -487,6 +517,7 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
     left join public.users u
       on u.organization_id = o.organization_id
      and u.role in ('RECRUITER', 'ADMIN', 'ORG_OWNER')
+     and u.team_removed_at is null
     ${hasRecruiterProfiles
       ? Prisma.sql`left join public.recruiter_profiles rp on rp.recruiter_id = u.user_id`
       : Prisma.sql``}
@@ -552,6 +583,7 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
         ) latest_invite on true
         where u.organization_id = ${auth.organizationId}::uuid
           and u.role in ('RECRUITER', 'ADMIN', 'ORG_OWNER')
+          and u.team_removed_at is null
         group by
           u.user_id,
           u.full_name,
@@ -586,6 +618,7 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
         from public.users u
         where u.organization_id = ${auth.organizationId}::uuid
           and u.role in ('RECRUITER', 'ADMIN', 'ORG_OWNER')
+          and u.team_removed_at is null
         order by
           case when u.user_id = ${auth.userId}::uuid then 0 else 1 end,
           u.created_at desc
@@ -675,6 +708,8 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
 }
 
 async function getTeamMemberForAccessEmail(auth: RecruiterAuth, targetUserId: string) {
+  await ensureManageTeamUserColumns()
+
   const rows = await prisma.$queryRaw<TeamMemberLookupRow[]>(Prisma.sql`
     select
       u.user_id,
@@ -711,6 +746,7 @@ async function getTeamMemberForAccessEmail(auth: RecruiterAuth, targetUserId: st
     where u.user_id = ${targetUserId}::uuid
       and u.organization_id = ${auth.organizationId}::uuid
       and u.role in ('RECRUITER', 'ADMIN', 'ORG_OWNER')
+      and u.team_removed_at is null
     limit 1
   `)
 
@@ -898,6 +934,7 @@ export async function POST(request: Request) {
     }
 
     await assertCanManageUsers(auth)
+    await ensureManageTeamUserColumns()
     await ensureTeamInviteTables()
 
     const [role, actor, existingUser] = await Promise.all([
@@ -979,7 +1016,8 @@ export async function POST(request: Request) {
           update public.users
           set
             full_name = coalesce(nullif(${fullName}, ''), full_name),
-            is_active = true
+            is_active = true,
+            team_removed_at = null
           where user_id = ${targetUserId}::uuid
             and organization_id = ${auth.organizationId}::uuid
         `)
@@ -1084,6 +1122,10 @@ export async function PATCH(request: Request) {
       throw new ApiError(400, "INVALID_INPUT", "action and userId are required")
     }
 
+    if (targetUserId === auth.userId && ["disable-member", "remove-member"].includes(action)) {
+      throw new ApiError(400, "SELF_ACCESS_CHANGE_BLOCKED", "You cannot disable or remove your own access")
+    }
+
     if (action === "resend-invite") {
       await ensureTeamInviteTables()
       const teamMember = await getTeamMemberForAccessEmail(auth, targetUserId)
@@ -1150,6 +1192,57 @@ export async function PATCH(request: Request) {
       return NextResponse.json({
         success: true,
         message: "Invitation sent successfully",
+      })
+    }
+
+    if (action === "disable-member" || action === "enable-member" || action === "remove-member") {
+      await assertCanManageUsers(auth)
+      await ensureManageTeamUserColumns()
+
+      const isRemoving = action === "remove-member"
+      const isActive = action === "enable-member"
+
+      const result = await prisma.$queryRaw<{ user_id: string }[]>(Prisma.sql`
+        update public.users
+        set
+          is_active = ${isActive},
+          team_removed_at = ${isRemoving ? Prisma.sql`now()` : Prisma.sql`null`}
+        where user_id = ${targetUserId}::uuid
+          and organization_id = ${auth.organizationId}::uuid
+          and role in ('RECRUITER', 'ADMIN', 'ORG_OWNER')
+          and (
+            ${isRemoving}
+            or team_removed_at is null
+          )
+        returning user_id::text
+      `)
+
+      if (!result[0]?.user_id) {
+        throw new ApiError(404, "TEAM_MEMBER_NOT_FOUND", "Team member not found in this organization")
+      }
+
+      if (isRemoving) {
+        await prisma.$executeRaw(Prisma.sql`
+          update public.recruiter_team_invites
+          set
+            status = 'REVOKED',
+            updated_at = now()
+          where org_id = ${auth.organizationId}::uuid
+            and invited_user_id = ${targetUserId}::uuid
+            and status in ('PENDING', 'RESENT')
+        `).catch(() => null)
+      }
+
+      const data = await getTeamWorkspace(auth)
+
+      return NextResponse.json({
+        success: true,
+        data,
+        message: isRemoving
+          ? "Team member removed successfully"
+          : isActive
+            ? "Team member enabled successfully"
+            : "Team member disabled successfully",
       })
     }
 
