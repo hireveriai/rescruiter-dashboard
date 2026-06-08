@@ -245,10 +245,8 @@ async function getRoleOrThrow(roleId: number) {
     select
       hrr.legacy_role_id as recruiter_role_id,
       hrr.name as code,
-      rrp.description
+      null::text as description
     from public.hireveri_recruiter_roles hrr
-    left join public.recruiter_role_pool rrp
-      on rrp.recruiter_role_id = hrr.legacy_role_id
     where hrr.legacy_role_id = ${roleId}::smallint
       and hrr.is_active = true
     limit 1
@@ -684,8 +682,8 @@ async function getTeamMemberForAccessEmail(auth: RecruiterAuth, targetUserId: st
       u.email,
       o.organization_name,
       rp.recruiter_role_id,
-      coalesce(hrr.name, rrp.code) as recruiter_role_code,
-      rrp.description as recruiter_role_description,
+      hrr.name as recruiter_role_code,
+      null::text as recruiter_role_description,
       latest_invite.status as invite_status,
       latest_invite.expires_at::text as invite_expires_at
     from public.users u
@@ -694,8 +692,6 @@ async function getTeamMemberForAccessEmail(auth: RecruiterAuth, targetUserId: st
     left join public.recruiter_profiles rp
       on rp.recruiter_id = u.user_id
       and rp.organization_id = u.organization_id
-    left join public.recruiter_role_pool rrp
-      on rrp.recruiter_role_id = rp.recruiter_role_id
     left join public.hireveri_recruiter_roles hrr
       on hrr.legacy_role_id = rp.recruiter_role_id
     left join lateral (
