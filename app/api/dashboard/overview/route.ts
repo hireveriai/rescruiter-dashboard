@@ -8,7 +8,13 @@ import { getDashboardPipelineData } from "@/lib/server/services/dashboard-pipeli
 import { deriveDashboardState } from "@/lib/dashboard/dashboard-state-engine"
 import { getRecruiterProfile } from "@/lib/server/services/recruiter-profile"
 import { getDashboardAlerts, type DashboardAlert } from "@/lib/server/services/dashboard-alerts"
+import { getDashboardRecordings } from "@/lib/server/services/dashboard-recordings"
 import { getDashboardWorkflowSnapshot } from "@/lib/server/services/dashboard-workflow"
+import {
+  getFastDashboardCandidates,
+  getFastDashboardSnapshot,
+  getFastVerisSummaryCards,
+} from "@/lib/server/services/dashboard-fast-snapshot"
 import {
   getTrialCreditsDashboardSnapshot,
   type TrialCreditSnapshot,
@@ -221,16 +227,22 @@ async function getQuickWorkflowMetrics(organizationId: string): Promise<Overview
 async function buildFastOverview(
   auth: Awaited<ReturnType<typeof getRecruiterRequestContext>>
 ): Promise<OverviewPayload> {
-  const [profileStep, alertsStep, trialCreditsStep, quickWorkflowStep] = await Promise.all([
+  const [profileStep, alertsStep, trialCreditsStep, quickWorkflowStep, fastSnapshotStep] = await Promise.all([
     timedStep("profile", () => getRecruiterProfile(auth)),
     safeTimedStep("alerts", () => getDashboardAlerts(auth.organizationId, 8, auth.userId), []),
     safeTimedStep<TrialCreditSnapshot | null>("trialCredits", () => getTrialCreditsDashboardSnapshot(auth.organizationId), null),
     safeTimedStep("quickWorkflow", () => getQuickWorkflowMetrics(auth.organizationId), buildWorkflowMetricsFromQuickRow()),
+    safeTimedStep("fastSnapshot", () => getFastDashboardSnapshot(auth.organizationId), {
+      candidates: [],
+      recordedInterviews: [],
+      veris: [],
+    }),
   ])
   const profile = profileStep.result
   const alerts = alertsStep.result
   const trialCredits = trialCreditsStep.result
   const quickWorkflowMetrics = quickWorkflowStep.result
+  const fastSnapshot = fastSnapshotStep.result
   const quickDashboardState = deriveDashboardState({
     jobs_count: quickWorkflowMetrics.jobs,
     active_jobs_count: quickWorkflowMetrics.activeJobs,
@@ -247,7 +259,9 @@ async function buildFastOverview(
     dashboardState: quickDashboardState,
     pendingInterviews: [],
     pendingInterviewsTotal: buildPipelineFromWorkflowMetrics(quickWorkflowMetrics).pending,
-    candidates: undefined as unknown as Awaited<ReturnType<typeof getCandidatesDashboard>>,
+    candidates: fastSnapshot.candidates as Awaited<ReturnType<typeof getCandidatesDashboard>>,
+    recordedInterviews: fastSnapshot.recordedInterviews,
+    veris: fastSnapshot.veris,
     alerts,
     trialCredits,
   }
@@ -264,23 +278,22 @@ async function buildOverview(
     ensureRecoverySchema: false,
   }), emptyPipelineData)
 
-  const [profileStep, candidatesStep, pipelineStep, alertsStep, trialCreditsStep] = await Promise.all([
+  const [profileStep, candidatesStep, pipelineStep, alertsStep, trialCreditsStep, recordingsStep, verisStep] = await Promise.all([
     timedStep("profile", () => getRecruiterProfile(auth)),
-    safeTimedStep("candidates", () => getCandidatesDashboard({
-      organizationId: auth.organizationId,
-      limit: 5,
-      finalizeStale: false,
-      includeAnswerSummaries: false,
-    }), []),
+    safeTimedStep("candidates", () => getFastDashboardCandidates(auth.organizationId, 5), []),
     pipelinePromise,
     safeTimedStep("alerts", () => getDashboardAlerts(auth.organizationId, 8, auth.userId), []),
     safeTimedStep<TrialCreditSnapshot | null>("trialCredits", () => getTrialCreditsDashboardSnapshot(auth.organizationId), null),
+    safeTimedStep("recordedInterviews", () => getDashboardRecordings(auth.organizationId, 6, { verifyStorage: true }), []),
+    safeTimedStep("veris", () => getFastVerisSummaryCards(auth.organizationId, 4), []),
   ])
   const profile = profileStep.result
   const candidates = candidatesStep.result
   const pipelineData = pipelineStep.result
   const alerts = alertsStep.result
   const trialCredits = trialCreditsStep.result
+  const recordedInterviews = recordingsStep.result
+  const veris = verisStep.result
   const workflowStep = await safeTimedStep(
     "workflow",
     () => getDashboardWorkflowSnapshot(auth.organizationId, pipelineData),
@@ -316,6 +329,8 @@ async function buildOverview(
     pendingInterviews: pipelineData.pendingInterviews,
     pendingInterviewsTotal: pipelineData.pendingTotal,
     candidates: candidates ?? [],
+    recordedInterviews,
+    veris,
     alerts,
     trialCredits,
   }

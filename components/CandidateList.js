@@ -11,6 +11,8 @@ import { DecisionPill } from "@/components/dashboard/DecisionPill"
 
 import CandidateInsightModal from "./CandidateInsightModal"
 
+const DASHBOARD_INVALIDATED_EVENT = "hireveri:dashboard-data-invalidated"
+
 function getStatusColor(status) {
   const normalized = String(status ?? "PENDING").toUpperCase()
 
@@ -77,11 +79,11 @@ function isDecisionReady(candidate) {
 
 export default function CandidateList({ initialCandidates, isLoading = false }) {
   const searchParams = useAuthSearchParams()
-  const [candidates, setCandidates] = useState([])
+  const [candidates, setCandidates] = useState(() => initialCandidates ?? [])
   const [selectedCandidate, setSelectedCandidate] = useState(null)
   const [reviewCandidate, setReviewCandidate] = useState(null)
   const [decisionOverrides, setDecisionOverrides] = useState({})
-  const sourceCandidates = initialCandidates !== undefined ? initialCandidates : candidates
+  const sourceCandidates = candidates
   const displayCandidates = sourceCandidates.map((candidate) => {
     const key = candidate.interviewId || candidate.candidateId
     return decisionOverrides[key]
@@ -111,9 +113,11 @@ export default function CandidateList({ initialCandidates, isLoading = false }) 
 
   useEffect(() => {
     if (initialCandidates !== undefined) {
-      return
+      setCandidates(initialCandidates ?? [])
     }
+  }, [initialCandidates])
 
+  useEffect(() => {
     if (!hasAuthQuery(searchParams)) {
       return
     }
@@ -137,7 +141,48 @@ export default function CandidateList({ initialCandidates, isLoading = false }) 
     return () => {
       isMounted = false
     }
-  }, [initialCandidates, searchParams])
+  }, [searchParams])
+
+  useEffect(() => {
+    if (!hasAuthQuery(searchParams) || typeof window === "undefined") {
+      return undefined
+    }
+
+    let refreshTimer = null
+
+    function refreshCandidates() {
+      fetch(buildAuthUrl(`/api/dashboard/candidates?limit=5&refresh=${Date.now()}`, searchParams), {
+        credentials: "include",
+        cache: "no-store",
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success) {
+            setCandidates(data.data ?? [])
+          }
+        })
+        .catch((error) => {
+          console.error("Failed to refresh dashboard candidates", error)
+        })
+    }
+
+    function handleDashboardInvalidated() {
+      if (refreshTimer) {
+        window.clearTimeout(refreshTimer)
+      }
+
+      refreshTimer = window.setTimeout(refreshCandidates, 175)
+    }
+
+    window.addEventListener(DASHBOARD_INVALIDATED_EVENT, handleDashboardInvalidated)
+
+    return () => {
+      if (refreshTimer) {
+        window.clearTimeout(refreshTimer)
+      }
+      window.removeEventListener(DASHBOARD_INVALIDATED_EVENT, handleDashboardInvalidated)
+    }
+  }, [searchParams])
 
   return (
     <>

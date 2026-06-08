@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     const auth = await getRecruiterRequestContext(request)
     const { searchParams } = new URL(request.url)
     const limit = parseLimit(searchParams.get("limit"))
-    const verifyStorage = searchParams.get("verifyStorage") === "1"
+    const verifyStorage = searchParams.get("verifyStorage") !== "0"
     const recordedInterviews = await getDashboardRecordings(auth.organizationId, limit, { verifyStorage })
     const durationMs = Date.now() - startedAt
     const response = NextResponse.json({

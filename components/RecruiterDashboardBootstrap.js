@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react"
 import { buildAuthUrl } from "@/lib/client/auth-query"
 import { clearHireveriSessionCookie, getRecruiterLoginUrl } from "@/lib/client/auth-session"
 import { ACTION_FEEDBACK_EVENT } from "@/lib/client/action-feedback"
+import { connectDashboardRealtime } from "@/lib/client/dashboard-realtime"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 import { useOrgTimezone } from "@/components/OrgTimezoneProvider"
 
@@ -354,6 +355,43 @@ export default function RecruiterDashboardBootstrap({ children }) {
       }
     }
   }, [searchParams, setTimezoneState])
+
+  useEffect(() => {
+    const organizationId = state.profile?.organizationId ?? state.overview?.profile?.organizationId
+
+    if (state.status !== "ready" || !organizationId || typeof window === "undefined") {
+      return undefined
+    }
+
+    let refreshTimer = null
+    const disconnect = connectDashboardRealtime({
+      organizationId,
+      onChange: () => {
+        if (refreshTimer) {
+          window.clearTimeout(refreshTimer)
+        }
+
+        refreshTimer = window.setTimeout(() => {
+          window.sessionStorage.setItem(DASHBOARD_INVALIDATED_KEY, "1")
+          window.dispatchEvent(new CustomEvent(DASHBOARD_INVALIDATED_EVENT, {
+            detail: { source: "realtime" },
+          }))
+        }, 250)
+      },
+      onStatus: (status) => {
+        if (status === "error") {
+          console.warn("Dashboard realtime socket reported an error")
+        }
+      },
+    })
+
+    return () => {
+      if (refreshTimer) {
+        window.clearTimeout(refreshTimer)
+      }
+      disconnect()
+    }
+  }, [state.overview?.profile?.organizationId, state.profile?.organizationId, state.status])
 
   function reloadDashboard() {
     if (typeof window === "undefined") {

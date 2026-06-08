@@ -11,7 +11,9 @@ type RecordingColumnRow = {
 
 type RecordingLookupRow = {
   recording_id: string
-  recording_url: string | null
+  audio_url: string | null
+  video_url: string | null
+  file_path: string | null
 }
 
 function quoteIdentifier(value: string) {
@@ -161,15 +163,56 @@ async function createSignedUrl(bucket: string, path: string) {
   )
 }
 
+async function createFirstAvailablePlaybackUrl(locations: Array<ReturnType<typeof normalizeStorageLocation>>) {
+  const directUrls: string[] = []
+  let lastError: unknown = null
+
+  for (const location of locations) {
+    if (location.directUrl && (!location.bucket || !location.path)) {
+      directUrls.push(location.directUrl)
+    }
+
+    if (!location.bucket || !location.path) {
+      continue
+    }
+
+    try {
+      const signedUrl = await createSignedUrl(location.bucket, location.path)
+
+      if (signedUrl) {
+        return signedUrl
+      }
+    } catch (error) {
+      lastError = error
+    }
+  }
+
+  if (directUrls.length > 0) {
+    return directUrls[0]
+  }
+
+  if (lastError) {
+    throw lastError
+  }
+
+  return null
+}
+
 export async function GET(_request: Request, context: { params: Promise<{ recordingId: string }> }) {
   try {
     const auth = await getRecruiterRequestContext(_request)
     const { recordingId } = await context.params
     const columns = await getRecordingColumns()
     const idColumn = columns.has("recording_id") ? "recording_id" : columns.has("id") ? "id" : null
-    const urlColumn = columns.has("audio_url") ? "audio_url" : columns.has("recording_url") ? "recording_url" : null
+    const audioUrlExpression = columns.has("audio_url")
+      ? "ir.audio_url::text"
+      : columns.has("recording_url")
+        ? "ir.recording_url::text"
+        : "null::text"
+    const videoUrlExpression = columns.has("video_url") ? "ir.video_url::text" : "null::text"
+    const filePathExpression = columns.has("file_path") ? "ir.file_path::text" : "null::text"
 
-    if (!idColumn || !urlColumn) {
+    if (!idColumn) {
       throw new ApiError(404, "RECORDINGS_SCHEMA_UNAVAILABLE", "Recording storage columns are not available")
     }
 
@@ -179,7 +222,9 @@ export async function GET(_request: Request, context: { params: Promise<{ record
       `
         select
           ir.${quoteIdentifier(idColumn)}::text as recording_id,
-          ir.${quoteIdentifier(urlColumn)}::text as recording_url
+          ${audioUrlExpression} as audio_url,
+          ${videoUrlExpression} as video_url,
+          ${filePathExpression} as file_path
         from public.interview_recordings ir
         ${attemptJoin}
         left join public.interviews i on i.interview_id = ${joinInterviewExpression}
@@ -193,25 +238,23 @@ export async function GET(_request: Request, context: { params: Promise<{ record
 
     const recording = rows[0]
 
-    if (!recording?.recording_url) {
+    if (!recording?.audio_url && !recording?.video_url && !recording?.file_path) {
       throw new ApiError(404, "RECORDING_NOT_FOUND", "Recording was not found")
     }
 
-    const location = normalizeStorageLocation(recording.recording_url)
+    const locations = Array.from(new Set([
+      recording.file_path,
+      recording.video_url,
+      recording.audio_url,
+    ].filter((value): value is string => Boolean(value && value.trim()))))
+      .map(normalizeStorageLocation)
+    const playbackUrl = await createFirstAvailablePlaybackUrl(locations)
 
-    if (location.bucket && location.path) {
-      const signedUrl = await createSignedUrl(location.bucket, location.path)
-
-      if (signedUrl) {
-        return NextResponse.redirect(signedUrl)
-      }
+    if (!playbackUrl) {
+      throw new ApiError(404, "RECORDING_URL_INVALID", "Recording URL is invalid")
     }
 
-    if (location.directUrl) {
-      return NextResponse.redirect(location.directUrl)
-    }
-
-    throw new ApiError(404, "RECORDING_URL_INVALID", "Recording URL is invalid")
+    return NextResponse.redirect(playbackUrl)
   } catch (error) {
     return errorResponse(error)
   }

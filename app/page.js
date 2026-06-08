@@ -136,7 +136,6 @@ function DashboardContent({ profile, overview, isLoading }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const displayProfile = profile ?? overview?.profile ?? null;
   const fullOverview = normalizeDashboardOverview(overview) ?? createEmptyDashboardOverview(displayProfile);
-  const isPartialOverview = Boolean(fullOverview?.partial);
   const [trialCredits, setTrialCredits] = useState(overview?.trialCredits ?? null);
   const activeInterviewCount = fullOverview?.pendingInterviewsTotal ?? fullOverview?.pendingInterviews?.length ?? 0;
   const candidateCount = fullOverview?.candidates?.length ?? 0;
@@ -236,7 +235,7 @@ function DashboardContent({ profile, overview, isLoading }) {
           </Suspense>
           <Suspense fallback={null}>
             <RecordedInterviews
-              initialRecordedInterviews={isPartialOverview ? [] : fullOverview?.recordedInterviews}
+              initialRecordedInterviews={fullOverview?.recordedInterviews}
               organizationId={displayProfile?.organizationId}
               isLoading={false}
             />
@@ -245,7 +244,7 @@ function DashboardContent({ profile, overview, isLoading }) {
             <CandidateList initialCandidates={fullOverview?.candidates} isLoading={false} />
           </Suspense>
           <Suspense fallback={null}>
-            <VerisSummary initialSummaries={isPartialOverview ? undefined : fullOverview?.veris} isLoading={false} />
+            <VerisSummary initialSummaries={fullOverview?.veris} isLoading={false} />
           </Suspense>
           <WarRoomButton organizationId={displayProfile?.organizationId} />
         </div>

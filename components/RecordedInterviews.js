@@ -8,6 +8,8 @@ import { openWarRoom } from "@/lib/client/war-room"
 import { CardSkeleton } from "@/components/system/skeletons"
 import RecordedInterviewCard from "@/components/interviews/RecordedInterviewCard"
 
+const DASHBOARD_INVALIDATED_EVENT = "hireveri:dashboard-data-invalidated"
+
 function RecordedInterviewsModal({ isOpen, onClose, interviews, organizationId }) {
   if (!isOpen) {
     return null
@@ -60,14 +62,15 @@ function RecordedInterviewsModal({ isOpen, onClose, interviews, organizationId }
 
 export default function RecordedInterviews({ initialRecordedInterviews, organizationId = "", isLoading = false }) {
   const searchParams = useAuthSearchParams()
-  const [interviews, setInterviews] = useState([])
+  const [interviews, setInterviews] = useState(() => initialRecordedInterviews ?? [])
   const [isFetching, setIsFetching] = useState(initialRecordedInterviews === undefined)
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const displayInterviews = initialRecordedInterviews !== undefined ? initialRecordedInterviews : interviews
+  const displayInterviews = interviews
   const isBusy = isLoading || isFetching
 
   useEffect(() => {
     if (initialRecordedInterviews !== undefined) {
+      setInterviews(initialRecordedInterviews ?? [])
       setIsFetching(false)
       return
     }
@@ -127,6 +130,47 @@ export default function RecordedInterviews({ initialRecordedInterviews, organiza
       cancelScheduled()
     }
   }, [initialRecordedInterviews, searchParams])
+
+  useEffect(() => {
+    if (!hasAuthQuery(searchParams) || typeof window === "undefined") {
+      return undefined
+    }
+
+    let refreshTimer = null
+
+    function refreshRecordings() {
+      fetch(buildAuthUrl("/api/dashboard/recordings?limit=6", searchParams), {
+        credentials: "include",
+        cache: "no-store",
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success) {
+            setInterviews(data.data ?? [])
+          }
+        })
+        .catch((error) => {
+          console.error("Failed to refresh recorded interviews", error)
+        })
+    }
+
+    function handleDashboardInvalidated() {
+      if (refreshTimer) {
+        window.clearTimeout(refreshTimer)
+      }
+
+      refreshTimer = window.setTimeout(refreshRecordings, 200)
+    }
+
+    window.addEventListener(DASHBOARD_INVALIDATED_EVENT, handleDashboardInvalidated)
+
+    return () => {
+      if (refreshTimer) {
+        window.clearTimeout(refreshTimer)
+      }
+      window.removeEventListener(DASHBOARD_INVALIDATED_EVENT, handleDashboardInvalidated)
+    }
+  }, [searchParams])
 
   const sortedInterviews = useMemo(
     () =>

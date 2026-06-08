@@ -9,6 +9,8 @@ import CreateJobModal from "./CreateJobModal"
 import HiringWorkflow from "./HiringWorkflow"
 import SendInterviewModal from "./SendInterviewModal"
 
+const DASHBOARD_INVALIDATED_EVENT = "hireveri:dashboard-data-invalidated"
+
 export default function Sidebar({ initialProfile = null, overview = null }) {
   const searchParams = useAuthSearchParams()
   const [user, setUser] = useState(initialProfile)
@@ -53,6 +55,52 @@ export default function Sidebar({ initialProfile = null, overview = null }) {
       isMounted = false
     }
   }, [overview, searchParams])
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined
+    }
+
+    let refreshTimer = null
+
+    async function refreshWorkflow() {
+      try {
+        const response = await fetch(buildAuthUrl(`/api/dashboard/workflow?refresh=${Date.now()}`, searchParams), {
+          credentials: "include",
+          cache: "no-store",
+        })
+        const payload = await response.json().catch(() => null)
+
+        if (!response.ok || !payload?.success) {
+          return
+        }
+
+        setWorkflowOverview((current) => ({
+          ...(current ?? {}),
+          ...payload.data,
+        }))
+      } catch (error) {
+        console.warn("Realtime dashboard workflow refresh failed", error)
+      }
+    }
+
+    function handleDashboardInvalidated() {
+      if (refreshTimer) {
+        window.clearTimeout(refreshTimer)
+      }
+
+      refreshTimer = window.setTimeout(refreshWorkflow, 150)
+    }
+
+    window.addEventListener(DASHBOARD_INVALIDATED_EVENT, handleDashboardInvalidated)
+
+    return () => {
+      if (refreshTimer) {
+        window.clearTimeout(refreshTimer)
+      }
+      window.removeEventListener(DASHBOARD_INVALIDATED_EVENT, handleDashboardInvalidated)
+    }
+  }, [searchParams])
 
   useEffect(() => {
     let isMounted = true

@@ -1,6 +1,7 @@
-﻿import { getRecruiterRequestContext } from "@/lib/server/auth-context"
-import { getCandidatesDashboard } from "@/lib/server/services/dashboard.service"
+import { getRecruiterRequestContext } from "@/lib/server/auth-context"
 import { errorResponse } from "@/lib/server/response"
+import { getCandidatesDashboard } from "@/lib/server/services/dashboard.service"
+import { getFastDashboardCandidates } from "@/lib/server/services/dashboard-fast-snapshot"
 
 function parseLimit(value: string | null): number | "all" {
   if (!value || value === "all") {
@@ -15,16 +16,23 @@ export async function GET(request: Request) {
   try {
     const auth = await getRecruiterRequestContext(request)
     const { searchParams } = new URL(request.url)
-    const data = await getCandidatesDashboard({
-      organizationId: auth.organizationId,
-      limit: parseLimit(searchParams.get("limit")),
-      includeAnswerSummaries: searchParams.get("includeAnswerSummaries") === "1",
-    })
+    const includeAnswerSummaries = searchParams.get("includeAnswerSummaries") === "1"
+    const limit = parseLimit(searchParams.get("limit"))
+    const data = includeAnswerSummaries
+      ? await getCandidatesDashboard({
+          organizationId: auth.organizationId,
+          limit,
+          includeAnswerSummaries: true,
+        })
+      : await getFastDashboardCandidates(auth.organizationId, limit === "all" ? 20 : limit)
 
-    return Response.json({
+    const response = Response.json({
       success: true,
       data,
     })
+
+    response.headers.set("Cache-Control", includeAnswerSummaries ? "no-store" : "private, max-age=10, stale-while-revalidate=30")
+    return response
   } catch (err) {
     return errorResponse(err)
   }

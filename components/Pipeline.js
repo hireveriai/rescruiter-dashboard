@@ -14,11 +14,18 @@ const FALLBACK_PIPELINE = {
   reviewed: 0,
   reviewRequired: 0,
 }
+const DASHBOARD_INVALIDATED_EVENT = "hireveri:dashboard-data-invalidated"
 
 export default function Pipeline({ initialPipeline, isLoading = false }) {
   const searchParams = useAuthSearchParams()
-  const [pipeline, setPipeline] = useState(null)
-  const displayPipeline = initialPipeline ?? pipeline ?? FALLBACK_PIPELINE
+  const [pipeline, setPipeline] = useState(() => initialPipeline ?? null)
+  const displayPipeline = pipeline ?? initialPipeline ?? FALLBACK_PIPELINE
+
+  useEffect(() => {
+    if (initialPipeline) {
+      setPipeline(initialPipeline)
+    }
+  }, [initialPipeline])
 
   useEffect(() => {
     if (initialPipeline) {
@@ -49,6 +56,49 @@ export default function Pipeline({ initialPipeline, isLoading = false }) {
       isMounted = false
     }
   }, [initialPipeline, searchParams])
+
+  useEffect(() => {
+    if (!hasAuthQuery(searchParams) || typeof window === "undefined") {
+      return undefined
+    }
+
+    let active = true
+    let refreshTimer = null
+
+    async function refreshPipeline() {
+      try {
+        const response = await fetch(buildAuthUrl(`/api/dashboard/workflow?refresh=${Date.now()}`, searchParams), {
+          credentials: "include",
+          cache: "no-store",
+        })
+        const data = await response.json().catch(() => null)
+
+        if (active && response.ok && data?.success) {
+          setPipeline(data.data?.pipeline ?? FALLBACK_PIPELINE)
+        }
+      } catch (error) {
+        console.error("Failed to refresh interview pipeline", error)
+      }
+    }
+
+    function handleDashboardInvalidated() {
+      if (refreshTimer) {
+        window.clearTimeout(refreshTimer)
+      }
+
+      refreshTimer = window.setTimeout(refreshPipeline, 100)
+    }
+
+    window.addEventListener(DASHBOARD_INVALIDATED_EVENT, handleDashboardInvalidated)
+
+    return () => {
+      active = false
+      if (refreshTimer) {
+        window.clearTimeout(refreshTimer)
+      }
+      window.removeEventListener(DASHBOARD_INVALIDATED_EVENT, handleDashboardInvalidated)
+    }
+  }, [searchParams])
 
   const cards = [
     { title: "Invited", count: displayPipeline.pending, color: "bg-blue-500" },

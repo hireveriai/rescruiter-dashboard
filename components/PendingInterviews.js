@@ -13,6 +13,8 @@ import {
 import { useOrgTimezone } from "@/components/OrgTimezoneProvider"
 import { TableSkeleton } from "@/components/system/skeletons"
 
+const DASHBOARD_INVALIDATED_EVENT = "hireveri:dashboard-data-invalidated"
+
 function getExpiryLabel(expiresAt, nowTick) {
   if (!expiresAt) {
     return "No expiry"
@@ -471,6 +473,35 @@ export default function PendingInterviews({ initialPendingInterviews, initialPen
       isMounted = false
     }
   }, [hasInitial, loadPendingInterviews])
+
+  useEffect(() => {
+    if (!hasAuthQuery(searchParams) || typeof window === "undefined") {
+      return undefined
+    }
+
+    let refreshTimer = null
+
+    function handleDashboardInvalidated() {
+      if (refreshTimer) {
+        window.clearTimeout(refreshTimer)
+      }
+
+      refreshTimer = window.setTimeout(() => {
+        loadPendingInterviews({ limit: isModalOpen ? "all" : 5 }).catch((error) => {
+          console.error("Failed to refresh pending interviews", error)
+        })
+      }, 125)
+    }
+
+    window.addEventListener(DASHBOARD_INVALIDATED_EVENT, handleDashboardInvalidated)
+
+    return () => {
+      if (refreshTimer) {
+        window.clearTimeout(refreshTimer)
+      }
+      window.removeEventListener(DASHBOARD_INVALIDATED_EVENT, handleDashboardInvalidated)
+    }
+  }, [isModalOpen, loadPendingInterviews, searchParams])
 
   useEffect(() => {
     const timer = setInterval(() => {

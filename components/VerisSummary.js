@@ -8,6 +8,7 @@ import { buildAuthUrl } from "@/lib/client/auth-query"
 import { CardSkeleton, TimelineSkeleton } from "@/components/system/skeletons"
 
 const DASHBOARD_SUMMARY_LIMIT = 4
+const DASHBOARD_INVALIDATED_EVENT = "hireveri:dashboard-data-invalidated"
 
 function getRecommendationColor(value) {
   const normalized = String(value ?? "").toUpperCase()
@@ -51,16 +52,17 @@ function getInsightSummary(item) {
 
 export default function VerisSummary({ initialSummaries, isLoading = false }) {
   const searchParams = useAuthSearchParams()
-  const [summaries, setSummaries] = useState([])
+  const [summaries, setSummaries] = useState(() => initialSummaries ?? [])
   const [isFetching, setIsFetching] = useState(initialSummaries === undefined)
   const [expandedSummaryIds, setExpandedSummaryIds] = useState(() => new Set())
-  const baseSummaries = initialSummaries !== undefined ? initialSummaries : summaries
+  const baseSummaries = summaries
   const displaySummaries = baseSummaries.slice(0, DASHBOARD_SUMMARY_LIMIT)
   const hasMoreSummaries = baseSummaries.length > DASHBOARD_SUMMARY_LIMIT
   const isBusy = isLoading || isFetching
 
   useEffect(() => {
     if (initialSummaries !== undefined) {
+      setSummaries(initialSummaries ?? [])
       setIsFetching(false)
       return
     }
@@ -115,6 +117,47 @@ export default function VerisSummary({ initialSummaries, isLoading = false }) {
       cancelScheduled()
     }
   }, [initialSummaries, searchParams])
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined
+    }
+
+    let refreshTimer = null
+
+    function refreshSummaries() {
+      fetch(buildAuthUrl(`/api/dashboard/veris?limit=${DASHBOARD_SUMMARY_LIMIT}&fast=1&refresh=${Date.now()}`, searchParams), {
+        credentials: "include",
+        cache: "no-store",
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success) {
+            setSummaries(data.data ?? [])
+          }
+        })
+        .catch((error) => {
+          console.error("Failed to refresh VERIS summaries", error)
+        })
+    }
+
+    function handleDashboardInvalidated() {
+      if (refreshTimer) {
+        window.clearTimeout(refreshTimer)
+      }
+
+      refreshTimer = window.setTimeout(refreshSummaries, 225)
+    }
+
+    window.addEventListener(DASHBOARD_INVALIDATED_EVENT, handleDashboardInvalidated)
+
+    return () => {
+      if (refreshTimer) {
+        window.clearTimeout(refreshTimer)
+      }
+      window.removeEventListener(DASHBOARD_INVALIDATED_EVENT, handleDashboardInvalidated)
+    }
+  }, [searchParams])
 
   function toggleSummaryDetails(attemptId) {
     setExpandedSummaryIds((current) => {
