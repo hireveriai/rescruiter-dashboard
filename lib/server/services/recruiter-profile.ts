@@ -70,16 +70,14 @@ export async function getRecruiterProfile(auth: RecruiterRequestContext): Promis
   let recruiterProfileExists = false
   let permissions: string[] = []
 
-  try {
-    await prisma.$queryRaw(Prisma.sql`
-      select public.fn_ensure_default_recruiter_profile(
-        ${auth.userId}::uuid,
-        ${auth.organizationId}::uuid
-      )
-    `)
-  } catch (healingError) {
+  void prisma.$queryRaw(Prisma.sql`
+    select public.fn_ensure_default_recruiter_profile(
+      ${auth.userId}::uuid,
+      ${auth.organizationId}::uuid
+    )
+  `).catch((healingError) => {
     console.warn("Recruiter profile auto-heal skipped during /api/me bootstrap", healingError)
-  }
+  })
 
   try {
     const profileRows = await prisma.$queryRaw<RecruiterProfileRow[]>(Prisma.sql`

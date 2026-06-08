@@ -7,7 +7,7 @@ import Navbar from "../components/Navbar";
 import DashboardIntelligenceBanner from "../components/DashboardIntelligenceBanner";
 import FreeTrialUsage from "../components/FreeTrialUsage";
 import RecruiterDashboardBootstrap from "../components/RecruiterDashboardBootstrap";
-import { canAccessFeature } from "../lib/client/permissions";
+import { DEFAULT_RECRUITER_PERMISSION_PROFILE, canAccessFeature } from "../lib/client/permissions";
 import { buildAuthUrl } from "../lib/client/auth-query";
 import { useAuthSearchParams } from "../lib/client/use-auth-search-params";
 
@@ -136,16 +136,17 @@ function DashboardContent({ profile, overview, isLoading }) {
   const searchParams = useAuthSearchParams();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const displayProfile = profile ?? overview?.profile ?? null;
+  const permissionProfile = displayProfile?.permissions?.length ? displayProfile : DEFAULT_RECRUITER_PERMISSION_PROFILE;
   const fullOverview = normalizeDashboardOverview(overview) ?? createEmptyDashboardOverview(displayProfile);
   const [trialCredits, setTrialCredits] = useState(overview?.trialCredits ?? null);
   const activeInterviewCount = fullOverview?.pendingInterviewsTotal ?? fullOverview?.pendingInterviews?.length ?? 0;
   const candidateCount = fullOverview?.candidates?.length ?? 0;
-  const canCreateJob = canAccessFeature(displayProfile, "createJob");
-  const canSendInterview = canAccessFeature(displayProfile, "sendInterview");
-  const canViewCandidates = canAccessFeature(displayProfile, "candidates");
-  const canViewInterviews = canAccessFeature(displayProfile, "interviews");
-  const canViewReports = canAccessFeature(displayProfile, "reports");
-  const canUseAiScreening = canAccessFeature(displayProfile, "aiScreening");
+  const canCreateJob = canAccessFeature(permissionProfile, "createJob");
+  const canSendInterview = canAccessFeature(permissionProfile, "sendInterview");
+  const canViewCandidates = canAccessFeature(permissionProfile, "candidates");
+  const canViewInterviews = canAccessFeature(permissionProfile, "interviews");
+  const canViewReports = canAccessFeature(permissionProfile, "reports");
+  const canUseAiScreening = canAccessFeature(permissionProfile, "aiScreening");
   const canViewWarRoom = canAccessFeature(displayProfile, "warRoom");
   const fraudAlerts = (overview?.alerts ?? []).filter((alert) => {
     const text = `${alert?.tone ?? ""} ${alert?.type ?? ""} ${alert?.title ?? ""} ${alert?.message ?? ""}`.toLowerCase();

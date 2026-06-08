@@ -9,7 +9,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { buildAuthUrl, hasAuthQuery } from "@/lib/client/auth-query";
 import { ACTION_FEEDBACK_EVENT } from "@/lib/client/action-feedback";
 import { logoutRecruiter } from "@/lib/client/logout";
-import { canAccessFeature } from "@/lib/client/permissions";
+import { DEFAULT_RECRUITER_PERMISSION_PROFILE, canAccessFeature } from "@/lib/client/permissions";
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params";
 import { useAmbientLoading } from "@/components/system/loading";
 
@@ -41,6 +41,7 @@ const navLoadingMessages = {
 
 const ALERT_READ_STORAGE_KEY = "hireveri-read-alert-ids";
 const ALERTS_READ_EVENT = "hireveri:alerts-read";
+const PROFILE_PERMISSION_CACHE_KEY = "hireveri-recruiter-profile-permissions";
 
 function normalizeStorageKeyPart(value) {
   return String(value ?? "")
@@ -166,6 +167,38 @@ function formatAlertTime(value) {
   })
 }
 
+function readCachedPermissionProfile() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const raw = window.sessionStorage.getItem(PROFILE_PERMISSION_CACHE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return Array.isArray(parsed?.permissions) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function cachePermissionProfile(profile) {
+  if (typeof window === "undefined" || !Array.isArray(profile?.permissions)) {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(PROFILE_PERMISSION_CACHE_KEY, JSON.stringify({
+      permissions: profile.permissions,
+      name: profile.name,
+      organization: profile.organization,
+      userId: profile.userId,
+      organizationId: profile.organizationId,
+    }));
+  } catch {
+    // Permission cache is only a startup accelerator.
+  }
+}
+
 export default function Navbar({ onSendInterviewClick: _onSendInterviewClick, initialProfile = null, initialAlerts = undefined }) {
   const pathname = usePathname();
   const searchParams = useAuthSearchParams();
@@ -179,13 +212,14 @@ export default function Navbar({ onSendInterviewClick: _onSendInterviewClick, in
   const [alerts, setAlerts] = useState(() => initialAlerts ?? []);
   const [readAlertIds, setReadAlertIds] = useState(() => new Set());
   const [feedback, setFeedback] = useState(null);
-  const [profile, setProfile] = useState(initialProfile);
+  const [profile, setProfile] = useState(() => initialProfile ?? readCachedPermissionProfile());
   const displayProfile = initialProfile?.name ? initialProfile : profile;
+  const permissionProfile = displayProfile?.permissions?.length ? displayProfile : DEFAULT_RECRUITER_PERMISSION_PROFILE;
   const visibleNavItems = useMemo(
-    () => navItems.filter((item) => canAccessFeature(displayProfile, item.feature)),
-    [displayProfile]
+    () => navItems.filter((item) => canAccessFeature(permissionProfile, item.feature)),
+    [permissionProfile]
   );
-  const canViewAlerts = canAccessFeature(displayProfile, "alerts");
+  const canViewAlerts = canAccessFeature(permissionProfile, "alerts");
   const canManageTeam = canAccessFeature(displayProfile, "manageTeam");
   const canViewBilling = canAccessFeature(displayProfile, "billing");
   const canManageSettings = canAccessFeature(displayProfile, "settings");
@@ -223,6 +257,7 @@ export default function Navbar({ onSendInterviewClick: _onSendInterviewClick, in
   useEffect(() => {
     if (initialProfile?.name) {
       setProfile((current) => current?.name ? current : initialProfile);
+      cachePermissionProfile(initialProfile);
     }
   }, [initialProfile]);
 
@@ -269,6 +304,7 @@ export default function Navbar({ onSendInterviewClick: _onSendInterviewClick, in
 
         if (data.success && data.data?.name) {
           setProfile(data.data);
+          cachePermissionProfile(data.data);
         }
       })
       .catch(() => {});

@@ -22,7 +22,7 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { buildAuthUrl } from "@/lib/client/auth-query";
-import { canAccessFeature } from "@/lib/client/permissions";
+import { DEFAULT_RECRUITER_PERMISSION_PROFILE, canAccessFeature } from "@/lib/client/permissions";
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params";
 import DockItem from "./DockItem";
 import DockSection from "./DockSection";
@@ -152,13 +152,16 @@ export default function CognitiveDock({
   const href = useCallback((path: string) => buildAuthUrl(path, searchParams), [searchParams]);
   const hasFlaggedCandidates = flaggedCount > 0;
   const hasLiveWorkspaceData = hasWorkspaceData(workspace);
-  const canCreateJob = canAccessFeature(profile, "createJob");
-  const canSendInterview = canAccessFeature(profile, "sendInterview");
-  const canViewCandidates = canAccessFeature(profile, "candidates");
-  const canViewInterviews = canAccessFeature(profile, "interviews");
-  const canViewReports = canAccessFeature(profile, "reports");
-  const canViewAlerts = canAccessFeature(profile, "alerts");
-  const canUseCopilot = canAccessFeature(profile, "copilot");
+  const permissionProfile = Array.isArray(profile?.permissions) && profile.permissions.length > 0
+    ? profile
+    : DEFAULT_RECRUITER_PERMISSION_PROFILE;
+  const canCreateJob = canAccessFeature(permissionProfile, "createJob");
+  const canSendInterview = canAccessFeature(permissionProfile, "sendInterview");
+  const canViewCandidates = canAccessFeature(permissionProfile, "candidates");
+  const canViewInterviews = canAccessFeature(permissionProfile, "interviews");
+  const canViewReports = canAccessFeature(permissionProfile, "reports");
+  const canViewAlerts = canAccessFeature(permissionProfile, "alerts");
+  const canUseCopilot = canAccessFeature(permissionProfile, "copilot");
 
   const openCreateJob = useCallback(() => {
     window.dispatchEvent(new CustomEvent("hireveri:open-create-job"));

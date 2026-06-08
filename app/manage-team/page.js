@@ -669,8 +669,9 @@ export default function ManageTeamPage() {
             </div>
           ) : null}
 
-          <div className="mt-8 overflow-hidden rounded-[24px] border border-slate-800 bg-slate-950/30">
-            <div className="hidden grid-cols-[minmax(250px,1.05fr)_minmax(190px,0.75fr)_minmax(132px,0.45fr)_minmax(110px,0.42fr)_minmax(340px,1.55fr)_minmax(154px,0.62fr)] items-start gap-5 border-b border-slate-800 px-6 py-4 text-xs uppercase tracking-[0.22em] text-slate-500 xl:grid">
+          <div className="mt-8 overflow-x-auto overflow-y-hidden rounded-[24px] border border-slate-800 bg-slate-950/30">
+            <div className="min-w-[1180px]">
+            <div className="hidden grid-cols-[250px_190px_112px_96px_minmax(300px,1fr)_160px] items-start gap-5 border-b border-slate-800 px-6 py-4 text-xs uppercase tracking-[0.18em] text-slate-500 xl:grid">
               <div>Team Member</div>
               <div>Organization Role</div>
               <div>Status</div>
@@ -687,7 +688,7 @@ export default function ManageTeamPage() {
               team.map((member) => (
                 <div
                   key={member.userId}
-                  className="grid min-w-0 grid-cols-1 items-start gap-5 border-b border-slate-900 px-4 py-5 last:border-b-0 sm:px-6 lg:grid-cols-2 xl:grid-cols-[minmax(250px,1.05fr)_minmax(190px,0.75fr)_minmax(132px,0.45fr)_minmax(110px,0.42fr)_minmax(340px,1.55fr)_minmax(154px,0.62fr)]"
+                  className="grid min-w-0 grid-cols-1 items-start gap-5 border-b border-slate-900 px-4 py-5 last:border-b-0 sm:px-6 lg:grid-cols-2 xl:grid-cols-[250px_190px_112px_96px_minmax(300px,1fr)_160px]"
                 >
                   <div className="min-w-0 self-start">
                     <div className="flex items-center gap-2">
@@ -752,7 +753,7 @@ export default function ManageTeamPage() {
                     )}
                   </div>
 
-                  <div className="grid min-w-0 content-start gap-2">
+                  <div className="grid w-40 min-w-40 content-start gap-2">
                     {canManageUsers && !member.isCurrentUser ? (
                       <>
                         <button
@@ -805,6 +806,7 @@ export default function ManageTeamPage() {
             )}
           </div>
         </div>
+      </div>
       </div>
 
       <AddUserModal
