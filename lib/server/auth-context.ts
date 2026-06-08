@@ -283,7 +283,7 @@ function base64UrlEncode(value: Buffer | string) {
 }
 
 function verifyHs256Jwt(token: string) {
-  const secret = process.env.JWT_SECRET
+  const secret = process.env.JWT_SECRET || process.env.RECRUITER_INVITE_TOKEN_SECRET || process.env.NEXTAUTH_SECRET
   if (!secret) {
     return false
   }

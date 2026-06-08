@@ -203,7 +203,7 @@ async function ensureTeamInviteTables() {
       invited_user_id uuid null references public.users(user_id) on delete cascade,
       invited_by uuid not null references public.users(user_id),
       invited_at timestamptz not null default now(),
-      role_assigned smallint not null references public.recruiter_role_pool(recruiter_role_id),
+      role_assigned smallint not null,
       token_hash text not null,
       expires_at timestamptz not null,
       accepted_at timestamptz null,
@@ -251,11 +251,6 @@ async function getRoleOrThrow(roleId: number) {
       on rrp.recruiter_role_id = hrr.legacy_role_id
     where hrr.legacy_role_id = ${roleId}::smallint
       and hrr.is_active = true
-      and exists (
-        select 1
-        from public.recruiter_role_pool mapped_role
-        where mapped_role.recruiter_role_id = hrr.legacy_role_id
-      )
     limit 1
   `)
 
@@ -453,7 +448,19 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
   await ensureCurrentRecruiterAdminIfNoAdmin(auth)
 
   const hasRoleSystem =
-    hasRecruiterProfiles && hasRecruiterRoles && hasRecruiterRolePool && hasRolePermissions && hasPermissions
+    hasRecruiterProfiles && hasRecruiterRoles && hasRolePermissions && hasPermissions
+  const roleNameExpression = hasRecruiterRolePool
+    ? Prisma.sql`coalesce(hrr.name, rrp.code, '')`
+    : Prisma.sql`coalesce(hrr.name, '')`
+  const roleDescriptionExpression = hasRecruiterRolePool
+    ? Prisma.sql`rrp.description`
+    : Prisma.sql`null::text`
+  const rolePoolJoin = hasRecruiterRolePool
+    ? Prisma.sql`left join public.recruiter_role_pool rrp on rrp.recruiter_role_id = rp.recruiter_role_id`
+    : Prisma.sql``
+  const availableRolePoolJoin = hasRecruiterRolePool
+    ? Prisma.sql`left join public.recruiter_role_pool rrp on rrp.recruiter_role_id = hrr.legacy_role_id`
+    : Prisma.sql``
 
   const summaryRowsPromise = prisma.$queryRaw<TeamSummaryRow[]>(Prisma.sql`
     select
@@ -466,8 +473,8 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
             count(*) filter (
               where rp.recruiter_role_id is not null
                 and (
-                  lower(coalesce(hrr.name, rrp.code, '')) like '%founder%'
-                  or lower(coalesce(hrr.name, rrp.code, '')) like '%super%'
+                  lower(${roleNameExpression}) like '%founder%'
+                  or lower(${roleNameExpression}) like '%super%'
                   or exists (
                     select 1
                     from public.role_permissions perms_admin
@@ -485,9 +492,7 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
     ${hasRecruiterProfiles
       ? Prisma.sql`left join public.recruiter_profiles rp on rp.recruiter_id = u.user_id`
       : Prisma.sql``}
-    ${hasRecruiterProfiles && hasRecruiterRolePool
-      ? Prisma.sql`left join public.recruiter_role_pool rrp on rrp.recruiter_role_id = rp.recruiter_role_id`
-      : Prisma.sql``}
+    ${hasRecruiterProfiles ? rolePoolJoin : Prisma.sql``}
     ${hasRecruiterProfiles && hasRecruiterRoles
       ? Prisma.sql`left join public.hireveri_recruiter_roles hrr on hrr.legacy_role_id = rp.recruiter_role_id`
       : Prisma.sql``}
@@ -506,8 +511,8 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
           u.is_active,
           u.created_at::text,
           rp.recruiter_role_id,
-          coalesce(hrr.name, rrp.code) as recruiter_role_code,
-          rrp.description as recruiter_role_description,
+          ${roleNameExpression} as recruiter_role_code,
+          ${roleDescriptionExpression} as recruiter_role_description,
           (
             bool_or(perms.permission = 'users.manage')
             and bool_or(perms.permission = 'organization.settings')
@@ -526,8 +531,7 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
         from public.users u
         left join public.recruiter_profiles rp
           on rp.recruiter_id = u.user_id
-        left join public.recruiter_role_pool rrp
-          on rrp.recruiter_role_id = rp.recruiter_role_id
+        ${rolePoolJoin}
         left join public.hireveri_recruiter_roles hrr
           on hrr.legacy_role_id = rp.recruiter_role_id
         left join public.role_permissions perms
@@ -558,8 +562,8 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
           u.is_active,
           u.created_at,
           rp.recruiter_role_id,
-          coalesce(hrr.name, rrp.code),
-          rrp.description,
+          ${roleNameExpression},
+          ${roleDescriptionExpression},
           latest_invite.status,
           latest_invite.expires_at
         order by
@@ -594,7 +598,7 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
         select
           hrr.legacy_role_id as recruiter_role_id,
           hrr.name as code,
-          rrp.description,
+          ${hasRecruiterRolePool ? Prisma.sql`rrp.description` : Prisma.sql`null::text`} as description,
           coalesce(
             jsonb_agg(
               distinct jsonb_build_object(
@@ -605,15 +609,14 @@ async function getTeamWorkspace(auth: RecruiterAuth) {
             '[]'::jsonb
           ) as permission_details
         from public.hireveri_recruiter_roles hrr
-        left join public.recruiter_role_pool rrp
-          on rrp.recruiter_role_id = hrr.legacy_role_id
+        ${availableRolePoolJoin}
         left join public.role_permissions perms
           on perms.recruiter_role_id = hrr.legacy_role_id
         left join public.permissions pd
           on pd.permission_code = perms.permission
         where hrr.is_active = true
           and hrr.legacy_role_id is not null
-        group by hrr.legacy_role_id, hrr.name, rrp.description, hrr.sort_order
+        group by hrr.legacy_role_id, hrr.name, ${hasRecruiterRolePool ? Prisma.sql`rrp.description` : Prisma.sql`null::text`}, hrr.sort_order
         order by hrr.sort_order asc, hrr.name asc
       `)
     : []
@@ -857,7 +860,7 @@ async function rollbackNewPendingUser(input: { userId: string; inviteId: string;
 }
 
 function getSetupLink(token: string) {
-  const url = new URL(getOnboardingBaseUrl())
+  const url = new URL("/api/team-invite/accept", getRecruiterAppUrl())
   url.searchParams.set("setupToken", token)
   return url.toString()
 }
