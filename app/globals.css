@@ -311,6 +311,23 @@ a {
   }
 }
 
+@keyframes hv-veris-loader-scan-flow {
+  0% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+
+  18%,
+  72% {
+    opacity: 0.72;
+  }
+
+  100% {
+    transform: translateY(260px);
+    opacity: 0;
+  }
+}
+
 .hv-veris-loader-grid {
   background-image:
     linear-gradient(rgba(244, 114, 182, 0.07) 1px, transparent 1px),
@@ -335,6 +352,10 @@ a {
 
 .hv-veris-loader-core {
   animation: hv-veris-loader-core-pulse 1.7s ease-in-out infinite;
+}
+
+.hv-veris-loader-scan {
+  animation: hv-veris-loader-scan-flow 2.8s ease-in-out infinite;
 }
 
 .hv-ai-panel {

@@ -453,34 +453,35 @@ function ScreeningAnalysisOverlay({ phase }: { phase: ScreeningLoaderPhase | nul
     <div
       aria-busy="true"
       aria-live="polite"
-      className="fixed inset-0 z-[140] flex items-center justify-center overflow-hidden bg-[#120817]/82 px-4 py-8 text-white backdrop-blur-xl animate-[overlay-fade-in_180ms_ease-out_forwards]"
+      className="fixed inset-0 z-[140] flex items-center justify-center overflow-hidden bg-[#08070d]/88 px-4 py-8 text-white backdrop-blur-xl animate-[overlay-fade-in_180ms_ease-out_forwards]"
       role="status"
     >
-      <div aria-hidden="true" className="absolute inset-0 bg-[radial-gradient(circle_at_50%_38%,rgba(236,72,153,0.2),transparent_34%),radial-gradient(circle_at_84%_12%,rgba(168,85,247,0.16),transparent_26%),linear-gradient(180deg,rgba(15,23,42,0.28),rgba(15,23,42,0.76))]" />
-      <div aria-hidden="true" className="hv-veris-loader-grid absolute inset-0 opacity-35" />
+      <div aria-hidden="true" className="absolute inset-0 bg-[radial-gradient(circle_at_50%_42%,rgba(236,72,153,0.22),transparent_31%),radial-gradient(circle_at_50%_50%,rgba(192,132,252,0.12),transparent_48%),linear-gradient(180deg,rgba(24,13,24,0.42),rgba(2,6,23,0.84))]" />
+      <div aria-hidden="true" className="hv-veris-loader-grid absolute inset-0 opacity-25" />
 
-      <div className="relative w-full max-w-5xl animate-[overlay-panel-in_220ms_ease-out_forwards]">
-        <div className="relative mx-auto flex aspect-square w-[min(74vw,390px)] items-center justify-center sm:w-[430px]">
-          <div className="hv-veris-loader-ring absolute inset-[10%] rounded-full border border-fuchsia-300/12" />
-          <div className="hv-veris-loader-ring-reverse absolute inset-[17%] rounded-full border border-dashed border-pink-400/28" />
-          <div className="absolute inset-[24%] rounded-full border border-fuchsia-400/18" />
+      <div className="relative flex w-full max-w-6xl items-center justify-center animate-[overlay-panel-in_220ms_ease-out_forwards]">
+        <div className="relative flex aspect-square w-[min(92vw,650px)] items-center justify-center">
+          <div className="hv-veris-loader-ring absolute inset-0 rounded-full border border-fuchsia-300/10" />
+          <div className="hv-veris-loader-ring-reverse absolute inset-[8%] rounded-full border border-dashed border-pink-400/24" />
+          <div className="absolute inset-[16%] rounded-full border border-fuchsia-400/14" />
+          <div className="absolute inset-[24%] rounded-full border border-pink-300/14" />
 
-          {screeningLoaderSteps.slice(0, 5).map((step, index) => {
+          {screeningLoaderSteps.map((step, index) => {
             const isComplete = index < activeIndex
             const isActive = index === activeIndex
-            const top = [19, 39, 62, 38, 76][index]
-            const left = [86, 93, 93, 7, 11][index]
-            const lineRotation = [-34, -13, 14, 196, 160][index]
+            const top = [7, 26, 50, 74, 93, 50][index]
+            const left = [50, 88, 94, 88, 50, 6][index]
+            const lineRotation = [-90, -34, 0, 34, 90, 180][index]
 
             return (
               <div key={step.phase} aria-hidden="true" className="absolute inset-0">
                 <span
-                  className="hv-veris-loader-line absolute left-1/2 top-1/2 h-px w-[40%] origin-left bg-gradient-to-r from-pink-400/45 via-fuchsia-300/25 to-transparent"
+                  className="hv-veris-loader-line absolute left-1/2 top-1/2 h-px w-[44%] origin-left bg-gradient-to-r from-pink-400/40 via-fuchsia-300/18 to-transparent"
                   style={{ transform: `rotate(${lineRotation}deg)` }}
                 />
                 <span
                   className={[
-                    "absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border transition duration-300",
+                    "absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border transition duration-300",
                     isActive || isComplete
                       ? "border-pink-300 bg-pink-400 shadow-[0_0_22px_rgba(244,114,182,0.9)]"
                       : "border-fuchsia-300/35 bg-fuchsia-500/20",
@@ -491,76 +492,67 @@ function ScreeningAnalysisOverlay({ phase }: { phase: ScreeningLoaderPhase | nul
             )
           })}
 
-          <div className="relative flex h-[48%] w-[48%] min-w-44 flex-col items-center justify-center rounded-full border border-pink-300/28 bg-[#170f18]/95 text-center shadow-[0_0_70px_rgba(236,72,153,0.24),inset_0_1px_0_rgba(255,255,255,0.06)]">
-            <div className="absolute inset-0 rounded-full bg-[linear-gradient(180deg,rgba(255,255,255,0.04),transparent_48%)]" />
-            <div className="relative flex h-10 w-10 items-center justify-center text-pink-300">
-              <span className="absolute h-8 w-8 rounded-full border border-pink-300/30 hv-veris-loader-core" />
-              <span className="text-2xl font-semibold">AI</span>
+          <div
+            className="absolute inset-[18%] rounded-full p-[2px] shadow-[0_0_110px_rgba(236,72,153,0.28)] transition-[background] duration-500 sm:inset-[24%] lg:inset-[27%]"
+            style={{
+              background: `conic-gradient(from 225deg, rgba(244,114,182,0.95) 0deg, rgba(192,132,252,0.95) ${progress * 3.6}deg, rgba(255,255,255,0.08) ${progress * 3.6}deg, rgba(255,255,255,0.08) 360deg)`,
+            }}
+          >
+            <div className="relative flex h-full w-full flex-col items-center justify-center overflow-hidden rounded-full border border-pink-300/20 bg-[#130c13]/96 px-5 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.08),inset_0_-30px_80px_rgba(236,72,153,0.09)] sm:px-8">
+              <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_50%_18%,rgba(255,255,255,0.07),transparent_32%),linear-gradient(180deg,rgba(255,255,255,0.035),transparent_52%)]" />
+              <div aria-hidden="true" className="hv-veris-loader-scan absolute inset-x-7 top-0 h-px bg-gradient-to-r from-transparent via-pink-200/80 to-transparent" />
+              <div aria-hidden="true" className="absolute inset-x-10 top-1/2 h-px bg-pink-300/10" />
+
+              <p className="relative text-[10px] font-semibold uppercase tracking-[0.32em] text-pink-200/70 sm:text-xs">
+                VERIS Screening
+              </p>
+              <h2 className="relative mt-3 max-w-[15rem] text-xl font-semibold leading-tight tracking-tight text-white sm:mt-4 sm:text-3xl">
+                {activeStep.label}
+              </h2>
+              <p className="relative mt-2 max-w-[16rem] text-[11px] leading-4 text-slate-400 sm:mt-3 sm:text-sm sm:leading-5">
+                {activeStep.detail}
+              </p>
+
+              <div className="relative mt-4 flex items-end justify-center gap-2 sm:mt-5">
+                <span className="text-2xl font-semibold leading-none text-pink-100 sm:text-4xl">{progress}</span>
+                <span className="mb-1 text-sm font-semibold text-pink-200/70">%</span>
+              </div>
+
+              <div className="relative mt-4 flex max-w-[15rem] flex-wrap justify-center gap-2 sm:mt-5">
+                {screeningLoaderSteps.map((step, index) => {
+                  const isComplete = index < activeIndex
+                  const isActive = index === activeIndex
+
+                  return (
+                    <span
+                      key={step.phase}
+                      aria-label={step.label}
+                      className={[
+                        "h-2.5 w-2.5 rounded-full border transition duration-300",
+                        isActive
+                          ? "border-pink-200 bg-pink-300 shadow-[0_0_16px_rgba(244,114,182,0.95)]"
+                          : isComplete
+                            ? "border-emerald-200 bg-emerald-300"
+                            : "border-slate-600 bg-slate-800",
+                      ].join(" ")}
+                    />
+                  )
+                })}
+              </div>
+              <p className="relative mt-3 text-[10px] uppercase tracking-[0.22em] text-slate-500">
+                {activeIndex + 1} / {screeningLoaderSteps.length}
+              </p>
             </div>
-            <p className="relative mt-5 text-xs font-semibold uppercase tracking-[0.42em] text-pink-300">Analysis</p>
-            <p className="relative mt-2 text-sm text-slate-300">Engine</p>
           </div>
+
+          <div aria-hidden="true" className="absolute inset-[35%] rounded-full border border-pink-300/10 hv-veris-loader-core" />
+          <div className="absolute bottom-[8%] left-1/2 h-px w-[36%] -translate-x-1/2 bg-gradient-to-r from-transparent via-pink-300/24 to-transparent" />
         </div>
 
-        <div className="mx-auto mt-6 max-w-3xl rounded-2xl border border-pink-300/14 bg-slate-950/55 p-5 shadow-[0_20px_80px_rgba(2,6,23,0.36)]">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-pink-200/75">VERIS Screening</p>
-              <h2 className="mt-2 text-xl font-semibold text-white">{activeStep.label}</h2>
-              <p className="mt-1 text-sm text-slate-400">{activeStep.detail}</p>
-            </div>
-            <div className="text-left sm:text-right">
-              <p className="text-2xl font-semibold text-pink-100">{progress}%</p>
-              <p className="mt-1 text-xs text-slate-500">Pipeline progress</p>
-            </div>
-          </div>
-
-          <div className="mt-5 h-1.5 overflow-hidden rounded-full bg-white/8">
-            <div
-              className="h-full rounded-full bg-[linear-gradient(90deg,#f472b6,#c084fc,#fb7185)] transition-[width] duration-500"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-
-          <div className="mt-5 grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
-            {screeningLoaderSteps.map((step, index) => {
-              const isComplete = index < activeIndex
-              const isActive = index === activeIndex
-
-              return (
-                <div
-                  key={step.phase}
-                  className={[
-                    "rounded-xl border px-3 py-3 transition duration-300",
-                    isActive
-                      ? "border-pink-300/45 bg-pink-400/12 text-pink-50 shadow-[0_0_24px_rgba(236,72,153,0.16)]"
-                      : isComplete
-                        ? "border-emerald-300/22 bg-emerald-400/8 text-emerald-100"
-                        : "border-white/8 bg-white/[0.03] text-slate-500",
-                  ].join(" ")}
-                >
-                  <span
-                    aria-hidden="true"
-                    className={[
-                      "mb-2 block h-2.5 w-2.5 rounded-full",
-                      isActive
-                        ? "bg-pink-300 shadow-[0_0_16px_rgba(244,114,182,0.95)]"
-                        : isComplete
-                          ? "bg-emerald-300"
-                          : "bg-slate-700",
-                    ].join(" ")}
-                  />
-                  <p className="text-[11px] font-semibold leading-4">{step.label}</p>
-                </div>
-              )
-            })}
-          </div>
-        </div>
       </div>
     </div>
   )
 }
-
 function getRiskTone(risk: MatchRow["riskLevel"]) {
   if (risk === "LOW") {
     return "border-emerald-500/20 bg-emerald-500/10 text-emerald-300"
