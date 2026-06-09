@@ -77,7 +77,6 @@ export default function RecordedInterviews({ initialRecordedInterviews, organiza
     if (initialRecordedInterviews !== undefined) {
       setInterviews(initialRecordedInterviews ?? [])
       setIsFetching(false)
-      return
     }
 
     if (!hasAuthQuery(searchParams)) {
@@ -89,17 +88,19 @@ export default function RecordedInterviews({ initialRecordedInterviews, organiza
     let cancelScheduled = () => {}
     let loaderCeilingTimer = null
 
-    setIsFetching(true)
-    loaderCeilingTimer = window.setTimeout(() => {
-      if (isMounted) {
-        setIsFetching(false)
-      }
-    }, 1200)
+    if (initialRecordedInterviews === undefined) {
+      setIsFetching(true)
+      loaderCeilingTimer = window.setTimeout(() => {
+        if (isMounted) {
+          setIsFetching(false)
+        }
+      }, 1200)
+    }
 
     const fetchRecordings = () => {
       fetch(buildAuthUrl("/api/dashboard/recordings?limit=6", searchParams), {
         credentials: "include",
-        cache: "default",
+        cache: initialRecordedInterviews === undefined ? "default" : "no-store",
       })
         .then((res) => res.json())
         .then((data) => {

@@ -28,16 +28,50 @@ type JobRow = {
   interviewCount: number
 }
 
+type JobSelectorRow = {
+  jobId: string
+  jobTitle: string
+  isActive: boolean
+}
+
 export async function GET(request: Request) {
   try {
     const auth = await getRecruiterRequestContext(request)
     const url = new URL(request.url)
+    const view = url.searchParams.get("view") || url.searchParams.get("fields")
     const includeInactive =
       url.searchParams.get("includeInactive") === "1" ||
       url.searchParams.get("include_inactive") === "1" ||
       url.searchParams.get("includeInactive") === "true" ||
       url.searchParams.get("include_inactive") === "true"
     const hasIsActive = await jobPositionsSupportIsActive()
+
+    if (view === "selector") {
+      const rows = await prisma.$queryRaw<JobSelectorRow[]>(Prisma.sql`
+        select
+          jp.job_id as "jobId",
+          jp.job_title as "jobTitle",
+          ${hasIsActive ? Prisma.sql`jp.is_active` : Prisma.sql`true`} as "isActive"
+        from public.job_positions jp
+        where jp.organization_id = ${auth.organizationId}::uuid
+          ${hasIsActive && !includeInactive ? Prisma.sql`and jp.is_active = true` : Prisma.empty}
+        order by jp.job_id desc
+      `)
+
+      return NextResponse.json({
+        success: true,
+        jobs: rows.map((row) => ({
+          jobId: row.jobId,
+          jobTitle: row.jobTitle,
+          isActive: row.isActive,
+        })),
+        meta: {
+          supportsJobActiveState: hasIsActive,
+          view: "selector",
+        },
+      })
+    }
+
     const hasCodingConfig = await jobPositionsSupportCodingConfig()
     const hasQuestionTypeDefault = await jobPositionsSupportQuestionTypeDefault()
 

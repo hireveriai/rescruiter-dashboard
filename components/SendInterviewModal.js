@@ -13,6 +13,8 @@ import UpgradeLimitDialog from "@/components/UpgradeLimitDialog"
 const DASHBOARD_CACHE_KEY = "hireveri-overview"
 const DASHBOARD_INVALIDATED_EVENT = "hireveri:dashboard-data-invalidated"
 const DASHBOARD_INVALIDATED_KEY = "hireveri-overview-invalidated"
+const SEND_INTERVIEW_JOBS_CACHE_PREFIX = "hireveri-send-interview-jobs"
+const SEND_INTERVIEW_JOBS_CACHE_TTL_MS = 5 * 60 * 1000
 
 function invalidateDashboardOverviewCache() {
   if (typeof window === "undefined") {
@@ -126,6 +128,12 @@ function notifyTrialCreditsUpdated(credits) {
   }
 }
 
+function normalizeActiveJobs(payload) {
+  return (payload?.jobs || payload?.data?.jobs || []).filter(
+    (job) => (job.isActive ?? job.is_active ?? true) !== false
+  )
+}
+
 export default function SendInterviewModal({ isOpen, onClose, initialTrialCredits = null }) {
   const searchParams = useAuthSearchParams()
   const primaryFileInputRef = useRef(null)
@@ -180,44 +188,87 @@ export default function SendInterviewModal({ isOpen, onClose, initialTrialCredit
       return
     }
 
-    setJobsLoading(true)
-    Promise.all([
-      fetch(buildAuthUrl("/api/jobs", searchParams), {
-        credentials: "include",
-        cache: "no-store",
-      }),
-      fetch(buildAuthUrl("/api/trial-credits", searchParams), {
-        credentials: "include",
-        cache: "no-store",
-      }),
-    ])
-      .then(async ([jobsResponse, creditsResponse]) => {
-        const data = await jobsResponse.json()
-        const creditsPayload = await creditsResponse.json().catch(() => null)
+    const jobsController = new AbortController()
+    const creditsController = new AbortController()
+    const cacheKey = `${SEND_INTERVIEW_JOBS_CACHE_PREFIX}:${searchParams.toString()}`
+    let hasFreshCachedJobs = false
+
+    try {
+      const cachedJobs = window.sessionStorage.getItem(cacheKey)
+      if (cachedJobs) {
+        const parsed = JSON.parse(cachedJobs)
+        if (Array.isArray(parsed?.jobs) && Date.now() - Number(parsed.cachedAt) < SEND_INTERVIEW_JOBS_CACHE_TTL_MS) {
+          hasFreshCachedJobs = true
+          setJobs(parsed.jobs)
+          setJobId((currentJobId) =>
+            currentJobId && !parsed.jobs.some((job) => (job.jobId || job.job_id) === currentJobId)
+              ? ""
+              : currentJobId
+          )
+        }
+      }
+    } catch (cacheError) {
+      console.warn("Failed to read cached interview jobs", cacheError)
+    }
+
+    setJobsLoading(!hasFreshCachedJobs)
+
+    fetch(buildAuthUrl("/api/jobs?view=selector", searchParams), {
+      credentials: "include",
+      cache: "no-store",
+      signal: jobsController.signal,
+    })
+      .then((jobsResponse) => jobsResponse.json())
+      .then((data) => {
+        const nextJobs = normalizeActiveJobs(data)
+        setJobs(nextJobs)
+        if (typeof window !== "undefined") {
+          window.sessionStorage.setItem(
+            cacheKey,
+            JSON.stringify({
+              cachedAt: Date.now(),
+              jobs: nextJobs,
+            })
+          )
+        }
+        setJobId((currentJobId) =>
+          currentJobId && !nextJobs.some((job) => (job.jobId || job.job_id) === currentJobId)
+            ? ""
+            : currentJobId
+        )
+      })
+      .catch((fetchError) => {
+        if (fetchError?.name === "AbortError") {
+          return
+        }
+        console.error(fetchError)
+        if (!hasFreshCachedJobs) {
+          setJobs([])
+        }
+      })
+      .finally(() => setJobsLoading(false))
+
+    fetch(buildAuthUrl("/api/trial-credits", searchParams), {
+      credentials: "include",
+      cache: "no-store",
+      signal: creditsController.signal,
+    })
+      .then((creditsResponse) => creditsResponse.json().catch(() => null))
+      .then((creditsPayload) => {
         if (creditsPayload?.success) {
           setTrialCredits(normalizeTrialCredits(creditsPayload.data))
         }
-        return data
-      })
-      .then((data) => {
-        const nextJobs = (data.jobs || data.data?.jobs || []).filter(
-          (job) => (job.isActive ?? job.is_active ?? true) !== false
-        )
-        setJobs(nextJobs)
-        if (nextJobs.length === 0) {
-          setJobId("")
-        } else if (
-          jobId &&
-          !nextJobs.some((job) => (job.jobId || job.job_id) === jobId)
-        ) {
-          setJobId("")
-        }
       })
       .catch((fetchError) => {
-        console.error(fetchError)
-        setJobs([])
+        if (fetchError?.name !== "AbortError") {
+          console.error(fetchError)
+        }
       })
-      .finally(() => setJobsLoading(false))
+
+    return () => {
+      jobsController.abort()
+      creditsController.abort()
+    }
   }, [isOpen, searchParams])
 
   useEffect(() => {

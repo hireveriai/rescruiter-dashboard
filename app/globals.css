@@ -255,6 +255,88 @@ a {
   }
 }
 
+@keyframes hv-veris-loader-grid-shift {
+  0% {
+    background-position: 0 0, 0 0;
+  }
+
+  100% {
+    background-position: 48px 48px, 48px 48px;
+  }
+}
+
+@keyframes hv-veris-loader-ring-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes hv-veris-loader-ring-reverse {
+  from {
+    transform: rotate(360deg);
+  }
+
+  to {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes hv-veris-loader-line-flow {
+  0%,
+  100% {
+    opacity: 0.32;
+    filter: drop-shadow(0 0 0 rgba(244, 114, 182, 0));
+  }
+
+  50% {
+    opacity: 0.86;
+    filter: drop-shadow(0 0 10px rgba(244, 114, 182, 0.5));
+  }
+}
+
+@keyframes hv-veris-loader-core-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.92);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.18);
+  }
+}
+
+.hv-veris-loader-grid {
+  background-image:
+    linear-gradient(rgba(244, 114, 182, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(244, 114, 182, 0.06) 1px, transparent 1px);
+  background-size: 48px 48px;
+  animation: hv-veris-loader-grid-shift 16s linear infinite;
+  mask-image: radial-gradient(circle at 50% 42%, black, transparent 72%);
+}
+
+.hv-veris-loader-ring {
+  animation: hv-veris-loader-ring-spin 14s linear infinite;
+  box-shadow: 0 0 70px rgba(236, 72, 153, 0.1);
+}
+
+.hv-veris-loader-ring-reverse {
+  animation: hv-veris-loader-ring-reverse 18s linear infinite;
+}
+
+.hv-veris-loader-line {
+  animation: hv-veris-loader-line-flow 2.4s ease-in-out infinite;
+}
+
+.hv-veris-loader-core {
+  animation: hv-veris-loader-core-pulse 1.7s ease-in-out infinite;
+}
+
 .hv-ai-panel {
   position: relative;
   overflow: hidden;

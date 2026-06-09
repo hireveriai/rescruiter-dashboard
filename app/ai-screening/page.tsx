@@ -1,12 +1,11 @@
 "use client"
 
 import Link from "next/link"
+import dynamic from "next/dynamic"
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react"
 
 import Navbar from "@/components/Navbar"
 import FreeTrialUsage from "@/components/FreeTrialUsage"
-import SendInterviewModal from "@/components/SendInterviewModal"
-import UpgradeLimitDialog from "@/components/UpgradeLimitDialog"
 import { InsightTooltip } from "@/components/ui/InsightTooltip"
 import { ProcessingTimeline, type TimelineStep } from "@/components/ui/ProcessingTimeline"
 import { StepProgress } from "@/components/ui/StepProgress"
@@ -152,6 +151,14 @@ type ResumeState =
   | "PROCESSING"
   | "READY"
 
+type ScreeningLoaderPhase =
+  | "uploading"
+  | "uploaded"
+  | "parsed"
+  | "job"
+  | "matching"
+  | "ready"
+
 type MatchScope = "BATCH" | "GLOBAL"
 type PipelineErrorStep = "upload" | "parse" | "job" | "match" | null
 type CleanupModal = "CLEAR_RESULTS" | "DELETE_UPLOAD" | null
@@ -166,6 +173,9 @@ const AUTO_RUN = true
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const UPGRADE_MESSAGE =
   "You’ve reached your free trial limit. Upgrade your workspace to continue conducting interviews and screenings."
+
+const SendInterviewModal = dynamic(() => import("@/components/SendInterviewModal"), { ssr: false })
+const UpgradeLimitDialog = dynamic(() => import("@/components/UpgradeLimitDialog"), { ssr: false })
 
 function invalidateDashboardOverviewCache() {
   if (typeof window === "undefined") {
@@ -391,6 +401,163 @@ function EyeIcon() {
       <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
       <circle cx="12" cy="12" r="3" />
     </svg>
+  )
+}
+
+const screeningLoaderSteps: Array<{ phase: ScreeningLoaderPhase; label: string; detail: string }> = [
+  {
+    phase: "uploading",
+    label: "Uploading",
+    detail: "Securing resume files in the workspace.",
+  },
+  {
+    phase: "uploaded",
+    label: "Resume uploaded",
+    detail: "Files received and queued for intelligence extraction.",
+  },
+  {
+    phase: "parsed",
+    label: "Resume parsed",
+    detail: "Candidate profile, contact, and skill signals are structured.",
+  },
+  {
+    phase: "job",
+    label: "Job analyze",
+    detail: "Role requirements and must-have skills are being mapped.",
+  },
+  {
+    phase: "matching",
+    label: "Matching candidates",
+    detail: "VERIS is ranking candidates against the analyzed role.",
+  },
+  {
+    phase: "ready",
+    label: "Results ready",
+    detail: "Screening intelligence is ready for recruiter review.",
+  },
+]
+
+function ScreeningAnalysisOverlay({ phase }: { phase: ScreeningLoaderPhase | null }) {
+  if (!phase) {
+    return null
+  }
+
+  const activeIndex = Math.max(
+    0,
+    screeningLoaderSteps.findIndex((step) => step.phase === phase)
+  )
+  const activeStep = screeningLoaderSteps[activeIndex] ?? screeningLoaderSteps[0]
+  const progress = Math.round(((activeIndex + 1) / screeningLoaderSteps.length) * 100)
+
+  return (
+    <div
+      aria-busy="true"
+      aria-live="polite"
+      className="fixed inset-0 z-[140] flex items-center justify-center overflow-hidden bg-[#120817]/82 px-4 py-8 text-white backdrop-blur-xl animate-[overlay-fade-in_180ms_ease-out_forwards]"
+      role="status"
+    >
+      <div aria-hidden="true" className="absolute inset-0 bg-[radial-gradient(circle_at_50%_38%,rgba(236,72,153,0.2),transparent_34%),radial-gradient(circle_at_84%_12%,rgba(168,85,247,0.16),transparent_26%),linear-gradient(180deg,rgba(15,23,42,0.28),rgba(15,23,42,0.76))]" />
+      <div aria-hidden="true" className="hv-veris-loader-grid absolute inset-0 opacity-35" />
+
+      <div className="relative w-full max-w-5xl animate-[overlay-panel-in_220ms_ease-out_forwards]">
+        <div className="relative mx-auto flex aspect-square w-[min(74vw,390px)] items-center justify-center sm:w-[430px]">
+          <div className="hv-veris-loader-ring absolute inset-[10%] rounded-full border border-fuchsia-300/12" />
+          <div className="hv-veris-loader-ring-reverse absolute inset-[17%] rounded-full border border-dashed border-pink-400/28" />
+          <div className="absolute inset-[24%] rounded-full border border-fuchsia-400/18" />
+
+          {screeningLoaderSteps.slice(0, 5).map((step, index) => {
+            const isComplete = index < activeIndex
+            const isActive = index === activeIndex
+            const top = [19, 39, 62, 38, 76][index]
+            const left = [86, 93, 93, 7, 11][index]
+            const lineRotation = [-34, -13, 14, 196, 160][index]
+
+            return (
+              <div key={step.phase} aria-hidden="true" className="absolute inset-0">
+                <span
+                  className="hv-veris-loader-line absolute left-1/2 top-1/2 h-px w-[40%] origin-left bg-gradient-to-r from-pink-400/45 via-fuchsia-300/25 to-transparent"
+                  style={{ transform: `rotate(${lineRotation}deg)` }}
+                />
+                <span
+                  className={[
+                    "absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border transition duration-300",
+                    isActive || isComplete
+                      ? "border-pink-300 bg-pink-400 shadow-[0_0_22px_rgba(244,114,182,0.9)]"
+                      : "border-fuchsia-300/35 bg-fuchsia-500/20",
+                  ].join(" ")}
+                  style={{ top: `${top}%`, left: `${left}%` }}
+                />
+              </div>
+            )
+          })}
+
+          <div className="relative flex h-[48%] w-[48%] min-w-44 flex-col items-center justify-center rounded-full border border-pink-300/28 bg-[#170f18]/95 text-center shadow-[0_0_70px_rgba(236,72,153,0.24),inset_0_1px_0_rgba(255,255,255,0.06)]">
+            <div className="absolute inset-0 rounded-full bg-[linear-gradient(180deg,rgba(255,255,255,0.04),transparent_48%)]" />
+            <div className="relative flex h-10 w-10 items-center justify-center text-pink-300">
+              <span className="absolute h-8 w-8 rounded-full border border-pink-300/30 hv-veris-loader-core" />
+              <span className="text-2xl font-semibold">AI</span>
+            </div>
+            <p className="relative mt-5 text-xs font-semibold uppercase tracking-[0.42em] text-pink-300">Analysis</p>
+            <p className="relative mt-2 text-sm text-slate-300">Engine</p>
+          </div>
+        </div>
+
+        <div className="mx-auto mt-6 max-w-3xl rounded-2xl border border-pink-300/14 bg-slate-950/55 p-5 shadow-[0_20px_80px_rgba(2,6,23,0.36)]">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-pink-200/75">VERIS Screening</p>
+              <h2 className="mt-2 text-xl font-semibold text-white">{activeStep.label}</h2>
+              <p className="mt-1 text-sm text-slate-400">{activeStep.detail}</p>
+            </div>
+            <div className="text-left sm:text-right">
+              <p className="text-2xl font-semibold text-pink-100">{progress}%</p>
+              <p className="mt-1 text-xs text-slate-500">Pipeline progress</p>
+            </div>
+          </div>
+
+          <div className="mt-5 h-1.5 overflow-hidden rounded-full bg-white/8">
+            <div
+              className="h-full rounded-full bg-[linear-gradient(90deg,#f472b6,#c084fc,#fb7185)] transition-[width] duration-500"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+
+          <div className="mt-5 grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+            {screeningLoaderSteps.map((step, index) => {
+              const isComplete = index < activeIndex
+              const isActive = index === activeIndex
+
+              return (
+                <div
+                  key={step.phase}
+                  className={[
+                    "rounded-xl border px-3 py-3 transition duration-300",
+                    isActive
+                      ? "border-pink-300/45 bg-pink-400/12 text-pink-50 shadow-[0_0_24px_rgba(236,72,153,0.16)]"
+                      : isComplete
+                        ? "border-emerald-300/22 bg-emerald-400/8 text-emerald-100"
+                        : "border-white/8 bg-white/[0.03] text-slate-500",
+                  ].join(" ")}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={[
+                      "mb-2 block h-2.5 w-2.5 rounded-full",
+                      isActive
+                        ? "bg-pink-300 shadow-[0_0_16px_rgba(244,114,182,0.95)]"
+                        : isComplete
+                          ? "bg-emerald-300"
+                          : "bg-slate-700",
+                    ].join(" ")}
+                  />
+                  <p className="text-[11px] font-semibold leading-4">{step.label}</p>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -781,10 +948,59 @@ export default function AiScreeningPage() {
   const [selectedRunId, setSelectedRunId] = useState("")
   const [loadingRunId, setLoadingRunId] = useState("")
   const [runLoadDiagnostics, setRunLoadDiagnostics] = useState("")
+  const [screeningLoaderPhase, setScreeningLoaderPhase] = useState<ScreeningLoaderPhase | null>(null)
   const loadedInitialRunRef = useRef("")
+  const hydratedInitialFlowRef = useRef<StoredFlowState | null>(null)
+  const screeningLoaderTimeoutRef = useRef<number | null>(null)
+
+  function clearScreeningLoaderTimeout() {
+    if (screeningLoaderTimeoutRef.current) {
+      window.clearTimeout(screeningLoaderTimeoutRef.current)
+      screeningLoaderTimeoutRef.current = null
+    }
+  }
+
+  function setScreeningLoaderStep(phase: ScreeningLoaderPhase) {
+    clearScreeningLoaderTimeout()
+    setScreeningLoaderPhase(phase)
+  }
+
+  function finishScreeningLoader(delayMs = 900) {
+    clearScreeningLoaderTimeout()
+    setScreeningLoaderPhase("ready")
+    screeningLoaderTimeoutRef.current = window.setTimeout(() => {
+      setScreeningLoaderPhase(null)
+      screeningLoaderTimeoutRef.current = null
+    }, delayMs)
+  }
+
+  function dismissScreeningLoader() {
+    clearScreeningLoaderTimeout()
+    setScreeningLoaderPhase(null)
+  }
+
+  useEffect(() => {
+    return () => {
+      clearScreeningLoaderTimeout()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!screeningLoaderPhase || typeof document === "undefined") {
+      return
+    }
+
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+
+    return () => {
+      document.body.style.overflow = originalOverflow
+    }
+  }, [screeningLoaderPhase])
 
   useEffect(() => {
     const storedFlowState = readStoredFlowState()
+    hydratedInitialFlowRef.current = storedFlowState
     setFlowStep(storedFlowState.flowStep)
     setCurrentBatchId(storedFlowState.currentBatchId)
     setUploadedCandidateIds(storedFlowState.uploadedCandidateIds)
@@ -796,83 +1012,80 @@ export default function AiScreeningPage() {
   }, [])
 
   useEffect(() => {
+    if (!flowStateHydrated) {
+      return
+    }
+
     let active = true
 
-    async function loadInitialData() {
+    async function loadExistingJobs() {
       try {
-        const [jobsResponse, screeningJobsResponse, trialCreditsResponse] = await Promise.all([
-          fetch(authUrl("/api/jobs?includeInactive=1"), {
-            credentials: "include",
-            cache: "no-store",
-          }),
-          fetch(authUrl("/api/process-jd"), {
-            credentials: "include",
-            cache: "no-store",
-          }),
-          fetch(authUrl(`/api/trial-credits?refresh=${Date.now()}`), {
-            credentials: "include",
-            cache: "no-store",
-          }),
-        ])
+        const jobsResponse = await fetch(authUrl("/api/jobs?view=selector&includeInactive=1"), {
+          credentials: "include",
+          cache: "no-store",
+        })
         const jobsPayload = await jobsResponse.json()
+
+        if (active && jobsPayload.success) {
+          setExistingJobs(((jobsPayload.jobs ?? []) as ExistingJob[]).map((job) => ({
+            ...job,
+            jobDescription: job.jobDescription ?? null,
+          })))
+        }
+      } catch (jobsError) {
+        console.error("Failed to load VERIS jobs", jobsError)
+      }
+    }
+
+    async function loadScreeningJobs() {
+      try {
+        const initialFlow = hydratedInitialFlowRef.current ?? getDefaultFlowState()
+        const screeningJobsResponse = await fetch(authUrl("/api/process-jd"), {
+          credentials: "include",
+          cache: "no-store",
+        })
         const screeningPayload = await screeningJobsResponse.json()
-        const trialCreditsPayload = await trialCreditsResponse.json().catch(() => null)
 
         if (!active) {
           return
         }
 
-        if (jobsPayload.success) {
-          setExistingJobs(jobsPayload.jobs ?? [])
-        }
-
         if (screeningPayload.success) {
           const jobs = screeningPayload.data ?? []
-          const restoredJob = flowStateHydrated
-            ? jobs.find((job: ScreeningJob) => job.id === restoredActiveJobId)
-            : null
+          const restoredJob = jobs.find((job: ScreeningJob) => job.id === initialFlow.activeJobId) ?? null
           setScreeningJobs(jobs)
           if (restoredJob) {
             setActiveJob(restoredJob)
             setSelectedExistingJobId((current) => current || restoredJob.sourceJobPositionId || restoredJob.id)
-          } else if (flowStateHydrated && jobs.length > 0 && restoredFlowStep === "MATCHED") {
+          } else if (jobs.length > 0 && initialFlow.flowStep === "MATCHED") {
             setActiveJob(jobs[0])
             setSelectedExistingJobId((current) => current || jobs[0].sourceJobPositionId || jobs[0].id)
           }
         }
-
-        if (trialCreditsPayload?.success) {
-          setTrialCredits((current) => mergeTrialCredits(current, trialCreditsPayload.data))
-        }
-      } catch (loadError) {
-        console.error("Failed to load VERIS screening data", loadError)
+      } catch (screeningJobsError) {
+        console.error("Failed to load VERIS screening jobs", screeningJobsError)
       }
     }
 
-    loadInitialData()
-
-    return () => {
-      active = false
-    }
-  }, [flowStateHydrated, restoredActiveJobId, restoredFlowStep, searchParams])
-
-  useEffect(() => {
-    let active = true
-
-    fetchTrialCreditsSnapshot()
-      .then((credits) => {
+    async function loadTrialCredits() {
+      try {
+        const credits = await fetchTrialCreditsSnapshot()
         if (active && credits) {
           setTrialCredits((current) => mergeTrialCredits(current, credits))
         }
-      })
-      .catch((error) => {
-        console.warn("Failed to refresh VERIS trial credits", error)
-      })
+      } catch (creditsError) {
+        console.warn("Failed to refresh VERIS trial credits", creditsError)
+      }
+    }
+
+    void loadExistingJobs()
+    void loadScreeningJobs()
+    void loadTrialCredits()
 
     return () => {
       active = false
     }
-  }, [searchParams])
+  }, [flowStateHydrated, searchParams])
 
   useEffect(() => {
     if (
@@ -883,7 +1096,7 @@ export default function AiScreeningPage() {
     ) {
       setUpgradeLimitOpen(false)
     }
-  }, [trialCredits?.interviewCreditsRemaining, trialCredits?.screeningCreditsRemaining, upgradeLimitOpen])
+  }, [trialCredits, upgradeLimitOpen])
 
   useEffect(() => {
     if (!flowStateHydrated || typeof window === "undefined") {
@@ -1318,6 +1531,7 @@ export default function AiScreeningPage() {
     const selectedJobIdForUpload = selectedExistingJobId
 
     try {
+      setScreeningLoaderStep("uploading")
       setUploading(true)
       setResumeState("UPLOADING")
       setError("")
@@ -1339,6 +1553,7 @@ export default function AiScreeningPage() {
         credentials: "include",
         body: formData,
       })
+      setScreeningLoaderStep("uploaded")
       setResumeState("PROCESSING")
       const payload = await response.json().catch(() => null)
       const rows = ((payload?.data?.results ?? []) as UploadRow[]).map((row) => ({
@@ -1363,6 +1578,7 @@ export default function AiScreeningPage() {
       }
 
       setCurrentBatchId(batchId)
+      setScreeningLoaderStep("parsed")
       setResumeState("READY")
       setUploadedCandidateIds(candidateIds)
       setIncludeAllCandidates(false)
@@ -1378,6 +1594,7 @@ export default function AiScreeningPage() {
           batchId,
           existingJobId: selectedJobIdForUpload,
           runMatchAfter: false,
+          finishAfter: false,
         })
 
         if (job) {
@@ -1388,8 +1605,11 @@ export default function AiScreeningPage() {
             skipFlowGuard: true,
           })
         }
+      } else {
+        finishScreeningLoader()
       }
     } catch (uploadError) {
+      dismissScreeningLoader()
       setPipelineErrorStep("upload")
       setResumeState(files.length > 0 ? "UPLOADING" : "IDLE")
       setError(uploadError instanceof Error ? uploadError.message : "Resume upload failed")
@@ -1459,6 +1679,7 @@ export default function AiScreeningPage() {
     batchId?: string
     existingJobId?: string
     runMatchAfter?: boolean
+    finishAfter?: boolean
   }): Promise<ScreeningJob | null> {
     const batchId = options?.batchId ?? currentBatchId
     const existingJobId = options?.existingJobId ?? selectedExistingJobId
@@ -1477,6 +1698,7 @@ export default function AiScreeningPage() {
     }
 
     try {
+      setScreeningLoaderStep("job")
       setIsProcessingJD(true)
       setError("")
       setPipelineErrorStep(null)
@@ -1512,8 +1734,13 @@ export default function AiScreeningPage() {
         })
       }
 
+      if (!options?.runMatchAfter && options?.finishAfter !== false) {
+        finishScreeningLoader()
+      }
+
       return job
     } catch (processError) {
+      dismissScreeningLoader()
       setPipelineErrorStep("job")
       setError(processError instanceof Error ? processError.message : "Could not process job description")
       return null
@@ -1596,6 +1823,7 @@ export default function AiScreeningPage() {
       }
 
       setIsMatching(true)
+      setScreeningLoaderStep("matching")
       setError("")
       setPipelineErrorStep(null)
       setNotice("Matching candidates...")
@@ -1659,6 +1887,7 @@ export default function AiScreeningPage() {
       setSelectedCandidateIds(getDefaultSelectedCandidateIds(rankedMatches))
       setFlowStep("MATCHED")
       setNotice("Matching complete. Review top candidates below.")
+      finishScreeningLoader()
 
       if (typeof window !== "undefined") {
         window.requestAnimationFrame(() => {
@@ -1668,6 +1897,7 @@ export default function AiScreeningPage() {
 
       return true
     } catch (matchError) {
+      dismissScreeningLoader()
       const message = matchError instanceof Error ? matchError.message : "Candidate matching failed"
       if (
         matchError instanceof ApiResponseError &&
@@ -2133,6 +2363,7 @@ export default function AiScreeningPage() {
 
   return (
     <div className="hv-page-enter min-h-screen bg-[#08111f] text-white">
+      <ScreeningAnalysisOverlay phase={screeningLoaderPhase} />
       <Navbar onSendInterviewClick={() => setOpenSendInterview(true)} />
 
       <main className="mx-auto max-w-[1600px] px-4 py-8 sm:px-6 lg:px-8">
@@ -3407,14 +3638,18 @@ export default function AiScreeningPage() {
         </div>
       ) : null}
 
-      <UpgradeLimitDialog
-        isOpen={upgradeLimitOpen}
-        onClose={() => setUpgradeLimitOpen(false)}
-        credits={trialCredits}
-        message={trialCredits?.upgradeMessage || UPGRADE_MESSAGE}
-      />
+      {upgradeLimitOpen ? (
+        <UpgradeLimitDialog
+          isOpen={upgradeLimitOpen}
+          onClose={() => setUpgradeLimitOpen(false)}
+          credits={trialCredits}
+          message={trialCredits?.upgradeMessage || UPGRADE_MESSAGE}
+        />
+      ) : null}
 
-      <SendInterviewModal isOpen={openSendInterview} onClose={() => setOpenSendInterview(false)} />
+      {openSendInterview ? (
+        <SendInterviewModal isOpen={openSendInterview} onClose={() => setOpenSendInterview(false)} />
+      ) : null}
     </div>
   )
 }
