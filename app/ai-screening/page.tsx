@@ -459,41 +459,73 @@ function ScreeningAnalysisOverlay({ phase }: { phase: ScreeningLoaderPhase | nul
       <div aria-hidden="true" className="absolute inset-0 bg-[radial-gradient(circle_at_50%_42%,rgba(236,72,153,0.22),transparent_31%),radial-gradient(circle_at_50%_50%,rgba(192,132,252,0.12),transparent_48%),linear-gradient(180deg,rgba(24,13,24,0.42),rgba(2,6,23,0.84))]" />
       <div aria-hidden="true" className="hv-veris-loader-grid absolute inset-0 opacity-25" />
 
-      <div className="relative flex w-full max-w-6xl items-center justify-center animate-[overlay-panel-in_220ms_ease-out_forwards]">
-        <div className="relative flex aspect-square w-[min(92vw,650px)] items-center justify-center">
+      <div className="relative flex h-full w-full max-w-6xl items-center justify-center animate-[overlay-panel-in_220ms_ease-out_forwards]">
+        <div className="relative flex aspect-square w-[min(96vw,96vh,650px)] items-center justify-center">
           <div className="hv-veris-loader-ring absolute inset-0 rounded-full border border-fuchsia-300/10" />
           <div className="hv-veris-loader-ring-reverse absolute inset-[8%] rounded-full border border-dashed border-pink-400/24" />
           <div className="absolute inset-[16%] rounded-full border border-fuchsia-400/14" />
           <div className="absolute inset-[24%] rounded-full border border-pink-300/14" />
 
-          {screeningLoaderSteps.map((step, index) => {
-            const isComplete = index < activeIndex
-            const isActive = index === activeIndex
-            const top = [7, 26, 50, 74, 93, 50][index]
-            const left = [50, 88, 94, 88, 50, 6][index]
-            const lineRotation = [-90, -34, 0, 34, 90, 180][index]
+          <svg
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 h-full w-full overflow-visible"
+            viewBox="0 0 650 650"
+          >
+            {[
+              { path: "M 325 325 C 242 250 146 198 50 216", end: [50, 216], color: "#f472b6" },
+              { path: "M 325 325 C 230 306 128 300 52 300", end: [52, 300], color: "#fb7185" },
+              { path: "M 325 325 C 226 374 130 406 50 390", end: [50, 390], color: "#f472b6" },
+              { path: "M 325 325 C 394 190 478 100 598 92", end: [598, 92], color: "#c084fc" },
+              { path: "M 325 325 C 424 286 512 276 602 280", end: [602, 280], color: "#a855f7" },
+              { path: "M 325 325 C 430 384 518 448 596 506", end: [596, 506], color: "#c084fc" },
+            ].map((wave, index) => {
+              const isComplete = index < activeIndex
+              const isActive = index === activeIndex
 
-            return (
-              <div key={step.phase} aria-hidden="true" className="absolute inset-0">
-                <span
-                  className="hv-veris-loader-line absolute left-1/2 top-1/2 h-px w-[44%] origin-left bg-gradient-to-r from-pink-400/40 via-fuchsia-300/18 to-transparent"
-                  style={{ transform: `rotate(${lineRotation}deg)` }}
-                />
-                <span
-                  className={[
-                    "absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border transition duration-300",
-                    isActive || isComplete
-                      ? "border-pink-300 bg-pink-400 shadow-[0_0_22px_rgba(244,114,182,0.9)]"
-                      : "border-fuchsia-300/35 bg-fuchsia-500/20",
-                  ].join(" ")}
-                  style={{ top: `${top}%`, left: `${left}%` }}
-                />
-              </div>
-            )
-          })}
+              return (
+                <g key={wave.path} className="hv-veris-wave">
+                  <path
+                    d={wave.path}
+                    fill="none"
+                    stroke={wave.color}
+                    strokeDasharray="6 10"
+                    strokeLinecap="round"
+                    strokeOpacity={isActive || isComplete ? 0.62 : 0.24}
+                    strokeWidth={isActive ? 1.8 : 1.2}
+                  />
+                  <circle
+                    r={isActive ? 5 : 3.5}
+                    fill={isActive || isComplete ? wave.color : "#5b2a72"}
+                    opacity={isActive || isComplete ? 1 : 0.52}
+                    className="hv-veris-wave-dot"
+                    style={{ animationDelay: `${index * 280}ms` }}
+                  >
+                    <animateMotion dur="2.8s" repeatCount="indefinite" path={wave.path} />
+                  </circle>
+                  <circle
+                    cx={wave.end[0]}
+                    cy={wave.end[1]}
+                    r="8"
+                    fill="rgba(15, 7, 20, 0.92)"
+                    stroke={wave.color}
+                    strokeOpacity={isActive || isComplete ? 0.75 : 0.38}
+                    strokeWidth="1.4"
+                  />
+                  <circle
+                    cx={wave.end[0]}
+                    cy={wave.end[1]}
+                    r="3"
+                    fill={isActive || isComplete ? wave.color : "#8b5cf6"}
+                    opacity={isActive || isComplete ? 1 : 0.55}
+                    className={isActive ? "hv-veris-end-dot" : ""}
+                  />
+                </g>
+              )
+            })}
+          </svg>
 
           <div
-            className="absolute inset-[18%] rounded-full p-[2px] shadow-[0_0_110px_rgba(236,72,153,0.28)] transition-[background] duration-500 sm:inset-[24%] lg:inset-[27%]"
+            className="absolute inset-[15%] rounded-full p-[2px] shadow-[0_0_110px_rgba(236,72,153,0.28)] transition-[background] duration-500 sm:inset-[22%] lg:inset-[25%]"
             style={{
               background: `conic-gradient(from 225deg, rgba(244,114,182,0.95) 0deg, rgba(192,132,252,0.95) ${progress * 3.6}deg, rgba(255,255,255,0.08) ${progress * 3.6}deg, rgba(255,255,255,0.08) 360deg)`,
             }}
@@ -503,22 +535,22 @@ function ScreeningAnalysisOverlay({ phase }: { phase: ScreeningLoaderPhase | nul
               <div aria-hidden="true" className="hv-veris-loader-scan absolute inset-x-7 top-0 h-px bg-gradient-to-r from-transparent via-pink-200/80 to-transparent" />
               <div aria-hidden="true" className="absolute inset-x-10 top-1/2 h-px bg-pink-300/10" />
 
-              <p className="relative text-[10px] font-semibold uppercase tracking-[0.32em] text-pink-200/70 sm:text-xs">
+              <p className="relative text-[9px] font-semibold uppercase tracking-[0.24em] text-pink-200/70 sm:text-xs sm:tracking-[0.32em]">
                 VERIS Screening
               </p>
-              <h2 className="relative mt-3 max-w-[15rem] text-xl font-semibold leading-tight tracking-tight text-white sm:mt-4 sm:text-3xl">
+              <h2 className="relative mt-2 max-w-[15rem] text-lg font-semibold leading-tight tracking-tight text-white sm:mt-3 sm:text-2xl lg:mt-4 lg:text-3xl">
                 {activeStep.label}
               </h2>
-              <p className="relative mt-2 max-w-[16rem] text-[11px] leading-4 text-slate-400 sm:mt-3 sm:text-sm sm:leading-5">
+              <p className="relative mt-2 max-w-[17rem] text-[10px] leading-4 text-slate-400 sm:text-xs lg:mt-3 lg:text-sm lg:leading-5">
                 {activeStep.detail}
               </p>
 
-              <div className="relative mt-4 flex items-end justify-center gap-2 sm:mt-5">
-                <span className="text-2xl font-semibold leading-none text-pink-100 sm:text-4xl">{progress}</span>
-                <span className="mb-1 text-sm font-semibold text-pink-200/70">%</span>
+              <div className="relative mt-3 flex items-end justify-center gap-1.5 sm:mt-4 lg:mt-5">
+                <span className="text-xl font-semibold leading-none text-pink-100 sm:text-3xl lg:text-4xl">{progress}</span>
+                <span className="mb-0.5 text-xs font-semibold text-pink-200/70 sm:mb-1 sm:text-sm">%</span>
               </div>
 
-              <div className="relative mt-4 flex max-w-[15rem] flex-wrap justify-center gap-2 sm:mt-5">
+              <div className="relative mt-3 flex max-w-[15rem] flex-wrap justify-center gap-1.5 sm:mt-4 sm:gap-2 lg:mt-5">
                 {screeningLoaderSteps.map((step, index) => {
                   const isComplete = index < activeIndex
                   const isActive = index === activeIndex
@@ -528,7 +560,7 @@ function ScreeningAnalysisOverlay({ phase }: { phase: ScreeningLoaderPhase | nul
                       key={step.phase}
                       aria-label={step.label}
                       className={[
-                        "h-2.5 w-2.5 rounded-full border transition duration-300",
+                        "h-2 w-2 rounded-full border transition duration-300 sm:h-2.5 sm:w-2.5",
                         isActive
                           ? "border-pink-200 bg-pink-300 shadow-[0_0_16px_rgba(244,114,182,0.95)]"
                           : isComplete
@@ -539,7 +571,7 @@ function ScreeningAnalysisOverlay({ phase }: { phase: ScreeningLoaderPhase | nul
                   )
                 })}
               </div>
-              <p className="relative mt-3 text-[10px] uppercase tracking-[0.22em] text-slate-500">
+              <p className="relative mt-2 text-[9px] uppercase tracking-[0.2em] text-slate-500 sm:mt-3 sm:text-[10px]">
                 {activeIndex + 1} / {screeningLoaderSteps.length}
               </p>
             </div>

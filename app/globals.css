@@ -323,8 +323,32 @@ a {
   }
 
   100% {
-    transform: translateY(260px);
+    transform: translateY(56vh);
     opacity: 0;
+  }
+}
+
+@keyframes hv-veris-wave-glow {
+  0%,
+  100% {
+    opacity: 0.7;
+    filter: drop-shadow(0 0 4px rgba(244, 114, 182, 0.35));
+  }
+
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 14px rgba(244, 114, 182, 0.78));
+  }
+}
+
+@keyframes hv-veris-end-dot-pulse {
+  0%,
+  100% {
+    opacity: 0.72;
+  }
+
+  50% {
+    opacity: 1;
   }
 }
 
@@ -356,6 +380,18 @@ a {
 
 .hv-veris-loader-scan {
   animation: hv-veris-loader-scan-flow 2.8s ease-in-out infinite;
+}
+
+.hv-veris-wave {
+  animation: hv-veris-loader-line-flow 3s ease-in-out infinite;
+}
+
+.hv-veris-wave-dot {
+  animation: hv-veris-wave-glow 1.8s ease-in-out infinite;
+}
+
+.hv-veris-end-dot {
+  animation: hv-veris-end-dot-pulse 1.4s ease-in-out infinite;
 }
 
 .hv-ai-panel {
