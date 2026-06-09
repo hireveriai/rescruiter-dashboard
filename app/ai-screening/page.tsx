@@ -535,7 +535,7 @@ function ScreeningAnalysisOverlay({ phase }: { phase: ScreeningLoaderPhase | nul
               <div aria-hidden="true" className="hv-veris-loader-scan absolute inset-x-7 top-0 h-px bg-gradient-to-r from-transparent via-pink-200/80 to-transparent" />
               <div aria-hidden="true" className="absolute inset-x-10 top-1/2 h-px bg-pink-300/10" />
 
-              <p className="relative text-[9px] font-semibold uppercase tracking-[0.24em] text-pink-200/70 sm:text-xs sm:tracking-[0.32em]">
+              <p className="relative mt-3 max-w-[13rem] text-center text-[9px] font-semibold uppercase leading-4 tracking-[0.16em] text-pink-200/70 sm:mt-4 sm:max-w-[15rem] sm:text-[11px] sm:tracking-[0.22em] lg:text-xs">
                 VERIS Screening
               </p>
               <h2 className="relative mt-2 max-w-[15rem] text-lg font-semibold leading-tight tracking-tight text-white sm:mt-3 sm:text-2xl lg:mt-4 lg:text-3xl">
