@@ -51,10 +51,10 @@ export default function VerisGlobeLoader({
   const titleLength = activeStep.label.length
   const titleSizeClass =
     titleLength > 24
-      ? "text-lg sm:text-xl lg:text-[24px]"
+      ? "text-base sm:text-lg lg:text-xl"
       : titleLength > 16
-        ? "text-xl sm:text-[22px] lg:text-[26px]"
-        : "text-xl sm:text-[22px] lg:text-[26px]"
+        ? "text-lg sm:text-xl lg:text-[22px]"
+        : "text-xl sm:text-[22px] lg:text-[24px]"
 
   return (
     <div
@@ -152,18 +152,19 @@ export default function VerisGlobeLoader({
                 </p>
                 <h2
                   className={[
-                    "absolute left-1/2 top-[29%] max-w-[76%] -translate-x-1/2 font-semibold leading-[1.16] tracking-tight text-white",
+                    "absolute left-1/2 top-[31%] max-w-[90%] -translate-x-1/2 whitespace-nowrap font-semibold leading-[1.16] tracking-tight text-white",
                     titleSizeClass,
                   ].join(" ")}
-                  style={{
-                    overflowWrap: "anywhere",
-                  }}
                 >
                   {activeStep.label}
                 </h2>
                 <p
-                  className="absolute left-1/2 top-[55%] max-w-[76%] -translate-x-1/2 text-[10px] leading-4 text-slate-400 sm:text-[11px] sm:leading-5 lg:text-xs"
+                  className="absolute left-1/2 top-[57%] max-w-[80%] -translate-x-1/2 text-[10px] leading-4 text-slate-400 sm:text-[11px] sm:leading-5 lg:text-xs"
                   style={{
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical",
+                    overflow: "hidden",
                     overflowWrap: "anywhere",
                   }}
                 >
@@ -172,32 +173,33 @@ export default function VerisGlobeLoader({
 
               </div>
 
-              <div className="absolute bottom-[14%] left-1/2 z-10 flex w-[70%] -translate-x-1/2 flex-wrap justify-center gap-1.5 sm:gap-2">
-                {safeSteps.map((step, index) => {
-                  const isComplete = index < safeIndex
-                  const isActive = index === safeIndex
-
-                  return (
-                    <span
-                      key={`${step.label}-${index}`}
-                      aria-label={step.label}
-                      className={[
-                        "h-1.5 w-1.5 rounded-full border transition duration-300 sm:h-2 sm:w-2",
-                        isActive
-                          ? "border-pink-200 bg-pink-300 shadow-[0_0_16px_rgba(244,114,182,0.95)]"
-                          : isComplete
-                            ? "border-emerald-200 bg-emerald-300"
-                            : "border-slate-600 bg-slate-800",
-                      ].join(" ")}
-                    />
-                  )
-                })}
-              </div>
-              <p className="absolute bottom-[7%] left-1/2 z-10 -translate-x-1/2 text-[8px] uppercase tracking-[0.18em] text-slate-500 sm:text-[9px]">
-                {safeIndex + 1} / {safeSteps.length}
-              </p>
             </div>
           </div>
+
+          <div className="absolute bottom-[11%] left-1/2 z-10 flex w-[42%] -translate-x-1/2 flex-wrap justify-center gap-1.5 rounded-full border border-pink-300/12 bg-[#0b0710]/58 px-3 py-2 backdrop-blur-sm sm:gap-2">
+            {safeSteps.map((step, index) => {
+              const isComplete = index < safeIndex
+              const isActive = index === safeIndex
+
+              return (
+                <span
+                  key={`${step.label}-${index}`}
+                  aria-label={step.label}
+                  className={[
+                    "h-1.5 w-1.5 rounded-full border transition duration-300 sm:h-2 sm:w-2",
+                    isActive
+                      ? "border-pink-200 bg-pink-300 shadow-[0_0_16px_rgba(244,114,182,0.95)]"
+                      : isComplete
+                        ? "border-emerald-200 bg-emerald-300"
+                        : "border-slate-600 bg-slate-800",
+                  ].join(" ")}
+                />
+              )
+            })}
+          </div>
+          <p className="absolute bottom-[7%] left-1/2 z-10 -translate-x-1/2 text-[8px] uppercase tracking-[0.18em] text-slate-500 sm:text-[9px]">
+            {safeIndex + 1} / {safeSteps.length}
+          </p>
 
           <div aria-hidden="true" className="absolute inset-[35%] rounded-full border border-pink-300/10 hv-veris-loader-core" />
           <div className="absolute bottom-[8%] left-1/2 h-px w-[36%] -translate-x-1/2 bg-gradient-to-r from-transparent via-pink-300/24 to-transparent" />

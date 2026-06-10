@@ -6,7 +6,7 @@ export default function Loading() {
       eyebrow="Reports"
       steps={[
         { label: "Loading reports", detail: "Fetching hiring analytics and forensic signals." },
-        { label: "Aggregating metrics", detail: "Preparing funnel, risk, and recommendation data." },
+        { label: "Reading metrics", detail: "Preparing funnel and risk data." },
         { label: "Building report", detail: "Assembling executive insight sections." },
         { label: "Reports ready", detail: "Recruiter analytics are ready for review." },
       ]}
