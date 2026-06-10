@@ -75,6 +75,12 @@ export default function VerisGlobeLoader({
           <div className="hv-veris-loader-ring-reverse absolute inset-[8%] rounded-full border border-dashed border-pink-400/24" />
           <div className="absolute inset-[16%] rounded-full border border-fuchsia-400/14" />
           <div className="absolute inset-[24%] rounded-full border border-pink-300/14" />
+          <div aria-hidden="true" className="hv-veris-progress-orbit absolute inset-[17%] rounded-full">
+            <div className="hv-veris-progress-badge absolute left-1/2 top-0 flex h-14 min-w-20 items-center justify-center rounded-full border border-pink-300/35 bg-[#160b17]/95 px-3 text-pink-50 shadow-[0_0_28px_rgba(236,72,153,0.38)]">
+              <span className="text-xl font-semibold leading-none">{progress}</span>
+              <span className="ml-1 text-[11px] font-semibold text-pink-200/75">%</span>
+            </div>
+          </div>
 
           <svg
             aria-hidden="true"
@@ -140,13 +146,13 @@ export default function VerisGlobeLoader({
               <div aria-hidden="true" className="hv-veris-loader-scan absolute inset-x-7 top-0 h-px bg-gradient-to-r from-transparent via-pink-200/80 to-transparent" />
               <div aria-hidden="true" className="absolute inset-x-10 top-1/2 h-px bg-pink-300/10" />
 
-              <div className="absolute inset-x-[10%] top-[15%] z-10 flex h-[66%] flex-col items-center text-center">
-                <p className="max-w-full text-center text-[8px] font-semibold uppercase leading-4 tracking-[0.08em] text-pink-200/70 sm:text-[9px] sm:tracking-[0.14em] lg:text-[10px]">
+              <div className="absolute inset-0 z-10 text-center">
+                <p className="absolute left-1/2 top-[16%] max-w-[76%] -translate-x-1/2 text-center text-[8px] font-semibold uppercase leading-4 tracking-[0.08em] text-pink-200/70 sm:text-[9px] sm:tracking-[0.14em] lg:text-[10px]">
                   {eyebrow}
                 </p>
                 <h2
                   className={[
-                    "mt-5 max-w-[96%] font-semibold leading-[1.16] tracking-tight text-white sm:mt-6",
+                    "absolute left-1/2 top-[29%] max-w-[76%] -translate-x-1/2 font-semibold leading-[1.16] tracking-tight text-white",
                     titleSizeClass,
                   ].join(" ")}
                   style={{
@@ -156,7 +162,7 @@ export default function VerisGlobeLoader({
                   {activeStep.label}
                 </h2>
                 <p
-                  className="mt-4 max-w-[94%] text-[10px] leading-4 text-slate-400 sm:mt-5 sm:text-[11px] sm:leading-5 lg:text-xs"
+                  className="absolute left-1/2 top-[55%] max-w-[76%] -translate-x-1/2 text-[10px] leading-4 text-slate-400 sm:text-[11px] sm:leading-5 lg:text-xs"
                   style={{
                     overflowWrap: "anywhere",
                   }}
@@ -164,13 +170,9 @@ export default function VerisGlobeLoader({
                   {activeStep.detail}
                 </p>
 
-                <div className="mt-auto flex items-end justify-center gap-1.5 pb-1">
-                  <span className="text-[28px] font-semibold leading-none text-pink-100 sm:text-[32px] lg:text-[34px]">{progress}</span>
-                  <span className="mb-1 text-[11px] font-semibold text-pink-200/70 sm:text-xs">%</span>
-                </div>
               </div>
 
-              <div className="absolute bottom-[9%] left-1/2 z-10 flex w-[70%] -translate-x-1/2 flex-wrap justify-center gap-1.5 sm:gap-2">
+              <div className="absolute bottom-[14%] left-1/2 z-10 flex w-[70%] -translate-x-1/2 flex-wrap justify-center gap-1.5 sm:gap-2">
                 {safeSteps.map((step, index) => {
                   const isComplete = index < safeIndex
                   const isActive = index === safeIndex
@@ -191,7 +193,7 @@ export default function VerisGlobeLoader({
                   )
                 })}
               </div>
-              <p className="absolute bottom-[4%] left-1/2 z-10 -translate-x-1/2 text-[8px] uppercase tracking-[0.18em] text-slate-500 sm:bottom-[5%] sm:text-[9px]">
+              <p className="absolute bottom-[7%] left-1/2 z-10 -translate-x-1/2 text-[8px] uppercase tracking-[0.18em] text-slate-500 sm:text-[9px]">
                 {safeIndex + 1} / {safeSteps.length}
               </p>
             </div>
