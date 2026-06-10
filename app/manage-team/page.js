@@ -7,6 +7,7 @@ import { buildAuthUrl } from "@/lib/client/auth-query";
 import { formatDate } from "@/lib/client/date-format";
 import { readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache";
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params";
+import { VerisGlobeLoader } from "@/components/system/loaders";
 
 function getPlatformRoleTone(role) {
   if (role === "ADMIN" || role === "ORG_OWNER") {
@@ -591,6 +592,21 @@ export default function ManageTeamPage() {
     setIsEditModalOpen(true);
   }
 
+  if (loading) {
+    return (
+      <VerisGlobeLoader
+        eyebrow="Manage Team"
+        steps={[
+          { label: "Loading team", detail: "Fetching recruiter members and organization roles." },
+          { label: "Syncing access", detail: "Preparing permissions, invite status, and admin controls." },
+          { label: "Building workspace", detail: "Organizing team management data." },
+          { label: "Team ready", detail: "Your team workspace is ready for review." },
+        ]}
+        activeIndex={1}
+      />
+    );
+  }
+
   return (
     <main className="min-h-screen bg-[#081120] px-6 py-12 text-white sm:px-8 lg:px-10">
       <div className="mx-auto max-w-7xl">
@@ -680,9 +696,7 @@ export default function ManageTeamPage() {
               <div>Actions</div>
             </div>
 
-            {loading ? (
-              <div className="px-6 py-10 text-sm text-slate-400">Loading team workspace...</div>
-            ) : team.length === 0 ? (
+            {team.length === 0 ? (
               <div className="px-6 py-10 text-sm text-slate-400">No recruiter-side team members found for this organization.</div>
             ) : (
               team.map((member) => (

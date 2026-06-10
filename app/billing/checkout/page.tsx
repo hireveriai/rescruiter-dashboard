@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 
+import { VerisGlobeLoader } from "@/components/system/loaders"
 import { buildAuthUrl } from "@/lib/client/auth-query"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
@@ -484,6 +485,23 @@ export default function BillingCheckoutPage() {
     }
   }
 
+  if (plansLoading || (status === "loading" && !summary)) {
+    return (
+      <main className="min-h-screen bg-[#070c16] text-slate-100">
+        <VerisGlobeLoader
+          eyebrow="Billing Checkout"
+          steps={[
+            { label: "Loading checkout", detail: "Fetching workspace billing context and selected plan." },
+            { label: "Reading plans", detail: "Preparing subscription choices and VERIS Screening add-ons." },
+            { label: "Building quote", detail: "Calculating billing summary, credits, tax, and checkout state." },
+            { label: "Checkout ready", detail: "Secure payment details are ready for review." },
+          ]}
+          activeIndex={1}
+        />
+      </main>
+    )
+  }
+
   return (
     <main className="min-h-screen overflow-hidden bg-[#070c16] px-4 py-8 text-slate-100 sm:px-6 lg:px-8">
       <div className="pointer-events-none fixed inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.92),rgba(7,12,22,0.98)),radial-gradient(circle_at_50%_0%,rgba(37,99,235,0.12),transparent_34%)]" />
@@ -504,7 +522,7 @@ export default function BillingCheckoutPage() {
             <div className="rounded-xl border border-slate-800 bg-slate-950/35 p-4">
               <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Bill to</p>
               <p className="mt-3 truncate text-sm font-semibold text-slate-50">
-                {summary?.organization.organizationName || "Loading workspace"}
+                {summary?.organization.organizationName || "Select a plan"}
               </p>
             </div>
             <div className="rounded-xl border border-slate-800 bg-slate-950/35 p-4">
@@ -569,7 +587,6 @@ export default function BillingCheckoutPage() {
                 <p className="text-sm font-semibold text-slate-100">Available plans</p>
                 <p className="mt-1 text-xs text-slate-500">Plans are loaded from HireVeri billing records.</p>
               </div>
-              {plansLoading ? <span className="text-xs text-slate-500">Loading plans...</span> : null}
             </div>
 
             <div className="mt-4 grid gap-3 md:grid-cols-2">

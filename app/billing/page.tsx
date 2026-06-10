@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 
+import { VerisGlobeLoader } from "@/components/system/loaders"
 import { buildAuthUrl } from "@/lib/client/auth-query"
 import { readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
@@ -315,6 +316,23 @@ export default function BillingPage() {
     }
   }
 
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-[#081120] text-white">
+        <VerisGlobeLoader
+          eyebrow="Billing"
+          steps={[
+            { label: "Loading billing", detail: "Fetching organization billing profile and subscription status." },
+            { label: "Reading invoices", detail: "Collecting GST invoices, payments, and Razorpay references." },
+            { label: "Checking credits", detail: "Preparing interview and VERIS Screening credit usage." },
+            { label: "Billing ready", detail: "Payment history is ready for finance review." },
+          ]}
+          activeIndex={1}
+        />
+      </main>
+    )
+  }
+
   return (
     <main className="min-h-screen bg-[#081120] px-6 py-12 text-white sm:px-8 lg:px-10">
       <div className="mx-auto max-w-[1400px]">
@@ -430,9 +448,7 @@ export default function BillingPage() {
             <div className="border-b border-slate-800 px-5 py-4">
               <h2 className="text-lg font-semibold text-white">Invoices</h2>
             </div>
-            {loading ? (
-              <p className="px-5 py-8 text-sm text-slate-400">Loading billing records...</p>
-            ) : data.invoices.length === 0 ? (
+            {data.invoices.length === 0 ? (
               <p className="px-5 py-8 text-sm text-slate-400">No invoices generated yet. Invoices appear after verified Razorpay payments.</p>
             ) : (
               <div className="overflow-x-auto">

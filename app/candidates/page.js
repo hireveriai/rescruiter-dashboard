@@ -13,7 +13,7 @@ import Navbar from "../../components/Navbar"
 import SendInterviewModal from "../../components/SendInterviewModal"
 import { CandidateActionModal } from "../../components/dashboard/CandidateActionModal"
 import { DecisionPill } from "../../components/dashboard/DecisionPill"
-import { MetricSkeleton, TableSkeleton } from "../../components/system/skeletons"
+import { VerisGlobeLoader } from "../../components/system/loaders"
 
 function getStatusBadge(status) {
   const normalized = String(status ?? "PENDING").toUpperCase()
@@ -482,6 +482,24 @@ export default function CandidatesPage() {
     writeSessionJsonCache(`candidates:${searchParams.toString()}`, nextRows)
   }
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#08111f] text-white">
+        <Navbar onSendInterviewClick={() => setOpenSendInterview(true)} />
+        <VerisGlobeLoader
+          eyebrow="Candidates"
+          steps={[
+            { label: "Loading candidates", detail: "Fetching candidate profiles and screening history." },
+            { label: "Syncing scores", detail: "Preparing VERIS scores, interview status, and hiring actions." },
+            { label: "Building registry", detail: "Organizing the candidate pipeline view." },
+            { label: "Candidates ready", detail: "Candidate data is ready for review." },
+          ]}
+          activeIndex={1}
+        />
+      </div>
+    )
+  }
+
   return (
     <>
       <div className="hv-page-enter min-h-screen bg-[#08111f] text-white">
@@ -498,9 +516,6 @@ export default function CandidatesPage() {
                 </p>
               </div>
 
-              {loading ? (
-                <MetricSkeleton count={3} className="sm:grid-cols-3 xl:min-w-[520px]" />
-              ) : (
               <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[520px]">
                 <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-4">
                   <p className="text-sm text-slate-500">Total Candidates</p>
@@ -515,7 +530,6 @@ export default function CandidatesPage() {
                   <p className="mt-3 text-3xl font-semibold text-white">{stats.pending}</p>
                 </div>
               </div>
-              )}
             </div>
           </section>
 
@@ -602,9 +616,6 @@ export default function CandidatesPage() {
                   </tr>
                 </thead>
 
-                {loading ? (
-                  <TableSkeleton rows={8} columns={5} showAvatar showStatusChip />
-                ) : (
                   <tbody>
                     {loadError ? (
                     <tr>
@@ -697,7 +708,6 @@ export default function CandidatesPage() {
                     })
                   )}
                   </tbody>
-                )}
               </table>
             </div>
           </section>

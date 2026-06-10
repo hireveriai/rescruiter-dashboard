@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 
 import Navbar from "@/components/Navbar"
+import { VerisGlobeLoader } from "@/components/system/loaders"
 import { buildAuthUrl } from "@/lib/client/auth-query"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
@@ -145,6 +146,24 @@ export default function SubscriptionPage() {
     [plans]
   )
 
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-[#07101d] text-white">
+        <Navbar onSendInterviewClick={() => undefined} />
+        <VerisGlobeLoader
+          eyebrow="Subscription"
+          steps={[
+            { label: "Loading plans", detail: "Fetching active workspace and available subscription plans." },
+            { label: "Checking capacity", detail: "Reading interview sessions and VERIS Screening add-ons." },
+            { label: "Preparing pricing", detail: "Building the upgrade choices for checkout." },
+            { label: "Plans ready", detail: "Subscription options are ready for review." },
+          ]}
+          activeIndex={1}
+        />
+      </main>
+    )
+  }
+
   return (
     <main className="min-h-screen bg-[#07101d] text-white">
       <Navbar onSendInterviewClick={() => undefined} />
@@ -178,47 +197,37 @@ export default function SubscriptionPage() {
           </div>
         ) : null}
 
-        {loading ? (
-          <div className="mt-8 grid gap-4 lg:grid-cols-3">
-            {[0, 1, 2].map((item) => (
-              <div key={item} className="h-96 animate-pulse rounded-[28px] border border-slate-800 bg-[#0f172a]" />
+        <section className="mt-8">
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">Plans</p>
+              <h2 className="mt-2 text-2xl font-semibold text-white">Interview workspace plans</h2>
+            </div>
+            <Link
+              href={buildAuthUrl("/billing", searchParams)}
+              className="hidden rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:border-cyan-300/35 hover:text-white sm:inline-flex"
+            >
+              Billing History
+            </Link>
+          </div>
+          <div className="mt-5 grid gap-5 lg:grid-cols-3">
+            {interviewPlans.map((plan, index) => (
+              <PlanCard key={plan.id} plan={plan} featured={plan.isPopular || index === 1} />
             ))}
           </div>
-        ) : (
-          <>
-            <section className="mt-8">
-              <div className="flex items-end justify-between gap-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">Plans</p>
-                  <h2 className="mt-2 text-2xl font-semibold text-white">Interview workspace plans</h2>
-                </div>
-                <Link
-                  href={buildAuthUrl("/billing", searchParams)}
-                  className="hidden rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:border-cyan-300/35 hover:text-white sm:inline-flex"
-                >
-                  Billing History
-                </Link>
-              </div>
-              <div className="mt-5 grid gap-5 lg:grid-cols-3">
-                {interviewPlans.map((plan, index) => (
-                  <PlanCard key={plan.id} plan={plan} featured={plan.isPopular || index === 1} />
-                ))}
-              </div>
-            </section>
+        </section>
 
-            {screeningPlans.length > 0 ? (
-              <section className="mt-10">
-                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">Add-ons</p>
-                <h2 className="mt-2 text-2xl font-semibold text-white">VERIS Screening capacity</h2>
-                <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-                  {screeningPlans.map((plan) => (
-                    <PlanCard key={plan.id} plan={plan} />
-                  ))}
-                </div>
-              </section>
-            ) : null}
-          </>
-        )}
+        {screeningPlans.length > 0 ? (
+          <section className="mt-10">
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">Add-ons</p>
+            <h2 className="mt-2 text-2xl font-semibold text-white">VERIS Screening capacity</h2>
+            <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+              {screeningPlans.map((plan) => (
+                <PlanCard key={plan.id} plan={plan} />
+              ))}
+            </div>
+          </section>
+        ) : null}
       </div>
     </main>
   )

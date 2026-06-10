@@ -1,6 +1,6 @@
 "use client"
 
-import GlobalIntelligenceBar from "./GlobalIntelligenceBar"
+import { VerisGlobeLoader } from "@/components/system/loaders"
 
 type NavigationProgressProps = {
   active?: boolean
@@ -11,5 +11,23 @@ export default function NavigationProgress({
   active = true,
   message = "Preparing recruiter insights...",
 }: NavigationProgressProps) {
-  return <GlobalIntelligenceBar active={active} visible={active} message={message} />
+  if (!active) {
+    return null
+  }
+
+  return (
+    <div className="fixed inset-0 z-[130]">
+      <VerisGlobeLoader
+        eyebrow="HireVeri"
+        steps={[
+          { label: "Opening screen", detail: "Securing recruiter session and route context." },
+          { label: message.replace(/\.+$/, ""), detail: "Fetching workspace data before showing the page." },
+          { label: "Building view", detail: "Organizing records into the recruiter screen." },
+          { label: "Screen ready", detail: "The recruiter workspace is ready for review." },
+        ]}
+        activeIndex={1}
+        fullscreen
+      />
+    </div>
+  )
 }

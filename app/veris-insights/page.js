@@ -4,7 +4,7 @@ import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 
 import Navbar from "@/components/Navbar"
-import RouteLoadingShell from "@/components/system/skeletons/RouteLoadingShell"
+import { VerisGlobeLoader } from "@/components/system/loaders"
 import { buildAuthUrl } from "@/lib/client/auth-query"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
@@ -160,6 +160,24 @@ export default function VerisInsightsPage() {
     })
   }
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[#0b1220] text-white">
+        <Navbar />
+        <VerisGlobeLoader
+          eyebrow="VERIS Insights"
+          steps={[
+            { label: "Loading insights", detail: "Fetching candidate intelligence summaries and evidence signals." },
+            { label: "Reading risk", detail: "Preparing recommendation, score, and risk posture details." },
+            { label: "Organizing review", detail: "Building the evidence grid for recruiter review." },
+            { label: "Insights ready", detail: "VERIS insights are ready for decision review." },
+          ]}
+          activeIndex={1}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-[#0b1220] text-white">
       <Navbar />
@@ -180,9 +198,7 @@ export default function VerisInsightsPage() {
           </Link>
         </div>
 
-        {isLoading ? (
-          <RouteLoadingShell mode="forensic" intelligenceVariant="veris" title="Loading VERIS insights" />
-        ) : error ? (
+        {error ? (
           <div className="rounded-xl border border-amber-400/25 bg-amber-500/10 p-5 text-sm text-amber-100">
             {error}
           </div>

@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react"
 
 import Navbar from "@/components/Navbar"
 import SendInterviewModal from "@/components/SendInterviewModal"
-import { ChartSkeleton, MetricSkeleton, TableSkeleton, TimelineSkeleton } from "@/components/system/skeletons"
+import { VerisGlobeLoader } from "@/components/system/loaders"
 import { buildAuthUrl } from "@/lib/client/auth-query"
 import { formatDate, formatDateTime, formatTime } from "@/lib/client/date-format"
 import { readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache"
@@ -81,37 +81,6 @@ function ExpandableSection({ title, subtitle, defaultOpen = true, children }) {
   )
 }
 
-function LoadingState() {
-  return (
-    <div className="grid gap-6">
-      <MetricSkeleton count={5} className="md:grid-cols-2 xl:grid-cols-5" />
-      <ChartSkeleton title="Streaming funnel analytics" />
-      <TimelineSkeleton
-        messages={[
-          "Loading behavioral telemetry...",
-          "Preparing cognitive analysis...",
-          "Building forensic timeline...",
-          "Finalizing VERIS insight packets...",
-        ]}
-      />
-      <div className="overflow-hidden rounded-[28px] border border-slate-800 bg-[#0f172a]">
-        <table className="w-full min-w-[960px] text-sm">
-          <thead className="bg-slate-950/20 text-slate-400">
-            <tr>
-              <th className="p-5 text-left font-medium">Candidate</th>
-              <th className="p-5 text-left font-medium">Role</th>
-              <th className="p-5 text-left font-medium">Score</th>
-              <th className="p-5 text-left font-medium">Risk</th>
-              <th className="p-5 text-left font-medium">Recommendation</th>
-            </tr>
-          </thead>
-          <TableSkeleton rows={5} columns={5} showAvatar showStatusChip />
-        </table>
-      </div>
-    </div>
-  )
-}
-
 export default function ReportsPage() {
   const searchParams = useAuthSearchParams()
   const [report, setReport] = useState(null)
@@ -172,6 +141,24 @@ export default function ReportsPage() {
     return report?.generatedAt ? formatTime(report.generatedAt).replace(/\s+IN\s+([A-Z]{2,5})$/i, " $1") : "-"
   }, [report])
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#08111f] text-white">
+        <Navbar onSendInterviewClick={() => setOpenSendInterview(true)} />
+        <VerisGlobeLoader
+          eyebrow="Reports"
+          steps={[
+            { label: "Loading reports", detail: "Fetching hiring analytics and forensic signals." },
+            { label: "Aggregating metrics", detail: "Preparing funnel, risk, and recommendation data." },
+            { label: "Building report", detail: "Assembling executive insight sections." },
+            { label: "Reports ready", detail: "Recruiter analytics are ready for review." },
+          ]}
+          activeIndex={1}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="hv-page-enter min-h-screen bg-[#08111f] text-white">
       <Navbar onSendInterviewClick={() => setOpenSendInterview(true)} />
@@ -219,8 +206,6 @@ export default function ReportsPage() {
         </div>
 
         <div className="mt-6">
-          {loading ? <LoadingState /> : null}
-
           {!loading && error ? (
             <div className="rounded-[28px] border border-rose-500/20 bg-rose-500/10 p-6 text-rose-100">
               {error}

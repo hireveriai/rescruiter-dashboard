@@ -1,5 +1,16 @@
-import NavigationProgress from "@/components/system/loading/NavigationProgress"
+import { VerisGlobeLoader } from "@/components/system/loaders"
 
 export default function Loading() {
-  return <NavigationProgress message="Loading candidate pipeline..." />
+  return (
+    <VerisGlobeLoader
+      eyebrow="Candidates"
+      steps={[
+        { label: "Loading candidates", detail: "Fetching candidate profiles and screening history." },
+        { label: "Syncing scores", detail: "Preparing VERIS scores, interview status, and hiring actions." },
+        { label: "Building registry", detail: "Organizing the candidate pipeline view." },
+        { label: "Candidates ready", detail: "Candidate data is ready for review." },
+      ]}
+      activeIndex={1}
+    />
+  )
 }

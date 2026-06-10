@@ -13,7 +13,7 @@ import Navbar from "../../components/Navbar"
 import SendInterviewModal from "../../components/SendInterviewModal"
 import { CandidateActionModal } from "../../components/dashboard/CandidateActionModal"
 import { DecisionPill } from "../../components/dashboard/DecisionPill"
-import { MetricSkeleton, TableSkeleton, TimelineSkeleton } from "../../components/system/skeletons"
+import { VerisGlobeLoader } from "../../components/system/loaders"
 
 function getStatusBadge(status) {
   const normalized = String(status ?? "PENDING").toUpperCase()
@@ -487,6 +487,24 @@ export default function InterviewsPage() {
     }
   }
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#08111f] text-white">
+        <Navbar onSendInterviewClick={() => setOpenSendInterview(true)} />
+        <VerisGlobeLoader
+          eyebrow="Interviews"
+          steps={[
+            { label: "Loading interviews", detail: "Fetching active, scheduled, and completed interviews." },
+            { label: "Syncing telemetry", detail: "Preparing scorecards, recovery status, and recruiter actions." },
+            { label: "Building register", detail: "Organizing interview operations for review." },
+            { label: "Interviews ready", detail: "Interview data is ready for review." },
+          ]}
+          activeIndex={1}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="hv-page-enter min-h-screen bg-[#08111f] text-white">
       <Navbar onSendInterviewClick={() => setOpenSendInterview(true)} />
@@ -502,9 +520,6 @@ export default function InterviewsPage() {
               </p>
             </div>
 
-            {loading ? (
-              <MetricSkeleton count={4} className="sm:grid-cols-4 xl:min-w-[680px]" />
-            ) : (
             <div className="grid gap-3 sm:grid-cols-4 xl:min-w-[680px]">
               <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-4">
                 <p className="text-sm text-slate-500">Total Interviews</p>
@@ -523,15 +538,8 @@ export default function InterviewsPage() {
                 <p className="mt-3 text-3xl font-semibold text-cyan-100">{stats.pendingReview}</p>
               </div>
             </div>
-            )}
           </div>
         </section>
-
-        {loading ? (
-          <div className="mt-6">
-            <TimelineSkeleton count={3} messages={["Preparing interview queue...", "Loading scorecard signals...", "Checking forensic telemetry status..."]} />
-          </div>
-        ) : null}
 
         <section className="mt-8 overflow-hidden rounded-[28px] border border-slate-800 bg-[#0f172a] shadow-[0_16px_60px_rgba(2,6,23,0.3)]">
           <div className="flex flex-col gap-4 border-b border-slate-800 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
@@ -626,9 +634,6 @@ export default function InterviewsPage() {
                   <th className="p-5 text-center font-medium">Action</th>
                 </tr>
               </thead>
-              {loading ? (
-                <TableSkeleton rows={8} columns={9} showAvatar showStatusChip />
-              ) : (
                 <tbody>
                   {interviews.length === 0 ? (
                   <tr>
@@ -734,7 +739,6 @@ export default function InterviewsPage() {
                   ))
                 )}
                 </tbody>
-              )}
             </table>
           </div>
         </section>

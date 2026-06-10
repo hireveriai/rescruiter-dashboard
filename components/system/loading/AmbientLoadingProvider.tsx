@@ -3,8 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { usePathname } from "next/navigation"
 
-import AISyncIndicator from "./AISyncIndicator"
-import GlobalIntelligenceBar from "./GlobalIntelligenceBar"
+import { VerisGlobeLoader } from "@/components/system/loaders"
 
 type LoadingReason = "navigation" | "dashboard" | "candidates" | "interviews" | "reports" | "veris" | "analytics"
 
@@ -21,17 +20,42 @@ type AmbientLoadingContextValue = {
 const AmbientLoadingContext = createContext<AmbientLoadingContextValue | null>(null)
 
 const routeMessages: Array<[RegExp, string]> = [
+  [/^\/ai-screening/, "Preparing VERIS Screening..."],
+  [/^\/veris-insights/, "Loading VERIS insights..."],
   [/^\/candidates/, "Loading candidate pipeline..."],
   [/^\/interviews/, "Syncing interview telemetry..."],
   [/^\/reports/, "Updating forensic analytics..."],
   [/^\/jobs/, "Loading job intelligence..."],
   [/^\/manage-team/, "Syncing team workspace..."],
+  [/^\/billing/, "Loading billing records..."],
+  [/^\/subscription/, "Loading subscription plans..."],
   [/^\/settings/, "Loading workspace settings..."],
   [/^\//, "Syncing recruiter dashboard..."],
 ]
 
 function getRouteMessage(pathname: string) {
   return routeMessages.find(([pattern]) => pattern.test(pathname))?.[1] ?? "Preparing recruiter insights..."
+}
+
+function getGlobeSteps(message: string) {
+  return [
+    {
+      label: "Opening screen",
+      detail: "Securing recruiter session and route context.",
+    },
+    {
+      label: message.replace(/\.+$/, ""),
+      detail: "Fetching the latest workspace data before showing the page.",
+    },
+    {
+      label: "Building view",
+      detail: "Organizing records so the screen appears with complete data.",
+    },
+    {
+      label: "Screen ready",
+      detail: "The recruiter workspace is ready for review.",
+    },
+  ]
 }
 
 function getAnchorFromEventTarget(target: EventTarget | null) {
@@ -54,7 +78,6 @@ export function useAmbientLoading() {
 
 export default function AmbientLoadingProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname()
-  const [pending, setPending] = useState(false)
   const [visible, setVisible] = useState(false)
   const [showDetails, setShowDetails] = useState(false)
   const [message, setMessage] = useState("Preparing recruiter insights...")
@@ -68,7 +91,6 @@ export default function AmbientLoadingProvider({ children }: { children: ReactNo
 
   const finishLoading = useCallback(() => {
     clearTimers()
-    setPending(false)
     setShowDetails(false)
     const fadeTimer = window.setTimeout(() => setVisible(false), 280)
     timers.current.push(fadeTimer)
@@ -77,7 +99,6 @@ export default function AmbientLoadingProvider({ children }: { children: ReactNo
   const startLoading = useCallback((options: AmbientLoadingOptions = {}) => {
     clearTimers()
     setMessage(options.message || getRouteMessage(window.location.pathname))
-    setPending(true)
     setShowDetails(false)
 
     const barTimer = window.setTimeout(() => setVisible(true), 180)
@@ -95,9 +116,9 @@ export default function AmbientLoadingProvider({ children }: { children: ReactNo
     }
 
     if (lastLocation.current !== nextLocation) {
-      setMessage(getRouteMessage(pathname))
-      finishLoading()
       lastLocation.current = nextLocation
+      const finishTimer = window.setTimeout(() => finishLoading(), 0)
+      return () => window.clearTimeout(finishTimer)
     }
   }, [finishLoading, pathname])
 
@@ -128,10 +149,6 @@ export default function AmbientLoadingProvider({ children }: { children: ReactNo
         return
       }
 
-      if (nextUrl.pathname.startsWith("/ai-screening")) {
-        return
-      }
-
       startLoading({ message: getRouteMessage(nextUrl.pathname), reason: "navigation" })
     }
 
@@ -153,8 +170,16 @@ export default function AmbientLoadingProvider({ children }: { children: ReactNo
 
   return (
     <AmbientLoadingContext.Provider value={value}>
-      <GlobalIntelligenceBar active={pending} visible={visible} message={message} />
-      <AISyncIndicator visible={visible && showDetails} message={message} />
+      {visible ? (
+        <div className="fixed inset-0 z-[130]">
+          <VerisGlobeLoader
+            eyebrow="HireVeri"
+            steps={getGlobeSteps(message)}
+            activeIndex={showDetails ? 2 : 1}
+            fullscreen
+          />
+        </div>
+      ) : null}
       <div className="hv-route-continuity">{children}</div>
     </AmbientLoadingContext.Provider>
   )

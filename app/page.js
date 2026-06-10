@@ -7,6 +7,7 @@ import Navbar from "../components/Navbar";
 import DashboardIntelligenceBanner from "../components/DashboardIntelligenceBanner";
 import FreeTrialUsage from "../components/FreeTrialUsage";
 import RecruiterDashboardBootstrap from "../components/RecruiterDashboardBootstrap";
+import { VerisGlobeLoader } from "../components/system/loaders";
 import { DEFAULT_RECRUITER_PERMISSION_PROFILE, canAccessFeature } from "../lib/client/permissions";
 import { buildAuthUrl } from "../lib/client/auth-query";
 import { useAuthSearchParams } from "../lib/client/use-auth-search-params";
@@ -201,6 +202,24 @@ function DashboardContent({ profile, overview, isLoading }) {
     window.addEventListener("hireveri:trial-credits-updated", handleTrialCreditsUpdated);
     return () => window.removeEventListener("hireveri:trial-credits-updated", handleTrialCreditsUpdated);
   }, []);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[#08111f] text-white">
+        <Navbar onSendInterviewClick={() => setIsModalOpen(true)} initialProfile={displayProfile} initialAlerts={overview?.alerts} />
+        <VerisGlobeLoader
+          eyebrow="Dashboard"
+          steps={[
+            { label: "Syncing dashboard", detail: "Loading hiring workflow, alerts, and workspace metrics." },
+            { label: "Reading pipeline", detail: "Preparing candidate and interview activity." },
+            { label: "Building overview", detail: "Assembling recruiter intelligence cards." },
+            { label: "Dashboard ready", detail: "Your dashboard is ready for review." },
+          ]}
+          activeIndex={1}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-screen bg-[#0b1220] text-white">
