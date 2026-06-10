@@ -97,7 +97,7 @@ type UploadRow = {
   error: string | null
 }
 
-type ResumeDisplayStatus = "UPLOADING" | "UPLOADED" | "PROCESSING" | "READY" | "FAILED"
+type ResumeDisplayStatus = "ATTACHED" | "UPLOADING" | "UPLOADED" | "PROCESSING" | "READY" | "FAILED"
 
 type ResumeDisplayRow = {
   id: string
@@ -147,6 +147,7 @@ type FlowStep =
 
 type ResumeState =
   | "IDLE"
+  | "ATTACHED"
   | "UPLOADING"
   | "PROCESSING"
   | "READY"
@@ -280,6 +281,8 @@ function isResumeReady(row: UploadRow) {
 
 function getResumeStatusLabel(status: ResumeDisplayStatus) {
   switch (status) {
+    case "ATTACHED":
+      return "Attached"
     case "UPLOADING":
       return "Uploading..."
     case "UPLOADED":
@@ -295,6 +298,8 @@ function getResumeStatusLabel(status: ResumeDisplayStatus) {
 
 function getResumeStatusClass(status: ResumeDisplayStatus) {
   switch (status) {
+    case "ATTACHED":
+      return "border-cyan-500/25 bg-cyan-500/10 text-cyan-200"
     case "UPLOADING":
       return "border-blue-500/25 bg-blue-500/10 text-blue-200"
     case "UPLOADED":
@@ -1359,6 +1364,8 @@ export default function AiScreeningPage() {
   const resumeStatusText =
     resumeState === "IDLE"
       ? "No resumes uploaded yet"
+      : resumeState === "ATTACHED"
+        ? `${files.length} resume${files.length === 1 ? "" : "s"} attached. Start VERIS Screening when ready.`
       : resumeState === "UPLOADING"
         ? "Uploading resumes..."
         : resumeState === "PROCESSING"
@@ -1399,7 +1406,7 @@ export default function AiScreeningPage() {
       name: null,
       email: null,
       error: null,
-      status: resumeState === "PROCESSING" ? "PROCESSING" : "UPLOADING",
+      status: resumeState === "PROCESSING" ? "PROCESSING" : resumeState === "UPLOADING" ? "UPLOADING" : "ATTACHED",
     }))
   }, [files, resumeState, uploadRows])
 
@@ -1515,8 +1522,8 @@ export default function AiScreeningPage() {
     const nextFiles = Array.from(fileList).filter((file) => /\.(pdf|docx)$/i.test(file.name))
     resetScreeningState()
     setFiles(nextFiles)
-    setResumeState(nextFiles.length > 0 ? "UPLOADING" : "IDLE")
-    setNotice(nextFiles.length ? `${nextFiles.length} resume${nextFiles.length === 1 ? "" : "s"} ready for upload.` : "")
+    setResumeState(nextFiles.length > 0 ? "ATTACHED" : "IDLE")
+    setNotice(nextFiles.length ? `${nextFiles.length} resume${nextFiles.length === 1 ? "" : "s"} attached. Start VERIS Screening to upload and parse.` : "")
   }
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -2595,15 +2602,15 @@ export default function AiScreeningPage() {
                     </span>
                   ))}
                 </div>
-                <div className="mt-4 flex items-center justify-between gap-3">
-                  <p className="text-sm text-slate-400">Experience needed: {resolvedActiveJob.experienceNeeded ?? "Not specified"} years</p>
-                  <div className="flex flex-col items-end gap-2 text-right">
-                    <div>
+                <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <p className="min-w-0 text-sm text-slate-400">Experience needed: {resolvedActiveJob.experienceNeeded ?? "Not specified"} years</p>
+                  <div className="flex min-w-0 flex-col items-start gap-2 lg:items-end lg:text-right">
+                    <div className="flex min-w-0 flex-col items-start gap-2 sm:flex-row sm:items-center lg:justify-end">
                       <button
                         type="button"
                         onClick={handleMatchCandidates}
                         disabled={!canRunMatching || screeningLimitReached}
-                        className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:border-emerald-300/50 hover:bg-emerald-500/15 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="shrink-0 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:border-emerald-300/50 hover:bg-emerald-500/15 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {isMatching ? "Matching..." : "Run Matching"}
                       </button>
@@ -2611,7 +2618,7 @@ export default function AiScreeningPage() {
                         <button
                           type="button"
                           onClick={() => allTrialCreditsReached ? setUpgradeLimitOpen(true) : undefined}
-                          className={`mt-2 text-left text-xs ${allTrialCreditsReached ? "font-semibold text-amber-200 hover:text-amber-100" : "text-slate-500"}`}
+                          className={`max-w-[260px] text-left text-xs leading-5 sm:max-w-[320px] lg:text-right ${allTrialCreditsReached ? "font-semibold text-amber-200 hover:text-amber-100" : "text-slate-500"}`}
                         >
                           {allTrialCreditsReached ? "View Subscription Plans" : screeningLimitReached ? "AI screenings are exhausted." : matchHelpText}
                         </button>
