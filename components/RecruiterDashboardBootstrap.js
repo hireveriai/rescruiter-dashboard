@@ -305,7 +305,17 @@ export default function RecruiterDashboardBootstrap({ children }) {
       }
     }
 
-    bootstrap({ forceRefresh: Boolean(cachedOverview) || dashboardWasInvalidated, silent: Boolean(cachedOverview) })
+    if (cachedOverview && !dashboardWasInvalidated) {
+      const refreshCachedOverview = () => bootstrap({ forceRefresh: false, silent: true })
+
+      if (typeof window.requestIdleCallback === "function") {
+        window.requestIdleCallback(refreshCachedOverview, { timeout: 3500 })
+      } else {
+        window.setTimeout(refreshCachedOverview, 1500)
+      }
+    } else {
+      bootstrap({ forceRefresh: dashboardWasInvalidated, silent: Boolean(cachedOverview) })
+    }
 
     let refreshInFlight = false
     const refreshTimer = window.setInterval(() => {

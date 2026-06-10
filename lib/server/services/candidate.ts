@@ -1,16 +1,11 @@
 ﻿import type { z } from "zod"
 
-import { Prisma } from "@prisma/client"
-
 import { prisma } from "@/lib/server/prisma"
 import { createCandidateSchema } from "@/lib/server/validators"
 import { toFunctionApiError } from "@/lib/server/function-errors"
+import { upsertCandidateScreenData } from "@/lib/server/services/recruiter-screen-writes"
 
 type CreateCandidateInput = z.infer<typeof createCandidateSchema>
-
-type CandidateRow = {
-  candidate_id: string
-}
 
 export async function createCandidate(input: CreateCandidateInput) {
   const fullName = String(input.fullName ?? input.name ?? "").trim()
@@ -27,19 +22,12 @@ export async function createCandidate(input: CreateCandidateInput) {
       throw new Error("JOB_NOT_FOUND: jobId not found")
     }
 
-    const rows = await prisma.$queryRaw<CandidateRow[]>(Prisma.sql`
-      select *
-      from public.fn_upsert_candidate(
-        ${job.organizationId}::uuid,
-        ${jobId}::uuid,
-        ${fullName},
-        ${email},
-        ${null},
-        ${null}
-      )
-    `)
-
-    const candidate = rows[0]
+    const candidate = await upsertCandidateScreenData({
+      organizationId: job.organizationId,
+      jobId,
+      fullName,
+      email,
+    })
 
     if (!candidate?.candidate_id) {
       throw new Error("CANDIDATE_CREATE_FAILED: Failed to create candidate")

@@ -3,10 +3,8 @@ import { z } from "zod"
 
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
 import { errorResponse } from "@/lib/server/response"
-import {
-  normalizeRecruiterDecisionStatus,
-  upsertRecruiterDecision,
-} from "@/lib/server/services/recruiter-decisions"
+import { upsertRecruiterDecisionScreenData } from "@/lib/server/services/recruiter-screen-writes"
+import { normalizeRecruiterDecisionStatus } from "@/lib/server/services/recruiter-decisions"
 
 const decisionSchema = z.object({
   candidateId: z.string().uuid(),
@@ -30,7 +28,7 @@ export async function POST(request: Request) {
       }, { status: 400 })
     }
 
-    const decision = await upsertRecruiterDecision({
+    const decision = await upsertRecruiterDecisionScreenData({
       organizationId: auth.organizationId,
       userId: auth.userId,
       candidateId: input.candidateId,

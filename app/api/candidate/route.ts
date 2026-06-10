@@ -8,6 +8,7 @@ import { toFunctionApiError } from "@/lib/server/function-errors"
 import { parseResumeText } from "@/lib/server/resumeParser"
 import { uploadBufferToS3 } from "@/lib/server/s3"
 import { jobPositionsSupportIsActive } from "@/lib/server/services/jobs"
+import { upsertCandidateScreenData } from "@/lib/server/services/recruiter-screen-writes"
 import { createCandidateSchema } from "@/lib/server/validators"
 
 export const runtime = "nodejs"
@@ -216,10 +217,6 @@ function getErrorMessage(error: unknown) {
   return "Unknown error"
 }
 
-type CandidateFunctionRow = {
-  candidate_id: string
-}
-
 type JobLookupRow = {
   organization_id: string
   is_active: boolean
@@ -345,37 +342,17 @@ export async function POST(req: Request) {
       parsedResume = null
     }
 
-    const rows = (await prisma.$queryRaw`
-      select *
-      from public.fn_upsert_candidate(
-        ${auth.organizationId}::uuid,
-        ${jobId}::uuid,
-        ${fullName},
-        ${email},
-        ${resumeUrl},
-        ${resumeText}
-      )
-    `) as CandidateFunctionRow[]
-
-    const result = rows[0]
+    const result = await upsertCandidateScreenData({
+      organizationId: auth.organizationId,
+      jobId,
+      fullName,
+      email,
+      resumeUrl,
+      resumeText,
+    })
 
     if (!result?.candidate_id) {
       throw new Error("Failed to create candidate")
-    }
-
-    if (resumeUrl || resumeText) {
-      try {
-        await prisma.$executeRaw(Prisma.sql`
-          update public.candidates
-          set
-            resume_url = coalesce(${resumeUrl}, resume_url),
-            resume_text = coalesce(${resumeText}, resume_text)
-          where candidate_id = ${result.candidate_id}::uuid
-            and organization_id = ${auth.organizationId}::uuid
-        `)
-      } catch (persistError) {
-        console.error("Failed to persist resume data on candidate row", persistError)
-      }
     }
 
     return NextResponse.json({

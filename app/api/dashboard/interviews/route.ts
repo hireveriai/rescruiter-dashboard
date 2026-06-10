@@ -1,6 +1,6 @@
 ﻿import { NextResponse } from "next/server"
 
-import { getRecruiterRequestContext } from "@/lib/server/auth-context"
+import { getRecruiterRequestContext, type RecruiterRequestContext } from "@/lib/server/auth-context"
 import { evaluateCandidateResponse } from "@/lib/server/ai/interview-flow"
 import { errorResponse } from "@/lib/server/response"
 import { prisma } from "@/lib/server/prisma"
@@ -296,6 +296,125 @@ async function fetchAnswerSummaries(attemptIds: string[]) {
   }
 }
 
+type InterviewScreenOptions = {
+  includeAnswers?: boolean
+  limit?: number
+}
+
+async function getInterviewsScreenData(auth: RecruiterRequestContext, options: InterviewScreenOptions = {}) {
+  await finalizeStaleInterviewAttempts(auth.organizationId)
+
+  const interviews = await prisma.interview.findMany({
+    where: {
+      organizationId: auth.organizationId,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+    take: options.limit,
+    include: {
+      candidate: {
+        select: {
+          fullName: true,
+        },
+      },
+      job: {
+        select: {
+          jobTitle: true,
+        },
+      },
+      interviewInvites: {
+        orderBy: {
+          createdAt: "desc",
+        },
+        select: {
+          accessType: true,
+          startTime: true,
+          endTime: true,
+          expiresAt: true,
+          status: true,
+          usedAt: true,
+          token: true,
+        },
+      },
+      attempts: {
+        orderBy: {
+          startedAt: "desc",
+        },
+        include: {
+          evaluation: true,
+        },
+      },
+    },
+  })
+
+  const attemptIds = interviews
+    .map((interview) => interview.attempts[0]?.attemptId)
+    .filter((attemptId): attemptId is string => Boolean(attemptId))
+  const answerSummaryMap =
+    options.includeAnswers !== false
+      ? await fetchAnswerSummaries(attemptIds)
+      : new Map<string, ReturnType<typeof mapAnswerSummaryRow>[]>()
+  const recruiterDecisionMap = await getRecruiterDecisionsForInterviews(
+    auth.organizationId,
+    interviews.map((interview) => interview.interviewId)
+  )
+
+  return interviews.map((interview) => {
+    const latestInvite = interview.interviewInvites[0] ?? null
+    const latestAttempt = interview.attempts[0] ?? null
+    const evaluation = latestAttempt?.evaluation ?? null
+    const recruiterDecision = recruiterDecisionMap.get(interview.interviewId) ?? null
+    const answerSummaries = latestAttempt?.attemptId ? answerSummaryMap.get(latestAttempt.attemptId) ?? [] : []
+    const calculatedResult = deriveResultFromAnswerSummaries(answerSummaries)
+    const questionStatus = interview.questionStatus ?? null
+    const emailStatus = interview.emailStatus ?? null
+    const failureReason = interview.failureReason ?? null
+    const lastError = interview.lastError ?? null
+    const status = deriveInterviewStatus({
+      interviewStatus: interview.status,
+      questionStatus,
+      emailStatus,
+      latestAttempt,
+      latestInvite,
+    })
+
+    return {
+      interviewId: interview.interviewId,
+      attemptId: latestAttempt?.attemptId ?? null,
+      candidateId: interview.candidateId,
+      candidateName: interview.candidate.fullName,
+      jobTitle: interview.job.jobTitle,
+      status,
+      interviewStatus: interview.status ?? null,
+      questionStatus,
+      emailStatus,
+      failureReason,
+      lastError,
+      questionsGeneratedAt: interview.questionsGeneratedAt ?? null,
+      emailSentAt: interview.emailSentAt ?? null,
+      inviteStatus: latestInvite?.status ?? null,
+      inviteToken: latestInvite?.token ?? null,
+      link: latestInvite?.token ? `${getInterviewAppUrl().replace(/\/$/, "")}/interview/${latestInvite.token}` : null,
+      attemptStatus: latestAttempt?.status ?? null,
+      accessType: latestInvite?.accessType ?? "FLEXIBLE",
+      startTime: latestInvite?.startTime ?? null,
+      endTime: latestInvite?.endTime ?? null,
+      expiresAt: latestInvite?.expiresAt ?? null,
+      startedAt: latestAttempt?.startedAt ?? null,
+      endedAt: latestAttempt?.endedAt ?? null,
+      score: evaluation?.finalScore === null || evaluation?.finalScore === undefined ? calculatedResult.score : Number(evaluation.finalScore),
+      decision: evaluation?.decision ?? calculatedResult.decision,
+      recruiterDecisionStatus: recruiterDecision?.status ?? null,
+      recruiterDecisionAt: recruiterDecision?.decidedAt ?? null,
+      recruiterDecisionNotes: recruiterDecision?.notes ?? null,
+      aiSummary: evaluation?.aiSummary ?? buildAnswerFallbackSummary(answerSummaries),
+      answerSummaries,
+      createdAt: interview.createdAt,
+    }
+  })
+}
+
 export async function GET(request: Request) {
   try {
     const auth = await getRecruiterRequestContext(request)
@@ -303,114 +422,9 @@ export async function GET(request: Request) {
     const rawLimit = Number.parseInt(searchParams.get("limit") ?? "0", 10)
     const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 200) : undefined
     const includeAnswers = searchParams.get("includeAnswers") !== "0"
-
-    await finalizeStaleInterviewAttempts(auth.organizationId)
-
-    const interviews = await prisma.interview.findMany({
-      where: {
-        organizationId: auth.organizationId,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-      take: limit,
-      include: {
-        candidate: {
-          select: {
-            fullName: true,
-          },
-        },
-        job: {
-          select: {
-            jobTitle: true,
-          },
-        },
-        interviewInvites: {
-          orderBy: {
-            createdAt: "desc",
-          },
-          select: {
-            accessType: true,
-            startTime: true,
-            endTime: true,
-            expiresAt: true,
-            status: true,
-            usedAt: true,
-            token: true,
-          },
-        },
-        attempts: {
-          orderBy: {
-            startedAt: "desc",
-          },
-          include: {
-            evaluation: true,
-          },
-        },
-      },
-    })
-
-    const attemptIds = interviews
-      .map((interview) => interview.attempts[0]?.attemptId)
-      .filter((attemptId): attemptId is string => Boolean(attemptId))
-    const answerSummaryMap = includeAnswers ? await fetchAnswerSummaries(attemptIds) : new Map<string, ReturnType<typeof mapAnswerSummaryRow>[]>()
-    const recruiterDecisionMap = await getRecruiterDecisionsForInterviews(
-      auth.organizationId,
-      interviews.map((interview) => interview.interviewId)
-    )
-
-    const data = interviews.map((interview) => {
-      const latestInvite = interview.interviewInvites[0] ?? null
-      const latestAttempt = interview.attempts[0] ?? null
-      const evaluation = latestAttempt?.evaluation ?? null
-      const recruiterDecision = recruiterDecisionMap.get(interview.interviewId) ?? null
-      const answerSummaries = latestAttempt?.attemptId ? answerSummaryMap.get(latestAttempt.attemptId) ?? [] : []
-      const calculatedResult = deriveResultFromAnswerSummaries(answerSummaries)
-      const questionStatus = interview.questionStatus ?? null
-      const emailStatus = interview.emailStatus ?? null
-      const failureReason = interview.failureReason ?? null
-      const lastError = interview.lastError ?? null
-      const status = deriveInterviewStatus({
-        interviewStatus: interview.status,
-        questionStatus,
-        emailStatus,
-        latestAttempt,
-        latestInvite,
-      })
-
-      return {
-        interviewId: interview.interviewId,
-        attemptId: latestAttempt?.attemptId ?? null,
-        candidateId: interview.candidateId,
-        candidateName: interview.candidate.fullName,
-        jobTitle: interview.job.jobTitle,
-        status,
-        interviewStatus: interview.status ?? null,
-        questionStatus,
-        emailStatus,
-        failureReason,
-        lastError,
-        questionsGeneratedAt: interview.questionsGeneratedAt ?? null,
-        emailSentAt: interview.emailSentAt ?? null,
-        inviteStatus: latestInvite?.status ?? null,
-        inviteToken: latestInvite?.token ?? null,
-        link: latestInvite?.token ? `${getInterviewAppUrl().replace(/\/$/, "")}/interview/${latestInvite.token}` : null,
-        attemptStatus: latestAttempt?.status ?? null,
-        accessType: latestInvite?.accessType ?? "FLEXIBLE",
-        startTime: latestInvite?.startTime ?? null,
-        endTime: latestInvite?.endTime ?? null,
-        expiresAt: latestInvite?.expiresAt ?? null,
-        startedAt: latestAttempt?.startedAt ?? null,
-        endedAt: latestAttempt?.endedAt ?? null,
-        score: evaluation?.finalScore === null || evaluation?.finalScore === undefined ? calculatedResult.score : Number(evaluation.finalScore),
-        decision: evaluation?.decision ?? calculatedResult.decision,
-        recruiterDecisionStatus: recruiterDecision?.status ?? null,
-        recruiterDecisionAt: recruiterDecision?.decidedAt ?? null,
-        recruiterDecisionNotes: recruiterDecision?.notes ?? null,
-        aiSummary: evaluation?.aiSummary ?? buildAnswerFallbackSummary(answerSummaries),
-        answerSummaries,
-        createdAt: interview.createdAt,
-      }
+    const data = await getInterviewsScreenData(auth, {
+      includeAnswers,
+      limit,
     })
 
     return NextResponse.json({

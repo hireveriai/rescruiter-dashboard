@@ -11,7 +11,6 @@ import { ACTION_FEEDBACK_EVENT } from "@/lib/client/action-feedback";
 import { logoutRecruiter } from "@/lib/client/logout";
 import { DEFAULT_RECRUITER_PERMISSION_PROFILE, canAccessFeature } from "@/lib/client/permissions";
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params";
-import { useAmbientLoading } from "@/components/system/loading";
 
 const CreateJobModal = dynamic(() => import("./CreateJobModal"), {
   ssr: false,
@@ -27,19 +26,8 @@ const navItems = [
   { href: "/billing", label: "Billing", feature: "billing" },
 ];
 
-const navLoadingMessages = {
-  "/": "Syncing recruiter dashboard...",
-  "/jobs": "Loading job intelligence...",
-  "/candidates": "Loading candidate pipeline...",
-  "/interviews": "Syncing interview telemetry...",
-  "/reports": "Updating forensic analytics...",
-  "/billing": "Loading billing records...",
-  "/manage-team": "Syncing team workspace...",
-  "/settings": "Loading workspace settings...",
-  "/contact-us": "Preparing contact workspace...",
-};
-
 const ALERT_READ_STORAGE_KEY = "hireveri-read-alert-ids";
+const ALERTS_CACHE_KEY = "hireveri-dashboard-alerts";
 const ALERTS_READ_EVENT = "hireveri:alerts-read";
 const PROFILE_PERMISSION_CACHE_KEY = "hireveri-recruiter-profile-permissions";
 
@@ -199,17 +187,42 @@ function cachePermissionProfile(profile) {
   }
 }
 
+function readCachedAlerts() {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+
+  try {
+    const raw = window.sessionStorage.getItem(ALERTS_CACHE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return Array.isArray(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function cacheAlerts(alerts) {
+  if (typeof window === "undefined" || !Array.isArray(alerts)) {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(ALERTS_CACHE_KEY, JSON.stringify(alerts.slice(0, 12)));
+  } catch {
+    // Alerts cache is only a startup accelerator.
+  }
+}
+
 export default function Navbar({ onSendInterviewClick: _onSendInterviewClick, initialProfile = null, initialAlerts = undefined }) {
   const pathname = usePathname();
   const searchParams = useAuthSearchParams();
-  const { startLoading } = useAmbientLoading();
   const menuRef = useRef(null);
   const alertsRef = useRef(null);
   const feedbackTimerRef = useRef(null);
   const [openCreateJob, setOpenCreateJob] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
-  const [alerts, setAlerts] = useState(() => initialAlerts ?? []);
+  const [alerts, setAlerts] = useState(() => initialAlerts ?? readCachedAlerts() ?? []);
   const [readAlertIds, setReadAlertIds] = useState(() => new Set());
   const [feedback, setFeedback] = useState(null);
   const [profile, setProfile] = useState(() => initialProfile ?? readCachedPermissionProfile());
@@ -237,32 +250,33 @@ export default function Navbar({ onSendInterviewClick: _onSendInterviewClick, in
       const parsed = stored ? JSON.parse(stored) : [];
       if (Array.isArray(parsed)) {
         const nextReadIds = new Set(parsed.filter((id) => typeof id === "string" && id.length > 0));
-        setReadAlertIds(nextReadIds);
+        queueMicrotask(() => setReadAlertIds(nextReadIds));
 
         if (alertReadStorageKey !== ALERT_READ_STORAGE_KEY) {
           window.localStorage.setItem(alertReadStorageKey, JSON.stringify([...nextReadIds]));
         }
       }
     } catch {
-      setReadAlertIds(new Set());
+      queueMicrotask(() => setReadAlertIds(new Set()));
     }
   }, [alertReadStorageKey]);
 
   useEffect(() => {
     if (initialAlerts !== undefined) {
-      setAlerts(initialAlerts ?? []);
+      queueMicrotask(() => setAlerts(initialAlerts ?? []));
+      cacheAlerts(initialAlerts ?? []);
     }
   }, [initialAlerts]);
 
   useEffect(() => {
     if (initialProfile?.name) {
-      setProfile((current) => current?.name ? current : initialProfile);
+      queueMicrotask(() => setProfile((current) => current?.name ? current : initialProfile));
       cachePermissionProfile(initialProfile);
     }
   }, [initialProfile]);
 
   useEffect(() => {
-    if (!hasAuthQuery(searchParams) || initialAlerts !== undefined) {
+    if (!hasAuthQuery(searchParams) || initialAlerts !== undefined || alerts.length > 0) {
       return;
     }
 
@@ -276,6 +290,7 @@ export default function Navbar({ onSendInterviewClick: _onSendInterviewClick, in
       .then((data) => {
         if (active && data.success) {
           setAlerts(data.data ?? []);
+          cacheAlerts(data.data ?? []);
         }
       })
       .catch(() => {});
@@ -283,10 +298,10 @@ export default function Navbar({ onSendInterviewClick: _onSendInterviewClick, in
     return () => {
       active = false;
     };
-  }, [initialAlerts, searchParams]);
+  }, [alerts.length, initialAlerts, searchParams]);
 
   useEffect(() => {
-    if (!hasAuthQuery(searchParams) || initialProfile?.name) {
+    if (!hasAuthQuery(searchParams) || initialProfile?.name || profile?.name) {
       return;
     }
 
@@ -312,7 +327,7 @@ export default function Navbar({ onSendInterviewClick: _onSendInterviewClick, in
     return () => {
       active = false;
     };
-  }, [initialProfile, searchParams]);
+  }, [initialProfile, profile?.name, searchParams]);
 
   const unreadAlerts = useMemo(
     () => alerts.filter((alert) => !readAlertIds.has(alert.id)),
@@ -517,12 +532,6 @@ export default function Navbar({ onSendInterviewClick: _onSendInterviewClick, in
     if (href === pathname) {
       return;
     }
-
-    if (href === "/ai-screening") {
-      return;
-    }
-
-    startLoading({ message: navLoadingMessages[href] || "Preparing recruiter insights...", reason: "navigation" });
   };
 
   return (

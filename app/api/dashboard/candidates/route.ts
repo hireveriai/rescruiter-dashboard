@@ -1,7 +1,6 @@
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
 import { errorResponse } from "@/lib/server/response"
-import { getCandidatesDashboard } from "@/lib/server/services/dashboard.service"
-import { getFastDashboardCandidates } from "@/lib/server/services/dashboard-fast-snapshot"
+import { getCandidatesScreenData } from "@/lib/server/services/recruiter-screen-data"
 
 function parseLimit(value: string | null): number | "all" {
   if (!value || value === "all") {
@@ -18,13 +17,10 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const includeAnswerSummaries = searchParams.get("includeAnswerSummaries") === "1"
     const limit = parseLimit(searchParams.get("limit"))
-    const data = includeAnswerSummaries
-      ? await getCandidatesDashboard({
-          organizationId: auth.organizationId,
-          limit,
-          includeAnswerSummaries: true,
-        })
-      : await getFastDashboardCandidates(auth.organizationId, limit === "all" ? 20 : limit)
+    const data = await getCandidatesScreenData(auth, {
+      includeAnswerSummaries,
+      limit,
+    })
 
     const response = Response.json({
       success: true,

@@ -113,11 +113,15 @@ export default function CandidateList({ initialCandidates, isLoading = false }) 
 
   useEffect(() => {
     if (initialCandidates !== undefined) {
-      setCandidates(initialCandidates ?? [])
+      queueMicrotask(() => setCandidates(initialCandidates ?? []))
     }
   }, [initialCandidates])
 
   useEffect(() => {
+    if (initialCandidates !== undefined) {
+      return
+    }
+
     if (!hasAuthQuery(searchParams)) {
       return
     }
@@ -141,7 +145,7 @@ export default function CandidateList({ initialCandidates, isLoading = false }) 
     return () => {
       isMounted = false
     }
-  }, [searchParams])
+  }, [initialCandidates, searchParams])
 
   useEffect(() => {
     if (!hasAuthQuery(searchParams) || typeof window === "undefined") {

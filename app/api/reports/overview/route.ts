@@ -1,11 +1,11 @@
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
 import { errorResponse, successResponse } from "@/lib/server/response"
-import { getReportsOverview } from "@/lib/server/services/reports.service"
+import { getReportsScreenData } from "@/lib/server/services/recruiter-screen-data"
 
 export async function GET(request: Request) {
   try {
     const auth = await getRecruiterRequestContext(request)
-    const data = await getReportsOverview(auth.organizationId)
+    const data = await getReportsScreenData(auth)
     return successResponse(data)
   } catch (error) {
     return errorResponse(error)

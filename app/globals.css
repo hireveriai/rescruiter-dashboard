@@ -352,26 +352,6 @@ a {
   }
 }
 
-@keyframes hv-veris-progress-orbit {
-  0% {
-    transform: rotate(0deg);
-  }
-
-  100% {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes hv-veris-progress-counter-orbit {
-  0% {
-    transform: translate(-50%, -50%) rotate(0deg);
-  }
-
-  100% {
-    transform: translate(-50%, -50%) rotate(-360deg);
-  }
-}
-
 .hv-veris-loader-grid {
   background-image:
     linear-gradient(rgba(244, 114, 182, 0.07) 1px, transparent 1px),
@@ -412,14 +392,6 @@ a {
 
 .hv-veris-end-dot {
   animation: hv-veris-end-dot-pulse 1.4s ease-in-out infinite;
-}
-
-.hv-veris-progress-orbit {
-  animation: hv-veris-progress-orbit 9s linear infinite;
-}
-
-.hv-veris-progress-badge {
-  animation: hv-veris-progress-counter-orbit 9s linear infinite;
 }
 
 .hv-ai-panel {

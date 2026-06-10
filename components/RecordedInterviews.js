@@ -75,12 +75,15 @@ export default function RecordedInterviews({ initialRecordedInterviews, organiza
 
   useEffect(() => {
     if (initialRecordedInterviews !== undefined) {
-      setInterviews(initialRecordedInterviews ?? [])
-      setIsFetching(false)
+      queueMicrotask(() => {
+        setInterviews(initialRecordedInterviews ?? [])
+        setIsFetching(false)
+      })
+      return
     }
 
     if (!hasAuthQuery(searchParams)) {
-      setIsFetching(false)
+      queueMicrotask(() => setIsFetching(false))
       return
     }
 
@@ -89,7 +92,7 @@ export default function RecordedInterviews({ initialRecordedInterviews, organiza
     let loaderCeilingTimer = null
 
     if (initialRecordedInterviews === undefined) {
-      setIsFetching(true)
+      queueMicrotask(() => setIsFetching(true))
       loaderCeilingTimer = window.setTimeout(() => {
         if (isMounted) {
           setIsFetching(false)

@@ -75,8 +75,8 @@ export default function VerisGlobeLoader({
           <div className="hv-veris-loader-ring-reverse absolute inset-[8%] rounded-full border border-dashed border-pink-400/24" />
           <div className="absolute inset-[16%] rounded-full border border-fuchsia-400/14" />
           <div className="absolute inset-[24%] rounded-full border border-pink-300/14" />
-          <div aria-hidden="true" className="hv-veris-progress-orbit absolute inset-[17%] rounded-full">
-            <div className="hv-veris-progress-badge absolute left-1/2 top-0 flex h-14 min-w-20 items-center justify-center rounded-full border border-pink-300/35 bg-[#160b17]/95 px-3 text-pink-50 shadow-[0_0_28px_rgba(236,72,153,0.38)]">
+          <div aria-hidden="true" className="absolute inset-[17%] rounded-full">
+            <div className="absolute left-1/2 top-0 flex h-14 min-w-20 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-pink-300/35 bg-[#160b17]/95 px-3 text-pink-50 shadow-[0_0_28px_rgba(236,72,153,0.38)]">
               <span className="text-xl font-semibold leading-none">{progress}</span>
               <span className="ml-1 text-[11px] font-semibold text-pink-200/75">%</span>
             </div>
