@@ -48,6 +48,13 @@ export default function VerisGlobeLoader({
   const safeIndex = Math.min(Math.max(activeIndex, 0), safeSteps.length - 1)
   const activeStep = safeSteps[safeIndex] ?? safeSteps[0]
   const progress = Math.round(((safeIndex + 1) / safeSteps.length) * 100)
+  const titleLength = activeStep.label.length
+  const titleSizeClass =
+    titleLength > 24
+      ? "text-[22px] sm:text-2xl lg:text-[28px]"
+      : titleLength > 16
+        ? "text-2xl sm:text-[28px] lg:text-[32px]"
+        : "text-2xl sm:text-3xl lg:text-[34px]"
 
   return (
     <div
@@ -63,7 +70,7 @@ export default function VerisGlobeLoader({
       <div aria-hidden="true" className="hv-veris-loader-grid absolute inset-0 opacity-25" />
 
       <div className="relative flex h-full w-full max-w-6xl items-center justify-center animate-[overlay-panel-in_220ms_ease-out_forwards]">
-        <div className="relative flex aspect-square w-[min(96vw,96vh,650px)] items-center justify-center">
+        <div className="relative flex aspect-square w-[min(94vw,calc(100vh-2rem),720px)] items-center justify-center">
           <div className="hv-veris-loader-ring absolute inset-0 rounded-full border border-fuchsia-300/10" />
           <div className="hv-veris-loader-ring-reverse absolute inset-[8%] rounded-full border border-dashed border-pink-400/24" />
           <div className="absolute inset-[16%] rounded-full border border-fuchsia-400/14" />
@@ -121,7 +128,7 @@ export default function VerisGlobeLoader({
           </svg>
 
           <div
-            className="absolute inset-[15%] rounded-full p-[2px] shadow-[0_0_110px_rgba(236,72,153,0.28)] transition-[background] duration-500 sm:inset-[22%] lg:inset-[25%]"
+            className="absolute inset-[13%] rounded-full p-[2px] shadow-[0_0_110px_rgba(236,72,153,0.28)] transition-[background] duration-500 sm:inset-[19%] lg:inset-[22%]"
             style={{
               background: `conic-gradient(from 225deg, rgba(244,114,182,0.95) 0deg, rgba(192,132,252,0.95) ${progress * 3.6}deg, rgba(255,255,255,0.08) ${progress * 3.6}deg, rgba(255,255,255,0.08) 360deg)`,
             }}
@@ -131,22 +138,50 @@ export default function VerisGlobeLoader({
               <div aria-hidden="true" className="hv-veris-loader-scan absolute inset-x-7 top-0 h-px bg-gradient-to-r from-transparent via-pink-200/80 to-transparent" />
               <div aria-hidden="true" className="absolute inset-x-10 top-1/2 h-px bg-pink-300/10" />
 
-              <p className="absolute left-1/2 top-[14%] w-[72%] -translate-x-1/2 text-center text-[8px] font-semibold uppercase leading-4 tracking-[0.14em] text-pink-200/70 sm:text-[10px] sm:tracking-[0.2em] lg:text-[11px]">
-                {eyebrow}
-              </p>
-              <h2 className="absolute left-1/2 top-[25%] w-[78%] -translate-x-1/2 text-xl font-semibold leading-tight tracking-tight text-white sm:text-2xl lg:text-3xl">
-                {activeStep.label}
-              </h2>
-              <p className="absolute left-1/2 top-[49%] w-[72%] -translate-x-1/2 text-[10px] leading-4 text-slate-400 sm:text-xs lg:text-sm lg:leading-5">
-                {activeStep.detail}
-              </p>
+              <div className="absolute inset-x-[13%] top-[14%] z-10 flex h-[66%] flex-col items-center justify-start text-center">
+                <p
+                  className="max-w-full overflow-hidden text-center text-[8px] font-semibold uppercase leading-4 tracking-[0.12em] text-pink-200/70 sm:text-[10px] sm:tracking-[0.18em] lg:text-[11px]"
+                  style={{
+                    display: "-webkit-box",
+                    WebkitLineClamp: 1,
+                    WebkitBoxOrient: "vertical",
+                  }}
+                >
+                  {eyebrow}
+                </p>
+                <h2
+                  className={[
+                    "mt-7 max-w-full overflow-hidden font-semibold leading-[1.08] tracking-tight text-white sm:mt-8",
+                    titleSizeClass,
+                  ].join(" ")}
+                  style={{
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical",
+                    overflowWrap: "anywhere",
+                  }}
+                >
+                  {activeStep.label}
+                </h2>
+                <p
+                  className="mt-6 max-w-[92%] overflow-hidden text-[10px] leading-4 text-slate-400 sm:mt-7 sm:text-xs sm:leading-5 lg:text-[13px]"
+                  style={{
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical",
+                    overflowWrap: "anywhere",
+                  }}
+                >
+                  {activeStep.detail}
+                </p>
 
-              <div className="absolute left-1/2 top-[67%] flex -translate-x-1/2 items-end justify-center gap-1.5">
-                <span className="text-xl font-semibold leading-none text-pink-100 sm:text-3xl lg:text-4xl">{progress}</span>
-                <span className="mb-0.5 text-xs font-semibold text-pink-200/70 sm:mb-1 sm:text-sm">%</span>
+                <div className="mt-auto flex items-end justify-center gap-1.5 pb-1">
+                  <span className="text-3xl font-semibold leading-none text-pink-100 sm:text-4xl lg:text-[46px]">{progress}</span>
+                  <span className="mb-1 text-xs font-semibold text-pink-200/70 sm:text-sm">%</span>
+                </div>
               </div>
 
-              <div className="absolute bottom-[13%] left-1/2 flex w-[70%] -translate-x-1/2 flex-wrap justify-center gap-1.5 sm:gap-2">
+              <div className="absolute bottom-[12%] left-1/2 z-10 flex w-[70%] -translate-x-1/2 flex-wrap justify-center gap-1.5 sm:gap-2">
                 {safeSteps.map((step, index) => {
                   const isComplete = index < safeIndex
                   const isActive = index === safeIndex
@@ -167,7 +202,7 @@ export default function VerisGlobeLoader({
                   )
                 })}
               </div>
-              <p className="absolute bottom-[7%] left-1/2 -translate-x-1/2 text-[9px] uppercase tracking-[0.2em] text-slate-500 sm:text-[10px]">
+              <p className="absolute bottom-[6%] left-1/2 z-10 -translate-x-1/2 text-[9px] uppercase tracking-[0.2em] text-slate-500 sm:text-[10px]">
                 {safeIndex + 1} / {safeSteps.length}
               </p>
             </div>
