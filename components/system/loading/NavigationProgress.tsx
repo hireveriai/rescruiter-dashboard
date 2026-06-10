@@ -21,7 +21,7 @@ export default function NavigationProgress({
         eyebrow="HireVeri"
         steps={[
           { label: "Opening screen", detail: "Securing recruiter session and route context." },
-          { label: message.replace(/\.+$/, ""), detail: "Fetching workspace data before showing the page." },
+          { label: message.replace(/\.+$/, ""), detail: "Loading data for this recruiter screen." },
           { label: "Building view", detail: "Organizing records into the recruiter screen." },
           { label: "Screen ready", detail: "The recruiter workspace is ready for review." },
         ]}

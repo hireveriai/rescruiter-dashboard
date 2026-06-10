@@ -14,3 +14,6 @@
  GET /veris-insights 200 in 7.9s (compile: 6.8s, proxy.ts: 2ms, render: 1024ms)
 ✓ Compiled in 522ms
  GET /veris-insights 200 in 278ms (compile: 116ms, proxy.ts: 2ms, render: 159ms)
+✓ Compiled in 501ms
+✓ Compiled in 236ms
+✓ Compiled in 286ms

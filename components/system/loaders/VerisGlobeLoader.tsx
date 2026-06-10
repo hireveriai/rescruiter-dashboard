@@ -51,10 +51,10 @@ export default function VerisGlobeLoader({
   const titleLength = activeStep.label.length
   const titleSizeClass =
     titleLength > 24
-      ? "text-[22px] sm:text-2xl lg:text-[28px]"
+      ? "text-lg sm:text-xl lg:text-[24px]"
       : titleLength > 16
-        ? "text-2xl sm:text-[28px] lg:text-[32px]"
-        : "text-2xl sm:text-3xl lg:text-[34px]"
+        ? "text-xl sm:text-[22px] lg:text-[26px]"
+        : "text-xl sm:text-[22px] lg:text-[26px]"
 
   return (
     <div
@@ -70,7 +70,7 @@ export default function VerisGlobeLoader({
       <div aria-hidden="true" className="hv-veris-loader-grid absolute inset-0 opacity-25" />
 
       <div className="relative flex h-full w-full max-w-6xl items-center justify-center animate-[overlay-panel-in_220ms_ease-out_forwards]">
-        <div className="relative flex aspect-square w-[min(94vw,calc(100vh-2rem),720px)] items-center justify-center">
+        <div className="relative flex h-[min(92vw,calc(100svh-190px),680px)] min-h-[430px] w-[min(92vw,calc(100svh-190px),680px)] min-w-[430px] items-center justify-center max-[520px]:h-[92vw] max-[520px]:min-h-0 max-[520px]:w-[92vw] max-[520px]:min-w-0">
           <div className="hv-veris-loader-ring absolute inset-0 rounded-full border border-fuchsia-300/10" />
           <div className="hv-veris-loader-ring-reverse absolute inset-[8%] rounded-full border border-dashed border-pink-400/24" />
           <div className="absolute inset-[16%] rounded-full border border-fuchsia-400/14" />
@@ -133,42 +133,31 @@ export default function VerisGlobeLoader({
               background: `conic-gradient(from 225deg, rgba(244,114,182,0.95) 0deg, rgba(192,132,252,0.95) ${progress * 3.6}deg, rgba(255,255,255,0.08) ${progress * 3.6}deg, rgba(255,255,255,0.08) 360deg)`,
             }}
           >
-            <div className="relative h-full w-full overflow-hidden rounded-full border border-pink-300/20 bg-[#130c13]/96 px-5 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.08),inset_0_-30px_80px_rgba(236,72,153,0.09)] sm:px-8">
-              <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_50%_18%,rgba(255,255,255,0.07),transparent_32%),linear-gradient(180deg,rgba(255,255,255,0.035),transparent_52%)]" />
+            <div className="relative h-full w-full rounded-full border border-pink-300/20 bg-[#130c13]/96 px-5 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.08),inset_0_-30px_80px_rgba(236,72,153,0.09)] sm:px-8">
+              <div className="absolute inset-0 overflow-hidden rounded-full">
+                <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_50%_18%,rgba(255,255,255,0.07),transparent_32%),linear-gradient(180deg,rgba(255,255,255,0.035),transparent_52%)]" />
+              </div>
               <div aria-hidden="true" className="hv-veris-loader-scan absolute inset-x-7 top-0 h-px bg-gradient-to-r from-transparent via-pink-200/80 to-transparent" />
               <div aria-hidden="true" className="absolute inset-x-10 top-1/2 h-px bg-pink-300/10" />
 
-              <div className="absolute inset-x-[13%] top-[14%] z-10 flex h-[66%] flex-col items-center justify-start text-center">
-                <p
-                  className="max-w-full overflow-hidden text-center text-[8px] font-semibold uppercase leading-4 tracking-[0.12em] text-pink-200/70 sm:text-[10px] sm:tracking-[0.18em] lg:text-[11px]"
-                  style={{
-                    display: "-webkit-box",
-                    WebkitLineClamp: 1,
-                    WebkitBoxOrient: "vertical",
-                  }}
-                >
+              <div className="absolute inset-x-[10%] top-[15%] z-10 flex h-[66%] flex-col items-center text-center">
+                <p className="max-w-full text-center text-[8px] font-semibold uppercase leading-4 tracking-[0.08em] text-pink-200/70 sm:text-[9px] sm:tracking-[0.14em] lg:text-[10px]">
                   {eyebrow}
                 </p>
                 <h2
                   className={[
-                    "mt-7 max-w-full overflow-hidden font-semibold leading-[1.08] tracking-tight text-white sm:mt-8",
+                    "mt-5 max-w-[96%] font-semibold leading-[1.16] tracking-tight text-white sm:mt-6",
                     titleSizeClass,
                   ].join(" ")}
                   style={{
-                    display: "-webkit-box",
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: "vertical",
                     overflowWrap: "anywhere",
                   }}
                 >
                   {activeStep.label}
                 </h2>
                 <p
-                  className="mt-6 max-w-[92%] overflow-hidden text-[10px] leading-4 text-slate-400 sm:mt-7 sm:text-xs sm:leading-5 lg:text-[13px]"
+                  className="mt-4 max-w-[94%] text-[10px] leading-4 text-slate-400 sm:mt-5 sm:text-[11px] sm:leading-5 lg:text-xs"
                   style={{
-                    display: "-webkit-box",
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: "vertical",
                     overflowWrap: "anywhere",
                   }}
                 >
@@ -176,12 +165,12 @@ export default function VerisGlobeLoader({
                 </p>
 
                 <div className="mt-auto flex items-end justify-center gap-1.5 pb-1">
-                  <span className="text-3xl font-semibold leading-none text-pink-100 sm:text-4xl lg:text-[46px]">{progress}</span>
-                  <span className="mb-1 text-xs font-semibold text-pink-200/70 sm:text-sm">%</span>
+                  <span className="text-[28px] font-semibold leading-none text-pink-100 sm:text-[32px] lg:text-[34px]">{progress}</span>
+                  <span className="mb-1 text-[11px] font-semibold text-pink-200/70 sm:text-xs">%</span>
                 </div>
               </div>
 
-              <div className="absolute bottom-[12%] left-1/2 z-10 flex w-[70%] -translate-x-1/2 flex-wrap justify-center gap-1.5 sm:gap-2">
+              <div className="absolute bottom-[9%] left-1/2 z-10 flex w-[70%] -translate-x-1/2 flex-wrap justify-center gap-1.5 sm:gap-2">
                 {safeSteps.map((step, index) => {
                   const isComplete = index < safeIndex
                   const isActive = index === safeIndex
@@ -191,7 +180,7 @@ export default function VerisGlobeLoader({
                       key={`${step.label}-${index}`}
                       aria-label={step.label}
                       className={[
-                        "h-2 w-2 rounded-full border transition duration-300 sm:h-2.5 sm:w-2.5",
+                        "h-1.5 w-1.5 rounded-full border transition duration-300 sm:h-2 sm:w-2",
                         isActive
                           ? "border-pink-200 bg-pink-300 shadow-[0_0_16px_rgba(244,114,182,0.95)]"
                           : isComplete
@@ -202,7 +191,7 @@ export default function VerisGlobeLoader({
                   )
                 })}
               </div>
-              <p className="absolute bottom-[6%] left-1/2 z-10 -translate-x-1/2 text-[9px] uppercase tracking-[0.2em] text-slate-500 sm:text-[10px]">
+              <p className="absolute bottom-[4%] left-1/2 z-10 -translate-x-1/2 text-[8px] uppercase tracking-[0.18em] text-slate-500 sm:bottom-[5%] sm:text-[9px]">
                 {safeIndex + 1} / {safeSteps.length}
               </p>
             </div>

@@ -20,17 +20,17 @@ type AmbientLoadingContextValue = {
 const AmbientLoadingContext = createContext<AmbientLoadingContextValue | null>(null)
 
 const routeMessages: Array<[RegExp, string]> = [
-  [/^\/ai-screening/, "Preparing VERIS Screening..."],
-  [/^\/veris-insights/, "Loading VERIS insights..."],
-  [/^\/candidates/, "Loading candidate pipeline..."],
-  [/^\/interviews/, "Syncing interview telemetry..."],
-  [/^\/reports/, "Updating forensic analytics..."],
-  [/^\/jobs/, "Loading job intelligence..."],
-  [/^\/manage-team/, "Syncing team workspace..."],
-  [/^\/billing/, "Loading billing records..."],
-  [/^\/subscription/, "Loading subscription plans..."],
-  [/^\/settings/, "Loading workspace settings..."],
-  [/^\//, "Syncing recruiter dashboard..."],
+  [/^\/ai-screening/, "VERIS Screening"],
+  [/^\/veris-insights/, "VERIS Insights"],
+  [/^\/candidates/, "Candidates"],
+  [/^\/interviews/, "Interviews"],
+  [/^\/reports/, "Reports"],
+  [/^\/jobs/, "Jobs"],
+  [/^\/manage-team/, "Team"],
+  [/^\/billing/, "Billing"],
+  [/^\/subscription/, "Subscription"],
+  [/^\/settings/, "Settings"],
+  [/^\//, "Dashboard"],
 ]
 
 function getRouteMessage(pathname: string) {
@@ -45,7 +45,7 @@ function getGlobeSteps(message: string) {
     },
     {
       label: message.replace(/\.+$/, ""),
-      detail: "Fetching the latest workspace data before showing the page.",
+      detail: "Loading data for this recruiter screen.",
     },
     {
       label: "Building view",
