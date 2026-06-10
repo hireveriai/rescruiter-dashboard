@@ -535,27 +535,27 @@ function ScreeningAnalysisOverlay({ phase }: { phase: ScreeningLoaderPhase | nul
               background: `conic-gradient(from 225deg, rgba(244,114,182,0.95) 0deg, rgba(192,132,252,0.95) ${progress * 3.6}deg, rgba(255,255,255,0.08) ${progress * 3.6}deg, rgba(255,255,255,0.08) 360deg)`,
             }}
           >
-            <div className="relative flex h-full w-full flex-col items-center justify-center overflow-hidden rounded-full border border-pink-300/20 bg-[#130c13]/96 px-5 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.08),inset_0_-30px_80px_rgba(236,72,153,0.09)] sm:px-8">
+            <div className="relative h-full w-full overflow-hidden rounded-full border border-pink-300/20 bg-[#130c13]/96 px-5 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.08),inset_0_-30px_80px_rgba(236,72,153,0.09)] sm:px-8">
               <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_50%_18%,rgba(255,255,255,0.07),transparent_32%),linear-gradient(180deg,rgba(255,255,255,0.035),transparent_52%)]" />
               <div aria-hidden="true" className="hv-veris-loader-scan absolute inset-x-7 top-0 h-px bg-gradient-to-r from-transparent via-pink-200/80 to-transparent" />
               <div aria-hidden="true" className="absolute inset-x-10 top-1/2 h-px bg-pink-300/10" />
 
-              <p className="relative mt-3 max-w-[13rem] text-center text-[9px] font-semibold uppercase leading-4 tracking-[0.16em] text-pink-200/70 sm:mt-4 sm:max-w-[15rem] sm:text-[11px] sm:tracking-[0.22em] lg:text-xs">
+              <p className="absolute left-1/2 top-[14%] w-[72%] -translate-x-1/2 text-center text-[8px] font-semibold uppercase leading-4 tracking-[0.14em] text-pink-200/70 sm:text-[10px] sm:tracking-[0.2em] lg:text-[11px]">
                 VERIS Screening
               </p>
-              <h2 className="relative mt-2 max-w-[15rem] text-lg font-semibold leading-tight tracking-tight text-white sm:mt-3 sm:text-2xl lg:mt-4 lg:text-3xl">
+              <h2 className="absolute left-1/2 top-[25%] w-[78%] -translate-x-1/2 text-xl font-semibold leading-tight tracking-tight text-white sm:text-2xl lg:text-3xl">
                 {activeStep.label}
               </h2>
-              <p className="relative mt-2 max-w-[17rem] text-[10px] leading-4 text-slate-400 sm:text-xs lg:mt-3 lg:text-sm lg:leading-5">
+              <p className="absolute left-1/2 top-[49%] w-[72%] -translate-x-1/2 text-[10px] leading-4 text-slate-400 sm:text-xs lg:text-sm lg:leading-5">
                 {activeStep.detail}
               </p>
 
-              <div className="relative mt-3 flex items-end justify-center gap-1.5 sm:mt-4 lg:mt-5">
+              <div className="absolute left-1/2 top-[67%] flex -translate-x-1/2 items-end justify-center gap-1.5">
                 <span className="text-xl font-semibold leading-none text-pink-100 sm:text-3xl lg:text-4xl">{progress}</span>
                 <span className="mb-0.5 text-xs font-semibold text-pink-200/70 sm:mb-1 sm:text-sm">%</span>
               </div>
 
-              <div className="relative mt-3 flex max-w-[15rem] flex-wrap justify-center gap-1.5 sm:mt-4 sm:gap-2 lg:mt-5">
+              <div className="absolute bottom-[13%] left-1/2 flex w-[70%] -translate-x-1/2 flex-wrap justify-center gap-1.5 sm:gap-2">
                 {screeningLoaderSteps.map((step, index) => {
                   const isComplete = index < activeIndex
                   const isActive = index === activeIndex
@@ -576,7 +576,7 @@ function ScreeningAnalysisOverlay({ phase }: { phase: ScreeningLoaderPhase | nul
                   )
                 })}
               </div>
-              <p className="relative mt-2 text-[9px] uppercase tracking-[0.2em] text-slate-500 sm:mt-3 sm:text-[10px]">
+              <p className="absolute bottom-[7%] left-1/2 -translate-x-1/2 text-[9px] uppercase tracking-[0.2em] text-slate-500 sm:text-[10px]">
                 {activeIndex + 1} / {screeningLoaderSteps.length}
               </p>
             </div>
