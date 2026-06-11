@@ -2,13 +2,10 @@
 
 import Link from "next/link";
 
-import { buildAuthUrl } from "@/lib/client/auth-query";
 import { canAccessFeature } from "@/lib/client/permissions";
-import { useAuthSearchParams } from "@/lib/client/use-auth-search-params";
 import { deriveDashboardState } from "@/lib/dashboard/dashboard-state-engine";
 
 function ActionButton({ href, onClick, children, tone = "primary" }) {
-  const searchParams = useAuthSearchParams();
   const className =
     tone === "secondary"
       ? "inline-flex min-w-max items-center justify-center whitespace-nowrap rounded-xl border border-slate-700 bg-slate-950/45 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:border-slate-500 hover:bg-slate-900 hover:text-white"
@@ -23,7 +20,7 @@ function ActionButton({ href, onClick, children, tone = "primary" }) {
   }
 
   return (
-    <Link href={buildAuthUrl(href, searchParams)} className={className}>
+    <Link href={href} className={className}>
       {children}
     </Link>
   );

@@ -149,7 +149,8 @@ export default function CognitiveDock({
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [workspaceError, setWorkspaceError] = useState("");
 
-  const href = useCallback((path: string) => buildAuthUrl(path, searchParams), [searchParams]);
+  const apiHref = useCallback((path: string) => buildAuthUrl(path, searchParams), [searchParams]);
+  const pageHref = useCallback((path: string) => path, []);
   const hasFlaggedCandidates = flaggedCount > 0;
   const hasLiveWorkspaceData = hasWorkspaceData(workspace);
   const permissionProfile = Array.isArray(profile?.permissions) && profile.permissions.length > 0
@@ -216,10 +217,10 @@ export default function CognitiveDock({
       }, 900);
 
       Promise.allSettled([
-        fetchJsonWithTimeout(href("/api/jobs"), 4500),
-        fetchJsonWithTimeout(href("/api/dashboard/candidates?limit=80"), 4500),
-        fetchJsonWithTimeout(href("/api/dashboard/interviews?limit=80&includeAnswers=0"), 4500),
-        fetchJsonWithTimeout(href("/api/reports/overview"), 5200),
+        fetchJsonWithTimeout(apiHref("/api/jobs"), 4500),
+        fetchJsonWithTimeout(apiHref("/api/dashboard/candidates?limit=80"), 4500),
+        fetchJsonWithTimeout(apiHref("/api/dashboard/interviews?limit=80&includeAnswers=0"), 4500),
+        fetchJsonWithTimeout(apiHref("/api/reports/overview"), 5200),
       ])
         .then((results) => {
           if (!active) return;
@@ -265,7 +266,7 @@ export default function CognitiveDock({
         window.clearTimeout(loaderCeilingTimer);
       }
     };
-  }, [panel, href, overview]);
+  }, [panel, apiHref, overview]);
 
   useEffect(() => {
     if (!overview) {
@@ -302,7 +303,7 @@ export default function CognitiveDock({
         type: "Report",
         title: "Reports Snapshot",
         meta: "Open forensic analytics and decision trends",
-        href: href("/reports"),
+        href: pageHref("/reports"),
         icon: BarChart3,
       } as SearchItem] : []),
     ];
@@ -318,7 +319,7 @@ export default function CognitiveDock({
         type: "Job",
         title,
         meta: [skills || "Role configuration", `${interviews} interview${interviews === 1 ? "" : "s"}`].join(" - "),
-        href: href("/jobs"),
+        href: pageHref("/jobs"),
         icon: BriefcaseBusiness,
       });
     });
@@ -334,7 +335,7 @@ export default function CognitiveDock({
         meta: [readText(candidate.jobTitle, "Unassigned role"), readText(candidate.status, "Pipeline"), candidate.decision ? `Decision: ${candidate.decision}` : null]
           .filter(Boolean)
           .join(" - "),
-        href: canViewCandidates ? href("/candidates") : undefined,
+        href: canViewCandidates ? pageHref("/candidates") : undefined,
         icon: Users,
         score,
       });
@@ -351,7 +352,7 @@ export default function CognitiveDock({
         meta: [readText(interview.jobTitle, "Interview"), readText(interview.status, "Status pending"), interview.decision ? `Decision: ${interview.decision}` : null]
           .filter(Boolean)
           .join(" - "),
-        href: canViewInterviews ? href("/interviews") : undefined,
+        href: canViewInterviews ? pageHref("/interviews") : undefined,
         icon: ClipboardList,
         score,
       });
@@ -365,7 +366,7 @@ export default function CognitiveDock({
     return items
       .filter((item) => normalizeSearch(`${item.type} ${item.title} ${item.meta}`).includes(normalizedQuery))
       .slice(0, 14);
-  }, [workspace, query, href, openCreateJob, openSendInterview, canCreateJob, canSendInterview, canViewReports, canViewCandidates, canViewInterviews]);
+  }, [workspace, query, pageHref, openCreateJob, openSendInterview, canCreateJob, canSendInterview, canViewReports, canViewCandidates, canViewInterviews]);
 
   const copilot = useMemo(() => {
     const interviews = workspace.interviews;
@@ -444,11 +445,11 @@ export default function CognitiveDock({
         canViewInterviews ? {
           label: "Interview Queue",
           icon: ClipboardList,
-          href: href("/interviews"),
+          href: pageHref("/interviews"),
           badge: activeInterviewCount,
           active: pathname.startsWith("/interviews"),
         } : null,
-        canViewCandidates ? { label: "Candidates Queue", icon: Users, href: href("/candidates"), active: pathname.startsWith("/candidates") } : null,
+        canViewCandidates ? { label: "Candidates Queue", icon: Users, href: pageHref("/candidates"), active: pathname.startsWith("/candidates") } : null,
         canViewAlerts ? {
           label: "Fraud Alerts",
           icon: ShieldAlert,
@@ -457,7 +458,7 @@ export default function CognitiveDock({
           alert: hasFlaggedCandidates,
           active: panel === "alerts",
         } : null,
-        canViewReports ? { label: "Reports Snapshot", icon: BarChart3, href: href("/reports"), active: pathname.startsWith("/reports") } : null,
+        canViewReports ? { label: "Reports Snapshot", icon: BarChart3, href: pageHref("/reports"), active: pathname.startsWith("/reports") } : null,
         { label: "Universal Search", icon: Search, onClick: () => setPanel("search"), active: panel === "search" },
       ].filter(present),
     },
@@ -691,12 +692,12 @@ export default function CognitiveDock({
                       </button>
                       ) : null}
                       {canViewCandidates ? (
-                      <a href={href("/candidates")} className="rounded-2xl border border-white/5 bg-white/[0.03] px-4 py-3 text-left text-sm font-semibold text-slate-200 transition hover:border-cyan-300/20 hover:bg-cyan-400/10">
+                      <a href={pageHref("/candidates")} className="rounded-2xl border border-white/5 bg-white/[0.03] px-4 py-3 text-left text-sm font-semibold text-slate-200 transition hover:border-cyan-300/20 hover:bg-cyan-400/10">
                         Review queue
                       </a>
                       ) : null}
                       {canViewReports ? (
-                      <a href={href("/reports")} className="rounded-2xl border border-white/5 bg-white/[0.03] px-4 py-3 text-left text-sm font-semibold text-slate-200 transition hover:border-cyan-300/20 hover:bg-cyan-400/10">
+                      <a href={pageHref("/reports")} className="rounded-2xl border border-white/5 bg-white/[0.03] px-4 py-3 text-left text-sm font-semibold text-slate-200 transition hover:border-cyan-300/20 hover:bg-cyan-400/10">
                         Open reports
                       </a>
                       ) : null}

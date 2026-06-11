@@ -9,6 +9,7 @@ import { copyText } from "@/lib/client/copy-to-clipboard"
 import { formatDateTime } from "@/lib/client/date-format"
 import { readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache"
 
+import BackToDashboardLink from "../../components/BackToDashboardLink"
 import Navbar from "../../components/Navbar"
 import SendInterviewModal from "../../components/SendInterviewModal"
 import { CandidateActionModal } from "../../components/dashboard/CandidateActionModal"
@@ -290,8 +291,10 @@ function CompletedInterviewDetails({ interview, onClose }) {
 
 export default function InterviewsPage() {
   const searchParams = useAuthSearchParams()
-  const [interviews, setInterviews] = useState([])
-  const [loading, setLoading] = useState(true)
+  const cacheKey = `interviews:${searchParams.toString()}`
+  const initialInterviews = readSessionJsonCache(cacheKey)
+  const [interviews, setInterviews] = useState(() => initialInterviews ?? [])
+  const [loading, setLoading] = useState(() => !initialInterviews)
   const [expandedInterviewId, setExpandedInterviewId] = useState("")
   const [openSendInterview, setOpenSendInterview] = useState(false)
   const [actionBusyId, setActionBusyId] = useState("")
@@ -304,7 +307,6 @@ export default function InterviewsPage() {
   const [evaluationFilter, setEvaluationFilter] = useState("ALL")
 
   async function loadInterviews() {
-    const cacheKey = `interviews:${searchParams.toString()}`
     const response = await fetch(buildAuthUrl("/api/dashboard/interviews", searchParams), {
       credentials: "include",
       cache: "no-store",
@@ -319,12 +321,15 @@ export default function InterviewsPage() {
 
   useEffect(() => {
     let isMounted = true
-    const cacheKey = `interviews:${searchParams.toString()}`
     const cached = readSessionJsonCache(cacheKey)
 
     if (cached) {
-      setInterviews(cached)
-      setLoading(false)
+      window.queueMicrotask(() => {
+        if (isMounted) {
+          setInterviews(cached)
+          setLoading(false)
+        }
+      })
     } else {
       setLoading(true)
     }
@@ -352,7 +357,7 @@ export default function InterviewsPage() {
     return () => {
       isMounted = false
     }
-  }, [searchParams])
+  }, [cacheKey, searchParams])
 
   useEffect(() => {
     function handleEscape(event) {
@@ -550,9 +555,7 @@ export default function InterviewsPage() {
               </p>
             </div>
 
-            <Link href={buildAuthUrl("/", searchParams)} className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white">
-              Go Back to Dashboard
-            </Link>
+            <BackToDashboardLink className="inline-flex w-fit items-center justify-center gap-2 rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white" />
           </div>
 
           <div className="grid gap-4 border-b border-slate-800 bg-slate-950/20 px-6 py-5 xl:grid-cols-[minmax(220px,1.2fr)_repeat(4,minmax(150px,0.7fr))_auto]">

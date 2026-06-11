@@ -7,6 +7,7 @@ import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 import { buildAuthUrl } from "@/lib/client/auth-query"
 import { readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache"
 
+import BackToDashboardLink from "../../components/BackToDashboardLink"
 import Navbar from "../../components/Navbar"
 import SendInterviewModal from "../../components/SendInterviewModal"
 import CreateJobModal from "../../components/CreateJobModal"
@@ -149,8 +150,10 @@ function JobSkillsCell({ skills }) {
 
 export default function JobsPage() {
   const searchParams = useAuthSearchParams()
-  const [jobs, setJobs] = useState([])
-  const [supportsJobActiveState, setSupportsJobActiveState] = useState(false)
+  const cacheKey = `jobs:${searchParams.toString()}`
+  const initialJobs = readSessionJsonCache(cacheKey)
+  const [jobs, setJobs] = useState(() => initialJobs?.jobs ?? [])
+  const [supportsJobActiveState, setSupportsJobActiveState] = useState(() => Boolean(initialJobs?.supportsJobActiveState))
   const [openSendInterview, setOpenSendInterview] = useState(false)
   const [openEditJob, setOpenEditJob] = useState(false)
   const [selectedJob, setSelectedJob] = useState(null)
@@ -165,12 +168,15 @@ export default function JobsPage() {
 
   useEffect(() => {
     let isMounted = true
-    const cacheKey = `jobs:${searchParams.toString()}`
     const cached = readSessionJsonCache(cacheKey)
 
     if (cached) {
-      setJobs(cached.jobs ?? [])
-      setSupportsJobActiveState(Boolean(cached.supportsJobActiveState))
+      window.queueMicrotask(() => {
+        if (isMounted) {
+          setJobs(cached.jobs ?? [])
+          setSupportsJobActiveState(Boolean(cached.supportsJobActiveState))
+        }
+      })
     }
 
     async function loadJobs() {
@@ -201,7 +207,7 @@ export default function JobsPage() {
     return () => {
       isMounted = false
     }
-  }, [searchParams])
+  }, [cacheKey, searchParams])
 
   useEffect(() => {
     function handlePointerDown(event) {
@@ -379,9 +385,7 @@ export default function JobsPage() {
               </p>
             </div>
 
-            <Link href={buildAuthUrl("/", searchParams)} className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white">
-              Go Back to Dashboard
-            </Link>
+            <BackToDashboardLink className="inline-flex w-fit items-center justify-center gap-2 rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white" />
           </div>
 
           <div className="grid gap-4 border-b border-slate-800 bg-slate-950/20 px-6 py-5 xl:grid-cols-[minmax(220px,1.2fr)_repeat(4,minmax(150px,0.7fr))_auto]">

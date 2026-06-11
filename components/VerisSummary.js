@@ -192,7 +192,7 @@ export default function VerisSummary({ initialSummaries, isLoading = false }) {
 
         {hasMoreSummaries ? (
           <Link
-            href={buildAuthUrl("/veris-insights", searchParams)}
+            href="/veris-insights"
             className="self-start rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-300 transition hover:border-cyan-400/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60 sm:self-auto"
           >
             View all

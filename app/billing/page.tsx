@@ -3,6 +3,8 @@
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 
+import BackToDashboardLink from "@/components/BackToDashboardLink"
+import Navbar from "@/components/Navbar"
 import { VerisGlobeLoader } from "@/components/system/loaders"
 import { buildAuthUrl } from "@/lib/client/auth-query"
 import { readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache"
@@ -169,14 +171,16 @@ function CreditUsageCard({
 
 export default function BillingPage() {
   const searchParams = useAuthSearchParams()
-  const [data, setData] = useState<BillingData>({ organization: null, invoices: [], payments: [], subscriptions: [] })
-  const [settings, setSettings] = useState({
-    gstNumber: "",
-    billingAddress: "",
-    financeEmail: "",
-    invoiceRecipientEmail: "",
-  })
-  const [loading, setLoading] = useState(true)
+  const cacheKey = `billing:${searchParams.toString()}`
+  const initialData = readSessionJsonCache(cacheKey) as BillingData | null
+  const [data, setData] = useState<BillingData>(() => initialData ?? { organization: null, invoices: [], payments: [], subscriptions: [] })
+  const [settings, setSettings] = useState(() => ({
+    gstNumber: initialData?.organization?.gstNumber ?? "",
+    billingAddress: initialData?.organization?.billingAddress ?? "",
+    financeEmail: initialData?.organization?.financeEmail ?? "",
+    invoiceRecipientEmail: initialData?.organization?.invoiceRecipientEmail ?? "",
+  }))
+  const [loading, setLoading] = useState(() => !initialData)
   const [savingSettings, setSavingSettings] = useState(false)
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
@@ -228,18 +232,23 @@ export default function BillingPage() {
 
   useEffect(() => {
     let active = true
-    const cacheKey = `billing:${searchParams.toString()}`
     const cached = readSessionJsonCache(cacheKey) as BillingData | null
 
     if (cached) {
-      setData(cached)
-      setSettings({
-        gstNumber: cached.organization?.gstNumber ?? "",
-        billingAddress: cached.organization?.billingAddress ?? "",
-        financeEmail: cached.organization?.financeEmail ?? "",
-        invoiceRecipientEmail: cached.organization?.invoiceRecipientEmail ?? "",
+      window.queueMicrotask(() => {
+        if (!active) {
+          return
+        }
+
+        setData(cached)
+        setSettings({
+          gstNumber: cached.organization?.gstNumber ?? "",
+          billingAddress: cached.organization?.billingAddress ?? "",
+          financeEmail: cached.organization?.financeEmail ?? "",
+          invoiceRecipientEmail: cached.organization?.invoiceRecipientEmail ?? "",
+        })
+        setLoading(false)
       })
-      setLoading(false)
     }
 
     async function loadBilling() {
@@ -283,7 +292,7 @@ export default function BillingPage() {
     return () => {
       active = false
     }
-  }, [searchParams])
+  }, [cacheKey, searchParams])
 
   async function saveBillingSettings() {
     setSavingSettings(true)
@@ -319,6 +328,7 @@ export default function BillingPage() {
   if (loading) {
     return (
       <main className="min-h-screen bg-[#081120] text-white">
+        <Navbar onSendInterviewClick={() => undefined} />
         <VerisGlobeLoader
           eyebrow="Billing"
           steps={[
@@ -334,14 +344,11 @@ export default function BillingPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#081120] px-6 py-12 text-white sm:px-8 lg:px-10">
+    <main className="min-h-screen bg-[#081120] text-white">
+      <Navbar onSendInterviewClick={() => undefined} />
+      <div className="px-6 py-12 sm:px-8 md:pl-28 lg:px-10 lg:pl-32">
       <div className="mx-auto max-w-[1400px]">
-        <Link
-          href={buildAuthUrl("/", searchParams)}
-          className="inline-flex items-center rounded-xl border border-slate-700 bg-slate-950/50 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-blue-400/40 hover:bg-slate-900 hover:text-white"
-        >
-          Go Back to Dashboard
-        </Link>
+        <BackToDashboardLink className="inline-flex w-fit items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-950/50 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-blue-400/40 hover:bg-slate-900 hover:text-white" />
 
         <div className="mt-6 rounded-2xl border border-slate-800 bg-[#0f172a] p-8 shadow-[0_24px_80px_rgba(2,6,23,0.35)]">
           <p className="text-xs uppercase tracking-[0.3em] text-blue-300/80">Organization Billing</p>
@@ -353,7 +360,7 @@ export default function BillingPage() {
               </p>
             </div>
             <Link
-              href={buildAuthUrl("/billing/checkout", searchParams)}
+              href="/billing/checkout"
               className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-500"
             >
               Purchase Plan
@@ -479,7 +486,7 @@ export default function BillingPage() {
                         </td>
                         <td className="px-4 py-4 text-right">
                           <a
-                            href={buildAuthUrl(`/api/billing/invoices/${invoice.id}/download`, searchParams)}
+                            href={`/api/billing/invoices/${invoice.id}/download`}
                             className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-100 transition hover:border-blue-400/60 hover:bg-slate-900"
                           >
                             Download
@@ -600,7 +607,7 @@ export default function BillingPage() {
                         <td className="px-3 py-4 text-right">
                           {payment.invoiceId ? (
                             <a
-                              href={buildAuthUrl(`/api/billing/invoices/${payment.invoiceId}/download`, searchParams)}
+                              href={`/api/billing/invoices/${payment.invoiceId}/download`}
                               className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-100 transition hover:border-blue-400/60 hover:bg-slate-900"
                             >
                               PDF
@@ -673,6 +680,7 @@ export default function BillingPage() {
             </button>
           </section>
         </div>
+      </div>
       </div>
     </main>
   )

@@ -7,6 +7,7 @@ import { buildAuthUrl } from "@/lib/client/auth-query";
 import { formatDate } from "@/lib/client/date-format";
 import { readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache";
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params";
+import BackToDashboardLink from "@/components/BackToDashboardLink";
 import { VerisGlobeLoader } from "@/components/system/loaders";
 
 function getPlatformRoleTone(role) {
@@ -66,9 +67,11 @@ function AddUserModal({ isOpen, onClose, onSubmit, availableRoles, submitting, e
 
   useEffect(() => {
     if (!isOpen) {
-      setFullName("");
-      setEmail("");
-      setRecruiterRoleId("");
+      window.queueMicrotask(() => {
+        setFullName("");
+        setEmail("");
+        setRecruiterRoleId("");
+      });
     }
   }, [isOpen]);
 
@@ -213,8 +216,10 @@ function EditUserModal({ isOpen, member, availableRoles, saving, error, onClose,
 
   useEffect(() => {
     if (isOpen && member) {
-      setRecruiterRoleId(member.recruiterRoleId ? String(member.recruiterRoleId) : "");
-      setIsActive(Boolean(member.isActive));
+      window.queueMicrotask(() => {
+        setRecruiterRoleId(member.recruiterRoleId ? String(member.recruiterRoleId) : "");
+        setIsActive(Boolean(member.isActive));
+      });
     }
   }, [isOpen, member]);
 
@@ -359,9 +364,11 @@ function EditUserModal({ isOpen, member, availableRoles, saving, error, onClose,
 
 export default function ManageTeamPage() {
   const searchParams = useAuthSearchParams();
-  const [data, setData] = useState(null);
+  const cacheKey = `manage-team:${searchParams.toString()}`;
+  const initialData = readSessionJsonCache(cacheKey);
+  const [data, setData] = useState(() => initialData ?? null);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !initialData);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
@@ -375,13 +382,16 @@ export default function ManageTeamPage() {
 
   useEffect(() => {
     let active = true;
-    const cacheKey = `manage-team:${searchParams.toString()}`;
     const cached = readSessionJsonCache(cacheKey);
 
     if (cached) {
-      setData(cached);
-      setError("");
-      setLoading(false);
+      window.queueMicrotask(() => {
+        if (active) {
+          setData(cached);
+          setError("");
+          setLoading(false);
+        }
+      });
     }
 
     fetch(buildAuthUrl("/api/manage-team", searchParams))
@@ -415,7 +425,7 @@ export default function ManageTeamPage() {
     return () => {
       active = false;
     };
-  }, [searchParams]);
+  }, [cacheKey, searchParams]);
 
   const team = useMemo(() => data?.team ?? [], [data]);
   const availableRoles = useMemo(() => data?.availableRoles ?? [], [data]);
@@ -613,13 +623,7 @@ export default function ManageTeamPage() {
         <div className="rounded-[28px] border border-slate-800 bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.12),transparent_28%),linear-gradient(180deg,#0f172a,#0b1324)] p-8 shadow-[0_24px_80px_rgba(2,6,23,0.35)]">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <Link
-                href={buildAuthUrl("/", searchParams)}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-950/35 px-4 py-2 text-sm text-slate-200 transition hover:border-blue-400/30 hover:bg-slate-900 hover:text-white"
-              >
-                <span aria-hidden="true">←</span>
-                <span>Go Back to Dashboard</span>
-              </Link>
+              <BackToDashboardLink className="inline-flex w-fit items-center justify-center gap-2 rounded-full border border-slate-700 bg-slate-950/35 px-4 py-2 text-sm text-slate-200 transition hover:border-blue-400/30 hover:bg-slate-900 hover:text-white" />
 
               <p className="mt-6 text-xs uppercase tracking-[0.35em] text-blue-300/80">
                 Recruiter Administration

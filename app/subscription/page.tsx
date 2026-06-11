@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react"
 import Navbar from "@/components/Navbar"
 import { VerisGlobeLoader } from "@/components/system/loaders"
 import { buildAuthUrl } from "@/lib/client/auth-query"
+import { readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 type Plan = {
@@ -32,8 +33,6 @@ function formatPaise(value: number, currency = "INR") {
 }
 
 function PlanCard({ plan, featured = false }: { plan: Plan; featured?: boolean }) {
-  const searchParams = useAuthSearchParams()
-
   return (
     <article className={`flex h-full flex-col rounded-[28px] border p-5 shadow-[0_18px_70px_rgba(2,6,23,0.32)] transition duration-300 hover:-translate-y-1 ${
       featured
@@ -78,7 +77,7 @@ function PlanCard({ plan, featured = false }: { plan: Plan; featured?: boolean }
       </ul>
 
       <Link
-        href={buildAuthUrl(`/billing/checkout?plan=${encodeURIComponent(plan.slug)}`, searchParams)}
+        href={`/billing/checkout?plan=${encodeURIComponent(plan.slug)}`}
         className={`mt-6 inline-flex items-center justify-center rounded-xl px-5 py-3 text-sm font-semibold transition ${
           featured
             ? "border border-cyan-200/40 bg-cyan-300/18 text-cyan-50 hover:bg-cyan-300/24"
@@ -93,16 +92,30 @@ function PlanCard({ plan, featured = false }: { plan: Plan; featured?: boolean }
 
 export default function SubscriptionPage() {
   const searchParams = useAuthSearchParams()
-  const [plans, setPlans] = useState<Plan[]>([])
-  const [loading, setLoading] = useState(true)
+  const cacheKey = `subscription:${searchParams.toString()}`
+  const initialPlans = readSessionJsonCache(cacheKey) as Plan[] | null
+  const [plans, setPlans] = useState<Plan[]>(() => initialPlans ?? [])
+  const [loading, setLoading] = useState(() => !initialPlans)
   const [error, setError] = useState("")
 
   useEffect(() => {
     let active = true
+    const cached = readSessionJsonCache(cacheKey) as Plan[] | null
+
+    if (cached) {
+      window.queueMicrotask(() => {
+        if (active) {
+          setPlans(cached)
+          setLoading(false)
+        }
+      })
+    }
 
     async function loadPlans() {
       try {
-        setLoading(true)
+        if (!cached) {
+          setLoading(true)
+        }
         const response = await fetch(buildAuthUrl("/api/plans", searchParams), {
           credentials: "include",
           cache: "no-store",
@@ -118,6 +131,7 @@ export default function SubscriptionPage() {
         }
 
         setPlans(payload.data?.plans ?? [])
+        writeSessionJsonCache(cacheKey, payload.data?.plans ?? [])
         setError("")
       } catch (loadError) {
         if (active) {
@@ -135,7 +149,7 @@ export default function SubscriptionPage() {
     return () => {
       active = false
     }
-  }, [searchParams])
+  }, [cacheKey, searchParams])
 
   const interviewPlans = useMemo(
     () => plans.filter((plan) => plan.planType !== "SCREENING"),
@@ -204,7 +218,7 @@ export default function SubscriptionPage() {
               <h2 className="mt-2 text-2xl font-semibold text-white">Interview workspace plans</h2>
             </div>
             <Link
-              href={buildAuthUrl("/billing", searchParams)}
+              href="/billing"
               className="hidden rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:border-cyan-300/35 hover:text-white sm:inline-flex"
             >
               Billing History

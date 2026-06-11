@@ -6,6 +6,7 @@ import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "re
 
 import Navbar from "@/components/Navbar"
 import FreeTrialUsage from "@/components/FreeTrialUsage"
+import BackToDashboardLink from "@/components/BackToDashboardLink"
 import { InsightTooltip } from "@/components/ui/InsightTooltip"
 import { ProcessingTimeline, type TimelineStep } from "@/components/ui/ProcessingTimeline"
 import { StepProgress } from "@/components/ui/StepProgress"
@@ -2270,12 +2271,7 @@ export default function AiScreeningPage() {
         <section className="rounded-[28px] border border-slate-800 bg-[linear-gradient(180deg,rgba(15,23,42,0.96),rgba(8,17,31,0.98))] p-8 shadow-[0_24px_80px_rgba(2,6,23,0.45)]">
           <div className="flex flex-col gap-8 xl:flex-row xl:items-end xl:justify-between">
             <div className="max-w-3xl">
-              <Link
-                href={authUrl("/")}
-                className="inline-flex items-center rounded-xl border border-slate-700 bg-slate-950/50 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-cyan-400/40 hover:bg-slate-900 hover:text-white"
-              >
-                Go Back to Dashboard
-              </Link>
+              <BackToDashboardLink className="inline-flex w-fit items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-950/50 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-cyan-400/40 hover:bg-slate-900 hover:text-white" />
               <p className="mt-6 text-xs font-semibold uppercase tracking-[0.32em] text-slate-500">VERIS Screening</p>
               <h1 className="mt-4 text-4xl font-semibold tracking-tight text-white">Pre-Interview Intelligence Layer</h1>
               <p className="mt-4 text-base leading-7 text-slate-400">

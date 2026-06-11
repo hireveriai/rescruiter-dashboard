@@ -212,7 +212,7 @@ export default function Sidebar({ initialProfile = null, overview = null }) {
           </div>
         ) : null}
 
-        <HiringWorkflow overview={workflowOverview} searchParams={searchParams} profile={displayUser} onAction={handleAction} />
+        <HiringWorkflow overview={workflowOverview} profile={displayUser} onAction={handleAction} />
       </aside>
 
       {canCreateJob ? <CreateJobModal open={openCreateJob} setOpen={setOpenCreateJob} /> : null}

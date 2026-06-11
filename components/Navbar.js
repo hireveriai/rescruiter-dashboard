@@ -523,12 +523,6 @@ export default function Navbar({ onSendInterviewClick: _onSendInterviewClick, in
   }
 
   const handleNavigationClick = (href) => {
-    if (typeof window !== "undefined") {
-      if (href === "/") {
-        window.sessionStorage.removeItem("hireveri-overview");
-      }
-    }
-
     if (href === pathname) {
       return;
     }
@@ -541,7 +535,7 @@ export default function Navbar({ onSendInterviewClick: _onSendInterviewClick, in
         <div className="relative mx-auto flex w-full max-w-[1840px] flex-nowrap items-center justify-between gap-3 px-3 py-4 sm:px-4 xl:px-6">
           <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-2 xl:gap-3">
             <Link
-              href={buildAuthUrl("/", searchParams)}
+              href="/"
               onClick={() => handleNavigationClick("/")}
               className="group flex w-[108px] shrink-0 items-center gap-3 leading-none sm:w-[220px] xl:w-[244px]"
               aria-label="HireVeri home"
@@ -572,7 +566,7 @@ export default function Navbar({ onSendInterviewClick: _onSendInterviewClick, in
                 return (
                   <Link
                     key={item.label}
-                    href={buildAuthUrl(item.href, searchParams)}
+                    href={item.href}
                     onClick={() => handleNavigationClick(item.href)}
                     className={[
                       "group relative inline-flex transform-gpu whitespace-nowrap rounded-xl border px-2.5 py-2 text-[13px] tracking-[0.005em] transition-all duration-200 will-change-transform xl:px-3 xl:text-sm",
@@ -694,34 +688,34 @@ export default function Navbar({ onSendInterviewClick: _onSendInterviewClick, in
 
                   <div className="mt-2 grid gap-1">
                     {canManageTeam ? (
-                    <Link href={buildAuthUrl("/manage-team", searchParams)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-200 transition hover:bg-slate-800/70 hover:text-white" onClick={() => { setProfileOpen(false); handleNavigationClick("/manage-team"); }}>
+                    <Link href="/manage-team" className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-200 transition hover:bg-slate-800/70 hover:text-white" onClick={() => { setProfileOpen(false); handleNavigationClick("/manage-team"); }}>
                       <TeamIcon />
                       <span>Manage Team</span>
                     </Link>
                     ) : null}
 
                     {canViewBilling ? (
-                    <Link href={buildAuthUrl("/billing", searchParams)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-200 transition hover:bg-slate-800/70 hover:text-white" onClick={() => { setProfileOpen(false); handleNavigationClick("/billing"); }}>
+                    <Link href="/billing" className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-200 transition hover:bg-slate-800/70 hover:text-white" onClick={() => { setProfileOpen(false); handleNavigationClick("/billing"); }}>
                       <BillingIcon />
                       <span>Billing & Orders</span>
                     </Link>
                     ) : null}
 
                     {canViewBilling ? (
-                    <Link href={buildAuthUrl("/billing#usage", searchParams)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-200 transition hover:bg-slate-800/70 hover:text-white" onClick={() => { setProfileOpen(false); handleNavigationClick("/billing"); }}>
+                    <Link href="/billing#usage" className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-200 transition hover:bg-slate-800/70 hover:text-white" onClick={() => { setProfileOpen(false); handleNavigationClick("/billing"); }}>
                       <CreditsIcon />
                       <span>Usage & Credits</span>
                     </Link>
                     ) : null}
 
                     {canManageSettings ? (
-                    <Link href={buildAuthUrl("/settings", searchParams)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-200 transition hover:bg-slate-800/70 hover:text-white" onClick={() => { setProfileOpen(false); handleNavigationClick("/settings"); }}>
+                    <Link href="/settings" className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-200 transition hover:bg-slate-800/70 hover:text-white" onClick={() => { setProfileOpen(false); handleNavigationClick("/settings"); }}>
                       <CogIcon />
                       <span>Settings</span>
                     </Link>
                     ) : null}
 
-                    <Link href={buildAuthUrl("/contact-us", searchParams)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-200 transition hover:bg-slate-800/70 hover:text-white" onClick={() => { setProfileOpen(false); handleNavigationClick("/contact-us"); }}>
+                    <Link href="/contact-us" className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-200 transition hover:bg-slate-800/70 hover:text-white" onClick={() => { setProfileOpen(false); handleNavigationClick("/contact-us"); }}>
                       <MailIcon />
                       <span>Contact Us</span>
                     </Link>

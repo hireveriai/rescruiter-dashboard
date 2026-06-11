@@ -244,15 +244,15 @@ export default function RecruiterDashboardBootstrap({ children }) {
         const profile = overview?.profile ?? null
         const nextSignature = getOverviewSignature(overview)
         const replacingPartialOverview = overviewPartialRef.current
-
-        if (
+        const hasDashboardDataChanged =
           silent &&
           !overview?.partial &&
           !replacingPartialOverview &&
           overviewSignatureRef.current &&
           nextSignature &&
           overviewSignatureRef.current !== nextSignature
-        ) {
+
+        if (hasDashboardDataChanged) {
           writeCachedOverview(overview)
           overviewSignatureRef.current = nextSignature
         }
@@ -266,6 +266,33 @@ export default function RecruiterDashboardBootstrap({ children }) {
         }
         overviewPartialRef.current = Boolean(overview?.partial)
         setUpdateAvailable(false)
+
+        if (hasDashboardDataChanged) {
+          setState((current) => ({
+            status: "loading",
+            profile: current.profile ?? overview?.profile ?? profile,
+            overview: null,
+            message: "",
+          }))
+          window.setTimeout(() => {
+            if (!active) {
+              return
+            }
+
+            setState({
+              status: "ready",
+              profile: overview?.profile ?? profile,
+              overview,
+              message: "",
+            })
+            setTimezoneState({
+              timezone: overview?.profile?.timezone ?? profile?.timezone,
+              timezoneLabel: overview?.profile?.timezoneLabel ?? profile?.timezoneLabel,
+            })
+          }, 420)
+          return
+        }
+
         setState({
           status: "ready",
           profile: overview?.profile ?? profile,
@@ -334,11 +361,7 @@ export default function RecruiterDashboardBootstrap({ children }) {
         return
       }
 
-      if (typeof window !== "undefined") {
-        window.sessionStorage.removeItem(DASHBOARD_CACHE_KEY)
-        window.sessionStorage.setItem(DASHBOARD_INVALIDATED_KEY, "1")
-      }
-      bootstrap({ forceRefresh: true })
+      bootstrap({ forceRefresh: false, silent: true })
     }
 
     function handleDashboardInvalidated() {
@@ -348,9 +371,16 @@ export default function RecruiterDashboardBootstrap({ children }) {
 
       if (typeof window !== "undefined") {
         window.sessionStorage.removeItem(DASHBOARD_CACHE_KEY)
+        window.sessionStorage.setItem(DASHBOARD_INVALIDATED_KEY, "1")
       }
 
-      bootstrap({ forceRefresh: true, silent: true })
+      setState((current) => ({
+        status: "loading",
+        profile: current.profile,
+        overview: null,
+        message: "",
+      }))
+      bootstrap({ forceRefresh: true, silent: false })
     }
 
     if (typeof window !== "undefined") {

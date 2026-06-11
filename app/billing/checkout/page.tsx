@@ -352,7 +352,7 @@ export default function BillingCheckoutPage() {
 
     setStatus("success")
     setNotice("Payment verified. Redirecting to recruiter dashboard.")
-    router.replace(buildAuthUrl("/", authSearchParams))
+    router.replace("/")
   }
 
   async function handleProceedToPayment() {

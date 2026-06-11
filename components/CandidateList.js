@@ -199,7 +199,7 @@ export default function CandidateList({ initialCandidates, isLoading = false }) 
             </span>
           </h2>
 
-          <Link href={buildAuthUrl("/candidates", searchParams)} className="text-blue-400 text-sm">
+          <Link href="/candidates" className="text-blue-400 text-sm">
             View All
           </Link>
         </div>

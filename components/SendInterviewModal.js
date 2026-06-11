@@ -650,7 +650,7 @@ export default function SendInterviewModal({ isOpen, onClose, initialTrialCredit
                   Create Job First
                 </button>
                 <Link
-                  href={buildAuthUrl("/jobs", searchParams)}
+                  href="/jobs"
                   className="rounded-2xl border border-slate-700 bg-slate-900/70 px-4 py-2.5 text-sm text-slate-200 transition hover:border-slate-500 hover:text-white"
                   onClick={handleClose}
                 >

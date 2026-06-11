@@ -1,11 +1,12 @@
 "use client"
 
-import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 
+import BackToDashboardLink from "@/components/BackToDashboardLink"
 import Navbar from "@/components/Navbar"
 import { VerisGlobeLoader } from "@/components/system/loaders"
 import { buildAuthUrl } from "@/lib/client/auth-query"
+import { readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 const PAGE_SIZE = 24
@@ -52,20 +53,37 @@ function getInsightSummary(item) {
 
 export default function VerisInsightsPage() {
   const searchParams = useAuthSearchParams()
-  const [summaries, setSummaries] = useState([])
+  const cacheKey = `veris-insights:${searchParams.toString()}`
+  const initialSummaries = readSessionJsonCache(cacheKey)
+  const [summaries, setSummaries] = useState(() => initialSummaries?.summaries ?? [])
   const [expandedIds, setExpandedIds] = useState(() => new Set())
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(() => !initialSummaries)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
-  const [hasMore, setHasMore] = useState(false)
+  const [hasMore, setHasMore] = useState(() => Boolean(initialSummaries?.hasMore))
   const [error, setError] = useState("")
 
   useEffect(() => {
     let active = true
+    const cached = readSessionJsonCache(cacheKey)
+
+    if (cached) {
+      window.queueMicrotask(() => {
+        if (!active) {
+          return
+        }
+
+        setSummaries(cached.summaries ?? [])
+        setHasMore(Boolean(cached.hasMore))
+        setIsLoading(false)
+      })
+    }
 
     async function loadSummaries(offset = 0) {
       try {
         if (offset === 0) {
-          setIsLoading(true)
+          if (!cached) {
+            setIsLoading(true)
+          }
         } else {
           setIsLoadingMore(true)
         }
@@ -84,7 +102,16 @@ export default function VerisInsightsPage() {
         if (active) {
           const nextSummaries = Array.isArray(payload.data) ? payload.data : []
           setHasMore(nextSummaries.length > PAGE_SIZE)
-          setSummaries((current) => offset === 0 ? nextSummaries.slice(0, PAGE_SIZE) : [...current, ...nextSummaries.slice(0, PAGE_SIZE)])
+          setSummaries((current) => {
+            const nextVisibleSummaries = offset === 0 ? nextSummaries.slice(0, PAGE_SIZE) : [...current, ...nextSummaries.slice(0, PAGE_SIZE)]
+            if (offset === 0) {
+              writeSessionJsonCache(cacheKey, {
+                summaries: nextVisibleSummaries,
+                hasMore: nextSummaries.length > PAGE_SIZE,
+              })
+            }
+            return nextVisibleSummaries
+          })
         }
       } catch (loadError) {
         if (active) {
@@ -103,7 +130,7 @@ export default function VerisInsightsPage() {
     return () => {
       active = false
     }
-  }, [searchParams])
+  }, [cacheKey, searchParams])
 
   async function loadMoreSummaries() {
     try {
@@ -122,7 +149,14 @@ export default function VerisInsightsPage() {
 
       const nextSummaries = Array.isArray(payload.data) ? payload.data : []
       setHasMore(nextSummaries.length > PAGE_SIZE)
-      setSummaries((current) => [...current, ...nextSummaries.slice(0, PAGE_SIZE)])
+      setSummaries((current) => {
+        const nextVisibleSummaries = [...current, ...nextSummaries.slice(0, PAGE_SIZE)]
+        writeSessionJsonCache(cacheKey, {
+          summaries: nextVisibleSummaries,
+          hasMore: nextSummaries.length > PAGE_SIZE,
+        })
+        return nextVisibleSummaries
+      })
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Unable to load more VERIS insights")
     } finally {
@@ -190,12 +224,10 @@ export default function VerisInsightsPage() {
               Full candidate intelligence summaries with recommendation, risk posture, and review evidence.
             </p>
           </div>
-          <Link
-            href={buildAuthUrl("/", searchParams)}
-            className="inline-flex w-fit items-center justify-center rounded-xl border border-slate-700 bg-slate-950/50 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-cyan-400/40 hover:text-white"
-          >
-            Back to Dashboard
-          </Link>
+          <BackToDashboardLink
+            label="Back to Dashboard"
+            className="inline-flex w-fit items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-950/50 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-cyan-400/40 hover:text-white"
+          />
         </div>
 
         {error ? (

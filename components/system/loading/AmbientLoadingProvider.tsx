@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { usePathname } from "next/navigation"
 
 import { VerisGlobeLoader } from "@/components/system/loaders"
+import { hasSessionJsonCache } from "@/lib/client/session-json-cache"
 
 type LoadingReason = "navigation" | "dashboard" | "candidates" | "interviews" | "reports" | "veris" | "analytics"
 
@@ -31,6 +32,21 @@ const routeMessages: Array<[RegExp, string]> = [
   [/^\/subscription/, "Subscription"],
   [/^\/settings/, "Settings"],
   [/^\//, "Dashboard"],
+]
+
+const DASHBOARD_CACHE_KEY = "hireveri-overview"
+const DASHBOARD_INVALIDATED_KEY = "hireveri-overview-invalidated"
+
+const screenCacheRules: Array<[RegExp, (search: string) => string]> = [
+  [/^\/candidates/, (search) => `candidates:${search}`],
+  [/^\/interviews/, (search) => `interviews:${search}`],
+  [/^\/reports/, (search) => `reports:${search}`],
+  [/^\/jobs/, (search) => `jobs:${search}`],
+  [/^\/manage-team/, (search) => `manage-team:${search}`],
+  [/^\/billing$/, (search) => `billing:${search}`],
+  [/^\/settings/, (search) => `settings:${search}`],
+  [/^\/veris-insights/, (search) => `veris-insights:${search}`],
+  [/^\/subscription/, (search) => `subscription:${search}`],
 ]
 
 function getRouteMessage(pathname: string) {
@@ -64,6 +80,38 @@ function getAnchorFromEventTarget(target: EventTarget | null) {
   }
 
   return target.closest("a")
+}
+
+function hasReusableDashboardCache(pathname: string) {
+  if (pathname !== "/" || typeof window === "undefined") {
+    return false
+  }
+
+  try {
+    return Boolean(
+      window.sessionStorage.getItem(DASHBOARD_CACHE_KEY) &&
+        window.sessionStorage.getItem(DASHBOARD_INVALIDATED_KEY) !== "1"
+    )
+  } catch {
+    return false
+  }
+}
+
+function hasReusableScreenCache(pathname: string, search: string) {
+  if (typeof window === "undefined") {
+    return false
+  }
+
+  if (hasReusableDashboardCache(pathname)) {
+    return true
+  }
+
+  const rule = screenCacheRules.find(([pattern]) => pattern.test(pathname))
+  if (!rule) {
+    return false
+  }
+
+  return hasSessionJsonCache(rule[1](search.replace(/^\?/, "")))
 }
 
 export function useAmbientLoading() {
@@ -146,6 +194,11 @@ export default function AmbientLoadingProvider({ children }: { children: ReactNo
       }
 
       if (nextUrl.pathname === currentUrl.pathname && nextUrl.search === currentUrl.search) {
+        return
+      }
+
+      if (hasReusableScreenCache(nextUrl.pathname, nextUrl.search)) {
+        finishLoading()
         return
       }
 

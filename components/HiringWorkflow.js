@@ -3,7 +3,6 @@
 import Link from "next/link"
 import { useMemo } from "react"
 
-import { buildAuthUrl } from "@/lib/client/auth-query"
 import { canAccessFeature } from "@/lib/client/permissions"
 import { deriveDashboardState } from "@/lib/dashboard/dashboard-state-engine"
 
@@ -330,7 +329,7 @@ function getCollapsedMeta(step, status) {
   return ""
 }
 
-function WorkflowAction({ step, searchParams, onAction, highlighted = false }) {
+function WorkflowAction({ step, onAction, highlighted = false }) {
   const baseClass = [
     "inline-flex items-center justify-center rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition duration-200",
     highlighted
@@ -340,7 +339,7 @@ function WorkflowAction({ step, searchParams, onAction, highlighted = false }) {
 
   if (step.href) {
     return (
-      <Link href={buildAuthUrl(step.href, searchParams)} className={baseClass}>
+      <Link href={step.href} className={baseClass}>
         {step.cta}
       </Link>
     )
@@ -353,7 +352,7 @@ function WorkflowAction({ step, searchParams, onAction, highlighted = false }) {
   )
 }
 
-function WorkflowStepCard({ step, status, searchParams, onAction, profile }) {
+function WorkflowStepCard({ step, status, onAction, profile }) {
   const canUseStep =
     (step.id === "create-job" && canAccessFeature(profile, "createJob")) ||
     (step.id === "veris-screening" && canAccessFeature(profile, "aiScreening")) ||
@@ -436,7 +435,7 @@ function WorkflowStepCard({ step, status, searchParams, onAction, profile }) {
             <>
               <p className="mt-1.5 text-[11px] leading-4 text-slate-400">{step.description}</p>
               <div className="mt-2.5 flex flex-wrap gap-2">
-                <WorkflowAction step={step} searchParams={searchParams} onAction={onAction} highlighted={isActive} />
+                <WorkflowAction step={step} onAction={onAction} highlighted={isActive} />
                 {step.secondaryCta && isActive && canAccessFeature(profile, "sendInterview") ? (
                   <button
                     type="button"
@@ -455,7 +454,7 @@ function WorkflowStepCard({ step, status, searchParams, onAction, profile }) {
   )
 }
 
-export default function HiringWorkflow({ overview, searchParams, profile = null, onAction }) {
+export default function HiringWorkflow({ overview, profile = null, onAction }) {
   const state = useMemo(() => getWorkflowState(overview), [overview])
 
   const handleAction = (action) => {
@@ -495,7 +494,6 @@ export default function HiringWorkflow({ overview, searchParams, profile = null,
               <WorkflowStepCard
                 step={step}
                 status={status}
-                searchParams={searchParams}
                 onAction={handleAction}
                 profile={profile}
               />

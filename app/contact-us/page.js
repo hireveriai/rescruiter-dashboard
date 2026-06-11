@@ -1,9 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { buildAuthUrl } from "@/lib/client/auth-query";
-import { useAuthSearchParams } from "@/lib/client/use-auth-search-params";
+import BackToDashboardLink from "@/components/BackToDashboardLink";
 
 const fallbackCategories = [
   { value: "TECHNICAL_ISSUE", label: "Technical Issue" },
@@ -63,7 +61,6 @@ function StatusPill({ item }) {
 }
 
 export default function ContactUsPage() {
-  const searchParams = useAuthSearchParams();
   const [form, setForm] = useState(initialForm);
   const [categories, setCategories] = useState(fallbackCategories);
   const [config, setConfig] = useState(fallbackConfig);
@@ -161,12 +158,7 @@ export default function ContactUsPage() {
           <div className="min-w-0 rounded-[28px] border border-cyan-300/10 bg-slate-950/78 p-5 shadow-[0_28px_110px_rgba(2,6,23,0.58)] backdrop-blur sm:p-7 lg:p-8">
             <div className="flex flex-col gap-4 border-b border-slate-800/90 pb-6 lg:flex-row lg:items-end lg:justify-between">
               <div className="min-w-0">
-                <Link
-                  href={buildAuthUrl("/", searchParams)}
-                  className="inline-flex items-center rounded-xl border border-slate-700 bg-slate-950/50 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-cyan-300/40 hover:bg-slate-900 hover:text-white"
-                >
-                  Go Back to Dashboard
-                </Link>
+                <BackToDashboardLink className="inline-flex w-fit items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-950/50 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-cyan-300/40 hover:bg-slate-900 hover:text-white" />
                 <p className="mt-6 text-xs font-semibold uppercase tracking-[0.32em] text-cyan-200/80">HireVeri Support Center</p>
                 <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl lg:text-5xl">
                   Enterprise Operations Support

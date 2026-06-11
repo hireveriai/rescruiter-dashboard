@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
+import BackToDashboardLink from "@/components/BackToDashboardLink";
 import { useOrgTimezone } from "@/components/OrgTimezoneProvider";
 import { buildAuthUrl } from "@/lib/client/auth-query";
 import { readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache";
@@ -16,24 +16,31 @@ import { formatOrgDateTime } from "@/lib/time";
 
 export default function SettingsPage() {
   const searchParams = useAuthSearchParams();
+  const cacheKey = `settings:${searchParams.toString()}`;
+  const initialSettings = readSessionJsonCache(cacheKey);
   const { timezone, timezoneLabel, setTimezoneState } = useOrgTimezone();
   const [query, setQuery] = useState("");
-  const [selectedTimezone, setSelectedTimezone] = useState(DEFAULT_ORG_TIMEZONE);
-  const [selectedLabel, setSelectedLabel] = useState(DEFAULT_ORG_TIMEZONE_LABEL);
-  const [status, setStatus] = useState({ loading: true, saving: false, error: "", notice: "" });
+  const [selectedTimezone, setSelectedTimezone] = useState(() => initialSettings?.timezone ?? DEFAULT_ORG_TIMEZONE);
+  const [selectedLabel, setSelectedLabel] = useState(() => initialSettings?.timezoneLabel ?? DEFAULT_ORG_TIMEZONE_LABEL);
+  const [status, setStatus] = useState(() => ({ loading: !initialSettings, saving: false, error: "", notice: "" }));
 
   useEffect(() => {
     let active = true;
-    const cacheKey = `settings:${searchParams.toString()}`;
     const cached = readSessionJsonCache(cacheKey);
 
     if (cached) {
       const cachedTimezone = cached.timezone ?? timezone ?? DEFAULT_ORG_TIMEZONE;
       const cachedLabel = cached.timezoneLabel ?? timezoneLabel ?? DEFAULT_ORG_TIMEZONE_LABEL;
-      setSelectedTimezone(cachedTimezone);
-      setSelectedLabel(cachedLabel);
-      setTimezoneState({ timezone: cachedTimezone, timezoneLabel: cachedLabel });
-      setStatus({ loading: false, saving: false, error: "", notice: "" });
+      window.queueMicrotask(() => {
+        if (!active) {
+          return;
+        }
+
+        setSelectedTimezone(cachedTimezone);
+        setSelectedLabel(cachedLabel);
+        setTimezoneState({ timezone: cachedTimezone, timezoneLabel: cachedLabel });
+        setStatus({ loading: false, saving: false, error: "", notice: "" });
+      });
     }
 
     async function loadSettings() {
@@ -72,7 +79,7 @@ export default function SettingsPage() {
     return () => {
       active = false;
     };
-  }, [searchParams, setTimezoneState, timezone, timezoneLabel]);
+  }, [cacheKey, searchParams, setTimezoneState, timezone, timezoneLabel]);
 
   const filteredOptions = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -127,12 +134,7 @@ export default function SettingsPage() {
     <main className="min-h-screen bg-[#081120] px-6 py-12 text-white sm:px-8 lg:px-10">
       <div className="mx-auto max-w-5xl">
         <div className="rounded-[28px] border border-slate-800 bg-[#0f172a] p-8 shadow-[0_24px_80px_rgba(2,6,23,0.35)]">
-          <Link
-            href={buildAuthUrl("/", searchParams)}
-            className="inline-flex items-center rounded-xl border border-slate-700 bg-slate-950/50 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-blue-400/40 hover:bg-slate-900 hover:text-white"
-          >
-            Go Back to Dashboard
-          </Link>
+          <BackToDashboardLink className="inline-flex w-fit items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-950/50 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-blue-400/40 hover:bg-slate-900 hover:text-white" />
           <p className="mt-6 text-xs uppercase tracking-[0.35em] text-blue-300/80">Organization Settings</p>
           <h1 className="mt-3 text-4xl font-semibold tracking-tight text-white">Timezone</h1>
           <p className="mt-4 max-w-3xl text-base text-slate-300">

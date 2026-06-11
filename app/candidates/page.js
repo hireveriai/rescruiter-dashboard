@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { Fragment, useEffect, useMemo, useState } from "react"
 import { Pencil } from "lucide-react"
+import BackToDashboardLink from "@/components/BackToDashboardLink"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
@@ -343,8 +344,10 @@ function CompletedCandidateDetails({ candidate, onClose }) {
 
 export default function CandidatesPage() {
   const searchParams = useAuthSearchParams()
-  const [candidates, setCandidates] = useState([])
-  const [loading, setLoading] = useState(true)
+  const cacheKey = `candidates:${searchParams.toString()}`
+  const initialCandidates = readSessionJsonCache(cacheKey)
+  const [candidates, setCandidates] = useState(() => initialCandidates ?? [])
+  const [loading, setLoading] = useState(() => !initialCandidates)
   const [loadError, setLoadError] = useState("")
   const [expandedCandidateId, setExpandedCandidateId] = useState("")
   const [reviewCandidate, setReviewCandidate] = useState(null)
@@ -357,17 +360,28 @@ export default function CandidatesPage() {
 
   useEffect(() => {
     let isMounted = true
-    const cacheKey = `candidates:${searchParams.toString()}`
     const cached = readSessionJsonCache(cacheKey)
 
     if (cached) {
-      setCandidates(cached)
-      setLoading(false)
+      window.queueMicrotask(() => {
+        if (isMounted) {
+          setCandidates(cached)
+          setLoading(false)
+        }
+      })
     } else {
-      setLoading(true)
+      window.queueMicrotask(() => {
+        if (isMounted) {
+          setLoading(true)
+        }
+      })
     }
 
-    setLoadError("")
+    window.queueMicrotask(() => {
+      if (isMounted) {
+        setLoadError("")
+      }
+    })
 
     fetch(buildAuthUrl("/api/dashboard/candidates?limit=all", searchParams), {
       credentials: "include",
@@ -404,7 +418,7 @@ export default function CandidatesPage() {
     return () => {
       isMounted = false
     }
-  }, [searchParams])
+  }, [cacheKey, searchParams])
 
   const stats = useMemo(() => {
     const total = candidates.length
@@ -542,9 +556,7 @@ export default function CandidatesPage() {
                 </p>
               </div>
 
-              <Link href={buildAuthUrl("/", searchParams)} className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white">
-                Go Back to Dashboard
-              </Link>
+              <BackToDashboardLink className="inline-flex w-fit items-center justify-center gap-2 rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white" />
             </div>
 
             <div className="grid gap-4 border-b border-slate-800 bg-slate-950/20 px-6 py-5 xl:grid-cols-[minmax(220px,1.2fr)_repeat(4,minmax(150px,0.7fr))_auto]">

@@ -2,9 +2,6 @@
 
 import Link from "next/link"
 
-import { buildAuthUrl } from "@/lib/client/auth-query"
-import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
-
 const DEFAULT_UPGRADE_MESSAGE =
   "You’ve reached your free trial limit. Upgrade your workspace to continue conducting interviews and screenings."
 
@@ -20,8 +17,6 @@ export default function UpgradeLimitDialog({
   message = DEFAULT_UPGRADE_MESSAGE,
   ctaLabel = "View Subscription Plans",
 }) {
-  const searchParams = useAuthSearchParams()
-
   if (!isOpen) {
     return null
   }
@@ -80,7 +75,7 @@ export default function UpgradeLimitDialog({
               Cancel
             </button>
             <Link
-              href={buildAuthUrl("/subscription", searchParams)}
+              href="/subscription"
               className="inline-flex items-center justify-center rounded-xl border border-cyan-300/35 bg-cyan-400/15 px-5 py-3 text-sm font-semibold text-cyan-50 shadow-[0_18px_40px_rgba(34,211,238,0.12)] transition hover:border-cyan-200/70 hover:bg-cyan-400/22"
               onClick={onClose}
             >

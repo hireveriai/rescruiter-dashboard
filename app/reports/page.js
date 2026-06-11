@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 
+import BackToDashboardLink from "@/components/BackToDashboardLink"
 import Navbar from "@/components/Navbar"
 import SendInterviewModal from "@/components/SendInterviewModal"
 import { VerisGlobeLoader } from "@/components/system/loaders"
@@ -83,19 +84,24 @@ function ExpandableSection({ title, subtitle, defaultOpen = true, children }) {
 
 export default function ReportsPage() {
   const searchParams = useAuthSearchParams()
-  const [report, setReport] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const cacheKey = `reports:${searchParams.toString()}`
+  const initialReport = readSessionJsonCache(cacheKey)
+  const [report, setReport] = useState(() => initialReport ?? null)
+  const [loading, setLoading] = useState(() => !initialReport)
   const [error, setError] = useState("")
   const [openSendInterview, setOpenSendInterview] = useState(false)
 
   useEffect(() => {
     let active = true
-    const cacheKey = `reports:${searchParams.toString()}`
     const cached = readSessionJsonCache(cacheKey)
 
     if (cached) {
-      setReport(cached)
-      setLoading(false)
+      window.queueMicrotask(() => {
+        if (active) {
+          setReport(cached)
+          setLoading(false)
+        }
+      })
     }
 
     fetch(buildAuthUrl("/api/reports/overview", searchParams), {
@@ -132,7 +138,7 @@ export default function ReportsPage() {
     return () => {
       active = false
     }
-  }, [searchParams])
+  }, [cacheKey, searchParams])
 
   const generatedDate = useMemo(() => {
     return report?.generatedAt ? formatDate(report.generatedAt).toUpperCase() : "-"
@@ -197,12 +203,7 @@ export default function ReportsPage() {
           <p className="text-sm text-slate-400">
             Enterprise reporting focused on forensic hiring signals and recruiter traceability.
           </p>
-          <Link
-            href={buildAuthUrl("/", searchParams)}
-            className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
-          >
-            Go Back to Dashboard
-          </Link>
+          <BackToDashboardLink className="inline-flex w-fit items-center justify-center gap-2 rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white" />
         </div>
 
         <div className="mt-6">
