@@ -361,6 +361,7 @@ export default function CandidatesPage() {
   useEffect(() => {
     let isMounted = true
     const cached = readSessionJsonCache(cacheKey)
+    const hasCachedRows = Boolean(cached)
 
     if (cached) {
       window.queueMicrotask(() => {
@@ -397,14 +398,14 @@ export default function CandidatesPage() {
           return
         }
 
-        if (isMounted) {
+        if (isMounted && !hasCachedRows) {
           setCandidates([])
           setLoadError(data?.error?.message || data?.message || "Candidate data could not be loaded.")
         }
       })
       .catch((error) => {
         console.error("Failed to fetch candidates page data", error)
-        if (isMounted) {
+        if (isMounted && !hasCachedRows) {
           setCandidates([])
           setLoadError("Candidate data could not be loaded.")
         }

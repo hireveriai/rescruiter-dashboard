@@ -383,16 +383,20 @@ export default function InterviewsPage() {
   }, [interviews])
 
   function handleDecisionSaved(interview, decision) {
-    setInterviews((current) => current.map((item) => (
-      item.interviewId === interview.interviewId
-        ? {
-            ...item,
-            recruiterDecisionStatus: decision.status,
-            recruiterDecisionAt: decision.decidedAt,
-            recruiterDecisionNotes: decision.notes ?? item.recruiterDecisionNotes ?? null,
-          }
-        : item
-    )))
+    setInterviews((current) => {
+      const nextRows = current.map((item) => (
+        item.interviewId === interview.interviewId
+          ? {
+              ...item,
+              recruiterDecisionStatus: decision.status,
+              recruiterDecisionAt: decision.decidedAt,
+              recruiterDecisionNotes: decision.notes ?? item.recruiterDecisionNotes ?? null,
+            }
+          : item
+      ))
+      writeSessionJsonCache(cacheKey, nextRows)
+      return nextRows
+    })
   }
 
   const filterOptions = useMemo(() => {

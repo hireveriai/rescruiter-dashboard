@@ -97,6 +97,46 @@ function hasReusableDashboardCache(pathname: string) {
   }
 }
 
+function getEffectiveCacheSearch(search: string) {
+  if (typeof window === "undefined") {
+    return search.replace(/^\?/, "")
+  }
+
+  const params = new URLSearchParams(search)
+  if (params.get("userId") && params.get("organizationId")) {
+    return params.toString()
+  }
+
+  try {
+    const storedAuth = window.sessionStorage.getItem("hireveri-auth")
+    const parsedAuth = storedAuth ? JSON.parse(storedAuth) : null
+
+    if (parsedAuth?.userId && parsedAuth?.organizationId) {
+      params.set("userId", parsedAuth.userId)
+      params.set("organizationId", parsedAuth.organizationId)
+      return params.toString()
+    }
+  } catch {
+    // Cache lookup only; fall through to overview fallback.
+  }
+
+  try {
+    const cachedOverview = window.sessionStorage.getItem(DASHBOARD_CACHE_KEY)
+    const parsedOverview = cachedOverview ? JSON.parse(cachedOverview) : null
+    const profile = parsedOverview?.profile
+
+    if (profile?.userId && profile?.organizationId) {
+      params.set("userId", profile.userId)
+      params.set("organizationId", profile.organizationId)
+      return params.toString()
+    }
+  } catch {
+    // Cache lookup only; fall through to raw search.
+  }
+
+  return params.toString()
+}
+
 function hasReusableScreenCache(pathname: string, search: string) {
   if (typeof window === "undefined") {
     return false
@@ -111,7 +151,7 @@ function hasReusableScreenCache(pathname: string, search: string) {
     return false
   }
 
-  return hasSessionJsonCache(rule[1](search.replace(/^\?/, "")))
+  return hasSessionJsonCache(rule[1](getEffectiveCacheSearch(search)))
 }
 
 export function useAmbientLoading() {

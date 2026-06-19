@@ -467,6 +467,7 @@ export default function ManageTeamPage() {
       }
 
       setData(payload.data);
+      writeSessionJsonCache(cacheKey, payload.data);
       setNotice(payload.message || "Invitation sent successfully");
       setIsModalOpen(false);
     } catch (submitErr) {
@@ -507,6 +508,7 @@ export default function ManageTeamPage() {
       }
 
       setData(payload.data);
+      writeSessionJsonCache(cacheKey, payload.data);
       setNotice("Team member access updated successfully.");
       setIsEditModalOpen(false);
       setSelectedMember(null);
