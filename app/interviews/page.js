@@ -7,7 +7,7 @@ import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 import { buildAuthUrl } from "@/lib/client/auth-query"
 import { copyText } from "@/lib/client/copy-to-clipboard"
 import { formatDateTime } from "@/lib/client/date-format"
-import { readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache"
+import { isSessionJsonCacheFresh, readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache"
 
 import BackToDashboardLink from "../../components/BackToDashboardLink"
 import Navbar from "../../components/Navbar"
@@ -300,6 +300,7 @@ export default function InterviewsPage() {
   const [actionBusyId, setActionBusyId] = useState("")
   const [copiedInterviewId, setCopiedInterviewId] = useState("")
   const [reviewInterview, setReviewInterview] = useState(null)
+  const [detailLoadingId, setDetailLoadingId] = useState("")
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("ALL")
   const [jobFilter, setJobFilter] = useState("ALL")
@@ -307,7 +308,7 @@ export default function InterviewsPage() {
   const [evaluationFilter, setEvaluationFilter] = useState("ALL")
 
   async function loadInterviews() {
-    const response = await fetch(buildAuthUrl("/api/dashboard/interviews", searchParams), {
+    const response = await fetch(buildAuthUrl("/api/dashboard/interviews?includeAnswers=0", searchParams), {
       credentials: "include",
       cache: "no-store",
     })
@@ -334,7 +335,13 @@ export default function InterviewsPage() {
       setLoading(true)
     }
 
-    fetch(buildAuthUrl("/api/dashboard/interviews", searchParams), {
+    if (cached && isSessionJsonCacheFresh(cacheKey)) {
+      return () => {
+        isMounted = false
+      }
+    }
+
+    fetch(buildAuthUrl("/api/dashboard/interviews?includeAnswers=0", searchParams), {
       credentials: "include",
       cache: "no-store",
     })
@@ -358,6 +365,44 @@ export default function InterviewsPage() {
       isMounted = false
     }
   }, [cacheKey, searchParams])
+
+  async function toggleInterviewDetails(interview) {
+    if (expandedInterviewId === interview.interviewId) {
+      setExpandedInterviewId("")
+      return
+    }
+
+    setExpandedInterviewId(interview.interviewId)
+    if (interview.detailsLoaded) {
+      return
+    }
+
+    try {
+      setDetailLoadingId(interview.interviewId)
+      const response = await fetch(buildAuthUrl(
+        `/api/dashboard/interviews?interviewId=${encodeURIComponent(interview.interviewId)}&includeAnswers=1&finalizeStale=0`,
+        searchParams
+      ), {
+        credentials: "include",
+        cache: "default",
+      })
+      const data = await response.json()
+      const detailedInterview = data?.success && Array.isArray(data.data) ? data.data[0] : null
+      if (!response.ok || !detailedInterview) {
+        return
+      }
+
+      setInterviews((current) => {
+        const nextRows = current.map((item) => item.interviewId === detailedInterview.interviewId ? detailedInterview : item)
+        writeSessionJsonCache(cacheKey, nextRows)
+        return nextRows
+      })
+    } catch (error) {
+      console.error("Failed to load interview details", error)
+    } finally {
+      setDetailLoadingId("")
+    }
+  }
 
   useEffect(() => {
     function handleEscape(event) {
@@ -687,11 +732,11 @@ export default function InterviewsPage() {
                         {isCompletedInterview(interview) ? (
                           <button
                             type="button"
-                            onClick={() => setExpandedInterviewId((current) => current === interview.interviewId ? "" : interview.interviewId)}
+                            onClick={() => toggleInterviewDetails(interview)}
                             className="inline-flex items-center justify-center rounded-xl border border-emerald-400/25 bg-emerald-400/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:border-emerald-300/50 hover:bg-emerald-400/15 hover:text-white"
                             aria-label={`View completed summary for ${interview.candidateName}`}
                           >
-                            {expandedInterviewId === interview.interviewId ? "Hide" : "View"}
+                            {detailLoadingId === interview.interviewId ? "Loading..." : expandedInterviewId === interview.interviewId ? "Hide" : "View"}
                           </button>
                         ) : String(interview.status).toUpperCase() === "PREPARATION_FAILED" ? (
                           <button

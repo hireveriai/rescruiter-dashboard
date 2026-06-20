@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { buildAuthUrl } from "@/lib/client/auth-query";
 import { formatDate } from "@/lib/client/date-format";
-import { readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache";
+import { isSessionJsonCacheFresh, readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache";
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params";
 import BackToDashboardLink from "@/components/BackToDashboardLink";
 import { VerisGlobeLoader } from "@/components/system/loaders";
@@ -394,6 +394,12 @@ export default function ManageTeamPage() {
       });
     }
 
+    if (cached && isSessionJsonCacheFresh(cacheKey)) {
+      return () => {
+        active = false;
+      };
+    }
+
     fetch(buildAuthUrl("/api/manage-team", searchParams))
       .then((res) => res.json())
       .then((payload) => {
@@ -620,7 +626,7 @@ export default function ManageTeamPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#081120] px-6 py-12 text-white sm:px-8 lg:px-10">
+    <main className="min-h-screen bg-[#08111f] px-6 py-12 text-white sm:px-8 lg:px-10">
       <div className="mx-auto max-w-7xl">
         <div className="rounded-[28px] border border-slate-800 bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.12),transparent_28%),linear-gradient(180deg,#0f172a,#0b1324)] p-8 shadow-[0_24px_80px_rgba(2,6,23,0.35)]">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">

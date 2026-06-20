@@ -1,7 +1,6 @@
 import { Prisma } from "@prisma/client"
 
 import { prisma } from "@/lib/server/prisma"
-import { getDashboardRecordings } from "@/lib/server/services/dashboard-recordings"
 
 type FastCandidateRow = {
   candidate_id: string
@@ -258,15 +257,14 @@ export async function getFastVerisSummaryCards(organizationId: string, limit = 4
 }
 
 export async function getFastDashboardSnapshot(organizationId: string) {
-  const [candidates, recordedInterviews, veris] = await Promise.all([
-    getFastDashboardCandidates(organizationId, 5),
-    getDashboardRecordings(organizationId, 6, { verifyStorage: true }).catch(() => []),
-    getFastVerisSummaryCards(organizationId, 4),
-  ])
+  // Keep first paint to one bounded query. Recording/transcript aggregation
+  // and Veris cards are filled by the silent full refresh after the dashboard
+  // shell is already interactive.
+  const candidates = await getFastDashboardCandidates(organizationId, 5)
 
   return {
     candidates,
-    recordedInterviews,
-    veris,
+    recordedInterviews: [],
+    veris: [],
   }
 }

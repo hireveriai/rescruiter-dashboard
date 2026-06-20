@@ -902,10 +902,12 @@ export async function GET(request: Request) {
     const auth = await getRecruiterRequestContext(request)
     const data = await getTeamWorkspace(auth)
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       data,
     })
+    response.headers.set("Cache-Control", "private, max-age=30, stale-while-revalidate=60")
+    return response
   } catch (error) {
     return errorResponse(error)
   }

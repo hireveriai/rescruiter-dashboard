@@ -18,12 +18,26 @@ const ACTIVE_ATTEMPT_STATUSES = [
   "INTERRUPTED",
 ]
 
+const FINALIZE_INTERVAL_MS = 60_000
+const lastFinalizedAtByOrganization = new Map<string, number>()
+const finalizeInFlightByOrganization = new Map<string, Promise<void>>()
+
 function quotedStatuses() {
   return ACTIVE_ATTEMPT_STATUSES.map((status) => `'${status}'`).join(", ")
 }
 
 export async function finalizeStaleInterviewAttempts(organizationId: string) {
-  await prisma.$executeRawUnsafe(
+  const lastFinalizedAt = lastFinalizedAtByOrganization.get(organizationId) ?? 0
+  if (Date.now() - lastFinalizedAt < FINALIZE_INTERVAL_MS) {
+    return
+  }
+
+  const existing = finalizeInFlightByOrganization.get(organizationId)
+  if (existing) {
+    return existing
+  }
+
+  const operation = prisma.$executeRawUnsafe(
     `
     with stale_attempts as (
       select
@@ -105,4 +119,13 @@ export async function finalizeStaleInterviewAttempts(organizationId: string) {
     SESSION_END_BUFFER_SECONDS,
     STALE_ATTEMPT_THRESHOLD_SECONDS
   )
+    .then(() => {
+      lastFinalizedAtByOrganization.set(organizationId, Date.now())
+    })
+    .finally(() => {
+      finalizeInFlightByOrganization.delete(organizationId)
+    })
+
+  finalizeInFlightByOrganization.set(organizationId, operation)
+  return operation
 }

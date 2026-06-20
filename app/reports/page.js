@@ -9,7 +9,7 @@ import SendInterviewModal from "@/components/SendInterviewModal"
 import { VerisGlobeLoader } from "@/components/system/loaders"
 import { buildAuthUrl } from "@/lib/client/auth-query"
 import { formatDate, formatDateTime, formatTime } from "@/lib/client/date-format"
-import { readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache"
+import { isSessionJsonCacheFresh, readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 function formatPercent(value) {
@@ -104,9 +104,15 @@ export default function ReportsPage() {
       })
     }
 
+    if (cached && isSessionJsonCacheFresh(cacheKey)) {
+      return () => {
+        active = false
+      }
+    }
+
     fetch(buildAuthUrl("/api/reports/overview", searchParams), {
       credentials: "include",
-      cache: "no-store",
+      cache: "default",
     })
       .then(async (response) => {
         const data = await response.json().catch(() => null)

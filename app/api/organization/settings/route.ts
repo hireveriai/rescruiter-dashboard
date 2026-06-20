@@ -41,13 +41,15 @@ export async function GET(request: Request) {
 
     const organization = rows[0]
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       data: {
         timezone: organization?.timezone ?? DEFAULT_ORG_TIMEZONE,
         timezoneLabel: organization?.timezone_label ?? DEFAULT_ORG_TIMEZONE_LABEL,
       },
     })
+    response.headers.set("Cache-Control", "private, max-age=60, stale-while-revalidate=120")
+    return response
   } catch (error) {
     return errorResponse(error)
   }

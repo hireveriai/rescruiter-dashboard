@@ -222,7 +222,7 @@ function DashboardContent({ profile, overview, isLoading }) {
   }
 
   return (
-    <div className="relative min-h-screen bg-[#0b1220] text-white">
+    <div className="relative min-h-screen bg-[#08111f] text-white">
       <Navbar onSendInterviewClick={() => setIsModalOpen(true)} initialProfile={displayProfile} initialAlerts={overview?.alerts} />
       <CognitiveDock
         profile={displayProfile}

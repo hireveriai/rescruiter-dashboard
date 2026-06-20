@@ -6,7 +6,7 @@ import BackToDashboardLink from "@/components/BackToDashboardLink"
 import Navbar from "@/components/Navbar"
 import { VerisGlobeLoader } from "@/components/system/loaders"
 import { buildAuthUrl } from "@/lib/client/auth-query"
-import { readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache"
+import { isSessionJsonCacheFresh, readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 const PAGE_SIZE = 24
@@ -76,6 +76,12 @@ export default function VerisInsightsPage() {
         setHasMore(Boolean(cached.hasMore))
         setIsLoading(false)
       })
+    }
+
+    if (cached && isSessionJsonCacheFresh(cacheKey)) {
+      return () => {
+        active = false
+      }
     }
 
     async function loadSummaries(offset = 0) {
@@ -196,7 +202,7 @@ export default function VerisInsightsPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#0b1220] text-white">
+      <div className="min-h-screen bg-[#08111f] text-white">
         <Navbar />
         <VerisGlobeLoader
           eyebrow="VERIS Insights"
@@ -213,7 +219,7 @@ export default function VerisInsightsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0b1220] text-white">
+    <div className="min-h-screen bg-[#08111f] text-white">
       <Navbar />
       <main className="px-6 py-8">
         <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">

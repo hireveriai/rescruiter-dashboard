@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
-import { readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache"
+import { isSessionJsonCacheFresh, readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache"
 
 import BackToDashboardLink from "../../components/BackToDashboardLink"
 import Navbar from "../../components/Navbar"
@@ -179,11 +179,17 @@ export default function JobsPage() {
       })
     }
 
+    if (cached && isSessionJsonCacheFresh(cacheKey)) {
+      return () => {
+        isMounted = false
+      }
+    }
+
     async function loadJobs() {
       try {
         const response = await fetch(buildAuthUrl("/api/jobs?includeInactive=1", searchParams), {
           credentials: "include",
-          cache: "no-store",
+          cache: "default",
         })
         const data = await response.json()
 
@@ -322,8 +328,8 @@ export default function JobsPage() {
         throw new Error(data?.error?.message || data?.message || "Failed to update job status")
       }
 
-      setJobs((currentJobs) =>
-        currentJobs.map((item) =>
+      setJobs((currentJobs) => {
+        const nextJobs = currentJobs.map((item) =>
           item.jobId === job.jobId
             ? {
                 ...item,
@@ -331,7 +337,12 @@ export default function JobsPage() {
               }
             : item
         )
-      )
+        writeSessionJsonCache(cacheKey, {
+          jobs: nextJobs,
+          supportsJobActiveState,
+        })
+        return nextJobs
+      })
     } catch (error) {
       console.error("Failed to update job status", error)
       window.alert(error instanceof Error ? error.message : "Failed to update job status")
@@ -596,6 +607,10 @@ export default function JobsPage() {
           if (data.success) {
             setJobs(data.jobs ?? [])
             setSupportsJobActiveState(Boolean(data.meta?.supportsJobActiveState))
+            writeSessionJsonCache(cacheKey, {
+              jobs: data.jobs ?? [],
+              supportsJobActiveState: Boolean(data.meta?.supportsJobActiveState),
+            })
           }
         }}
       />

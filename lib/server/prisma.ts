@@ -64,7 +64,11 @@ function getNormalizedDatabaseUrl() {
     }
 
     if (!parsedUrl.searchParams.has("connection_limit")) {
-      parsedUrl.searchParams.set("connection_limit", process.env.PRISMA_CONNECTION_LIMIT || "1")
+      // Dashboard routes intentionally issue independent reads in parallel.
+      // A single Prisma connection serialized those reads and made the
+      // dashboard latency equal to the sum of every query. The Supabase
+      // transaction pooler safely multiplexes this small, bounded client pool.
+      parsedUrl.searchParams.set("connection_limit", process.env.PRISMA_CONNECTION_LIMIT || "5")
     }
 
     if (!parsedUrl.searchParams.has("pool_timeout")) {

@@ -10,7 +10,9 @@ export async function GET(request: Request) {
     const auth = await getRecruiterRequestContext(request)
     const billing = await getBillingScreenData(auth)
 
-    return successResponse(billing)
+    const response = successResponse(billing)
+    response.headers.set("Cache-Control", "private, max-age=30, stale-while-revalidate=60")
+    return response
   } catch (error) {
     return errorResponse(error)
   }

@@ -299,14 +299,19 @@ async function fetchAnswerSummaries(attemptIds: string[]) {
 type InterviewScreenOptions = {
   includeAnswers?: boolean
   limit?: number
+  interviewId?: string | null
+  finalizeStale?: boolean
 }
 
 async function getInterviewsScreenData(auth: RecruiterRequestContext, options: InterviewScreenOptions = {}) {
-  await finalizeStaleInterviewAttempts(auth.organizationId)
+  if (options.finalizeStale !== false) {
+    await finalizeStaleInterviewAttempts(auth.organizationId)
+  }
 
   const interviews = await prisma.interview.findMany({
     where: {
       organizationId: auth.organizationId,
+      ...(options.interviewId ? { interviewId: options.interviewId } : {}),
     },
     orderBy: {
       createdAt: "desc",
@@ -410,6 +415,7 @@ async function getInterviewsScreenData(auth: RecruiterRequestContext, options: I
       recruiterDecisionNotes: recruiterDecision?.notes ?? null,
       aiSummary: evaluation?.aiSummary ?? buildAnswerFallbackSummary(answerSummaries),
       answerSummaries,
+      detailsLoaded: options.includeAnswers !== false,
       createdAt: interview.createdAt,
     }
   })
@@ -422,15 +428,21 @@ export async function GET(request: Request) {
     const rawLimit = Number.parseInt(searchParams.get("limit") ?? "0", 10)
     const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 200) : undefined
     const includeAnswers = searchParams.get("includeAnswers") !== "0"
+    const interviewId = searchParams.get("interviewId")
+    const finalizeStale = searchParams.get("finalizeStale") !== "0"
     const data = await getInterviewsScreenData(auth, {
       includeAnswers,
       limit,
+      interviewId,
+      finalizeStale,
     })
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       data,
     })
+    response.headers.set("Cache-Control", includeAnswers ? "private, max-age=15" : "private, max-age=30, stale-while-revalidate=60")
+    return response
   } catch (error) {
     return errorResponse(error)
   }

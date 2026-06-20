@@ -19,11 +19,13 @@ export async function GET(request: Request) {
       view,
     })
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       jobs: data.jobs,
       meta: data.meta,
     })
+    response.headers.set("Cache-Control", "private, max-age=30, stale-while-revalidate=60")
+    return response
   } catch (error) {
     return errorResponse(error)
   }

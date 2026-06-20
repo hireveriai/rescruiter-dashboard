@@ -8,7 +8,7 @@ import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 import { buildAuthUrl } from "@/lib/client/auth-query"
 import { formatDateTime } from "@/lib/client/date-format"
-import { readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache"
+import { isSessionJsonCacheFresh, readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache"
 
 import Navbar from "../../components/Navbar"
 import SendInterviewModal from "../../components/SendInterviewModal"
@@ -383,6 +383,12 @@ export default function CandidatesPage() {
         setLoadError("")
       }
     })
+
+    if (cached && isSessionJsonCacheFresh(cacheKey)) {
+      return () => {
+        isMounted = false
+      }
+    }
 
     fetch(buildAuthUrl("/api/dashboard/candidates?limit=all", searchParams), {
       credentials: "include",

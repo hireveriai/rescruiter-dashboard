@@ -61,7 +61,7 @@ type CacheEntry = {
   expiresAt: number
 }
 
-const CACHE_TTL_MS = 15000
+const CACHE_TTL_MS = 60000
 const CACHE_MAX = 50
 const SLOW_DASHBOARD_ROUTE_MS = 1200
 const SLOW_DASHBOARD_STEP_MS = 750
@@ -284,7 +284,7 @@ async function buildOverview(
     pipelinePromise,
     safeTimedStep("alerts", () => getDashboardAlerts(auth.organizationId, 8, auth.userId), []),
     safeTimedStep<TrialCreditSnapshot | null>("trialCredits", () => getTrialCreditsDashboardSnapshot(auth.organizationId), null),
-    safeTimedStep("recordedInterviews", () => getDashboardRecordings(auth.organizationId, 6, { verifyStorage: true }), []),
+    safeTimedStep("recordedInterviews", () => getDashboardRecordings(auth.organizationId, 6, { verifyStorage: false }), []),
     safeTimedStep("veris", () => getFastVerisSummaryCards(auth.organizationId, 4), []),
   ])
   const profile = profileStep.result
@@ -379,7 +379,8 @@ export async function GET(request: Request) {
     const fullOverview = searchParams.get("full") === "1"
 
     const cached = forceRefresh ? null : getCachedOverview(cacheKey)
-    if (cached) {
+    const cachedSatisfiesRequest = cached && (!fullOverview || !cached.partial)
+    if (cachedSatisfiesRequest) {
       const response = NextResponse.json({ success: true, data: cached })
       const durationMs = Date.now() - routeStartedAt
       response.headers.set("Cache-Control", "private, max-age=15, stale-while-revalidate=60")
@@ -390,11 +391,20 @@ export async function GET(request: Request) {
 
     if (!fullOverview && !forceRefresh) {
       const dataStartedAt = Date.now()
-      const overview = await buildFastOverview(auth)
+      const inFlightKey = `${cacheKey}:partial`
+      let overviewPromise = inFlight.get(inFlightKey)
+      if (!overviewPromise) {
+        overviewPromise = buildFastOverview(auth)
+        inFlight.set(inFlightKey, overviewPromise)
+      }
+      const overview = await overviewPromise.finally(() => {
+        inFlight.delete(inFlightKey)
+      })
       const dataMs = Date.now() - dataStartedAt
       const durationMs = Date.now() - routeStartedAt
+      setCachedOverview(cacheKey, overview)
       const response = NextResponse.json({ success: true, data: overview })
-      response.headers.set("Cache-Control", "private, max-age=5, stale-while-revalidate=30")
+      response.headers.set("Cache-Control", "private, max-age=30, stale-while-revalidate=120")
       response.headers.set("X-HireVeri-Cache", "fast")
       response.headers.set("Server-Timing", `auth;dur=${authMs}, data;dur=${dataMs}, total;dur=${durationMs}`)
       return response

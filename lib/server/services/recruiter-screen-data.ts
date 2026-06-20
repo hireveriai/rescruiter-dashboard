@@ -76,9 +76,9 @@ export async function getBillingScreenData(auth: RecruiterRequestContext) {
 export async function getJobsScreenData(auth: RecruiterRequestContext, options: JobScreenOptions = {}) {
   const view = options.view ?? null
   const includeInactive = Boolean(options.includeInactive)
-  const hasIsActive = await jobPositionsSupportIsActive()
 
   if (view === "selector") {
+    const hasIsActive = await jobPositionsSupportIsActive()
     const rows = await prisma.$queryRaw<JobSelectorRow[]>(Prisma.sql`
       select
         jp.job_id as "jobId",
@@ -103,8 +103,11 @@ export async function getJobsScreenData(auth: RecruiterRequestContext, options: 
     }
   }
 
-  const hasCodingConfig = await jobPositionsSupportCodingConfig()
-  const hasQuestionTypeDefault = await jobPositionsSupportQuestionTypeDefault()
+  const [hasIsActive, hasCodingConfig, hasQuestionTypeDefault] = await Promise.all([
+    jobPositionsSupportIsActive(),
+    jobPositionsSupportCodingConfig(),
+    jobPositionsSupportQuestionTypeDefault(),
+  ])
 
   const rows = await prisma.$queryRaw<JobRow[]>(Prisma.sql`
     select

@@ -15,16 +15,7 @@ const DASHBOARD_INVALIDATED_EVENT = "hireveri:dashboard-data-invalidated"
 const DASHBOARD_INVALIDATED_KEY = "hireveri-overview-invalidated"
 
 function withoutVolatileOverviewFields(overview) {
-  if (!overview) {
-    return null
-  }
-
-  return {
-    ...overview,
-    recordedInterviews: undefined,
-    veris: undefined,
-    trialCredits: undefined,
-  }
+  return overview ?? null
 }
 
 function getOverviewSignature(overview) {
@@ -149,7 +140,6 @@ export default function RecruiterDashboardBootstrap({ children }) {
   const { setTimezoneState } = useOrgTimezone()
   const overviewSignatureRef = useRef("")
   const overviewPartialRef = useRef(false)
-  const [updateAvailable, setUpdateAvailable] = useState(false)
   const [state, setState] = useState({
     status: "loading",
     profile: null,
@@ -195,7 +185,11 @@ export default function RecruiterDashboardBootstrap({ children }) {
       }
 
       try {
-        const overviewPath = forceRefresh ? `/api/dashboard/overview?refresh=${Date.now()}&full=1` : "/api/dashboard/overview"
+        const overviewPath = forceRefresh
+          ? `/api/dashboard/overview?refresh=${Date.now()}&full=1`
+          : silent
+            ? "/api/dashboard/overview?full=1"
+            : "/api/dashboard/overview"
         const overviewResponse = await fetch(buildAuthUrl(overviewPath, searchParams), {
           credentials: "include",
           cache: forceRefresh ? "no-store" : "default",
@@ -243,55 +237,12 @@ export default function RecruiterDashboardBootstrap({ children }) {
         const overview = overviewData.data ?? null
         const profile = overview?.profile ?? null
         const nextSignature = getOverviewSignature(overview)
-        const replacingPartialOverview = overviewPartialRef.current
-        const hasDashboardDataChanged =
-          silent &&
-          !overview?.partial &&
-          !replacingPartialOverview &&
-          overviewSignatureRef.current &&
-          nextSignature &&
-          overviewSignatureRef.current !== nextSignature
-
-        if (hasDashboardDataChanged) {
-          writeCachedOverview(overview)
-          overviewSignatureRef.current = nextSignature
-        }
-
-        if (!overview?.partial) {
-          writeCachedOverview(overview)
-          overviewSignatureRef.current = nextSignature
-          if (typeof window !== "undefined") {
-            window.sessionStorage.removeItem(DASHBOARD_INVALIDATED_KEY)
-          }
+        writeCachedOverview(overview)
+        overviewSignatureRef.current = nextSignature
+        if (!overview?.partial && typeof window !== "undefined") {
+          window.sessionStorage.removeItem(DASHBOARD_INVALIDATED_KEY)
         }
         overviewPartialRef.current = Boolean(overview?.partial)
-        setUpdateAvailable(false)
-
-        if (hasDashboardDataChanged) {
-          setState((current) => ({
-            status: "loading",
-            profile: current.profile ?? overview?.profile ?? profile,
-            overview: null,
-            message: "",
-          }))
-          window.setTimeout(() => {
-            if (!active) {
-              return
-            }
-
-            setState({
-              status: "ready",
-              profile: overview?.profile ?? profile,
-              overview,
-              message: "",
-            })
-            setTimezoneState({
-              timezone: overview?.profile?.timezone ?? profile?.timezone,
-              timezoneLabel: overview?.profile?.timezoneLabel ?? profile?.timezoneLabel,
-            })
-          }, 420)
-          return
-        }
 
         setState({
           status: "ready",
@@ -351,7 +302,7 @@ export default function RecruiterDashboardBootstrap({ children }) {
       }
 
       refreshInFlight = true
-      bootstrap({ forceRefresh: true, silent: true }).finally(() => {
+      bootstrap({ forceRefresh: false, silent: true }).finally(() => {
         refreshInFlight = false
       })
     }, DASHBOARD_AUTO_REFRESH_MS)
@@ -374,13 +325,7 @@ export default function RecruiterDashboardBootstrap({ children }) {
         window.sessionStorage.setItem(DASHBOARD_INVALIDATED_KEY, "1")
       }
 
-      setState((current) => ({
-        status: "loading",
-        profile: current.profile,
-        overview: null,
-        message: "",
-      }))
-      bootstrap({ forceRefresh: true, silent: false })
+      bootstrap({ forceRefresh: true, silent: true })
     }
 
     if (typeof window !== "undefined") {
@@ -434,14 +379,6 @@ export default function RecruiterDashboardBootstrap({ children }) {
       disconnect()
     }
   }, [state.overview?.profile?.organizationId, state.profile?.organizationId, state.status])
-
-  function reloadDashboard() {
-    if (typeof window === "undefined") {
-      return
-    }
-
-    window.location.reload()
-  }
 
   useEffect(() => {
     if (state.status !== "ready" || typeof window === "undefined") {
@@ -498,39 +435,11 @@ export default function RecruiterDashboardBootstrap({ children }) {
     })
   }
 
-  return (
-    <>
-      {children({
-        profile: state.profile,
-        overview: state.overview,
-        restoreStatus: state.status,
-        showRestoreOverlay: false,
-      })}
-      {updateAvailable ? (
-        <div className="fixed bottom-5 right-5 z-[100] w-[min(420px,calc(100vw-2rem))] rounded-2xl border border-cyan-400/25 bg-slate-950/95 p-4 text-white shadow-[0_24px_70px_rgba(2,6,23,0.55)] backdrop-blur-xl">
-          <p className="text-sm font-semibold">New dashboard data is available</p>
-          <p className="mt-1 text-sm leading-5 text-slate-300">
-            Your current view is cached for speed. Reload to refresh the full dashboard.
-          </p>
-          <div className="mt-4 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setUpdateAvailable(false)}
-              className="rounded-xl border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
-            >
-              Later
-            </button>
-            <button
-              type="button"
-              onClick={reloadDashboard}
-              className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-slate-100"
-            >
-              Reload
-            </button>
-          </div>
-        </div>
-      ) : null}
-    </>
-  )
+  return children({
+    profile: state.profile,
+    overview: state.overview,
+    restoreStatus: state.status,
+    showRestoreOverlay: false,
+  })
 }
 

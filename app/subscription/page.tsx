@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react"
 import Navbar from "@/components/Navbar"
 import { VerisGlobeLoader } from "@/components/system/loaders"
 import { buildAuthUrl } from "@/lib/client/auth-query"
-import { readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache"
+import { isSessionJsonCacheFresh, readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 type Plan = {
@@ -111,6 +111,12 @@ export default function SubscriptionPage() {
       })
     }
 
+    if (cached && isSessionJsonCacheFresh(cacheKey)) {
+      return () => {
+        active = false
+      }
+    }
+
     async function loadPlans() {
       try {
         if (!cached) {
@@ -118,7 +124,7 @@ export default function SubscriptionPage() {
         }
         const response = await fetch(buildAuthUrl("/api/plans", searchParams), {
           credentials: "include",
-          cache: "no-store",
+          cache: "default",
         })
         const payload = await response.json().catch(() => null)
 
@@ -162,7 +168,7 @@ export default function SubscriptionPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-[#07101d] text-white">
+      <main className="min-h-screen bg-[#08111f] text-white">
         <Navbar onSendInterviewClick={() => undefined} />
         <VerisGlobeLoader
           eyebrow="Subscription"
@@ -179,7 +185,7 @@ export default function SubscriptionPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#07101d] text-white">
+    <main className="min-h-screen bg-[#08111f] text-white">
       <Navbar onSendInterviewClick={() => undefined} />
       <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 md:pl-28 lg:px-8 lg:pl-32">
         <section className="overflow-hidden rounded-[32px] border border-cyan-400/16 bg-[radial-gradient(circle_at_18%_0%,rgba(34,211,238,0.16),transparent_28%),linear-gradient(135deg,rgba(15,23,42,0.98),rgba(2,6,23,0.94))] p-6 shadow-[0_24px_90px_rgba(2,6,23,0.42)] sm:p-8">

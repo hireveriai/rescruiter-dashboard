@@ -7,7 +7,7 @@ import BackToDashboardLink from "@/components/BackToDashboardLink"
 import Navbar from "@/components/Navbar"
 import { VerisGlobeLoader } from "@/components/system/loaders"
 import { buildAuthUrl } from "@/lib/client/auth-query"
-import { readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache"
+import { isSessionJsonCacheFresh, readSessionJsonCache, writeSessionJsonCache } from "@/lib/client/session-json-cache"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
 type Invoice = {
@@ -251,11 +251,17 @@ export default function BillingPage() {
       })
     }
 
+    if (cached && isSessionJsonCacheFresh(cacheKey)) {
+      return () => {
+        active = false
+      }
+    }
+
     async function loadBilling() {
       try {
         const response = await fetch(buildAuthUrl("/api/billing/overview", searchParams), {
           credentials: "include",
-          cache: "no-store",
+          cache: "default",
         })
         const payload = await response.json()
 
@@ -313,10 +319,14 @@ export default function BillingPage() {
         throw new Error(payload?.error?.message || "Unable to save billing settings.")
       }
 
-      setData((current) => ({
-        ...current,
-        organization: payload.data.organization,
-      }))
+      setData((current) => {
+        const nextData = {
+          ...current,
+          organization: payload.data.organization,
+        }
+        writeSessionJsonCache(cacheKey, nextData)
+        return nextData
+      })
       setNotice("Billing settings updated for future invoices.")
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Unable to save billing settings.")
@@ -327,7 +337,7 @@ export default function BillingPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-[#081120] text-white">
+      <main className="min-h-screen bg-[#08111f] text-white">
         <Navbar onSendInterviewClick={() => undefined} />
         <VerisGlobeLoader
           eyebrow="Billing"
@@ -344,7 +354,7 @@ export default function BillingPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#081120] text-white">
+    <main className="min-h-screen bg-[#08111f] text-white">
       <Navbar onSendInterviewClick={() => undefined} />
       <div className="px-6 py-12 sm:px-8 md:pl-28 lg:px-10 lg:pl-32">
       <div className="mx-auto max-w-[1400px]">

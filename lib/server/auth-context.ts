@@ -961,11 +961,20 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
       continue
     }
 
-    const recruiter = await resolveTrustedRecruiterByUserOrgOrEmail({
-      userId: recruiterJwt.user_id,
-      organizationId: recruiterJwt.organization_id,
-      email: recruiterJwt.email,
-    })
+    const cacheKey = `jwt:${recruiterJwt.user_id}:${recruiterJwt.organization_id}`
+    let recruiter = getCachedAuthServiceRecruiter(cacheKey)
+
+    if (!recruiter) {
+      recruiter = await resolveTrustedRecruiterByUserOrgOrEmail({
+        userId: recruiterJwt.user_id,
+        organizationId: recruiterJwt.organization_id,
+        email: recruiterJwt.email,
+      })
+
+      if (recruiter?.user_id && recruiter.organization_id) {
+        setCachedAuthServiceRecruiter(cacheKey, recruiter)
+      }
+    }
 
     if (recruiter?.user_id && recruiter.organization_id) {
       return {
@@ -998,6 +1007,20 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
   }
 
   for (const sessionId of sessionCandidates) {
+    const recruiter = getCachedAuthServiceRecruiter(sessionId)
+
+    if (recruiter?.user_id && recruiter.organization_id) {
+      return {
+        userId: recruiter.user_id,
+        organizationId: recruiter.organization_id,
+        sessionCookiePresent: true,
+        sessionCookieMatched: true,
+        sessionValidatedVia: "auth_session",
+      }
+    }
+  }
+
+  for (const sessionId of sessionCandidates) {
     const matchedSession = await lookupActiveAuthSession(sessionId)
 
     if (!matchedSession?.identity_id) {
@@ -1007,6 +1030,7 @@ export async function getRecruiterRequestContext(request: Request): Promise<Recr
     const recruiter = await lookupRecruiterForIdentity(matchedSession.identity_id)
 
     if (recruiter?.user_id && recruiter.organization_id) {
+      setCachedAuthServiceRecruiter(sessionId, recruiter)
       return {
         userId: recruiter.user_id,
         organizationId: recruiter.organization_id,
