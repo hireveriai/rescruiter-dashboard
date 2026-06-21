@@ -15,6 +15,7 @@ const DASHBOARD_INVALIDATED_EVENT = "hireveri:dashboard-data-invalidated"
 const DASHBOARD_INVALIDATED_KEY = "hireveri-overview-invalidated"
 const SEND_INTERVIEW_JOBS_CACHE_PREFIX = "hireveri-send-interview-jobs"
 const SEND_INTERVIEW_JOBS_CACHE_TTL_MS = 5 * 60 * 1000
+const MAX_BATCH_CANDIDATES = 25
 
 function invalidateDashboardOverviewCache() {
   if (typeof window === "undefined") {
@@ -94,6 +95,12 @@ function isValidEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value ?? "").trim())
 }
 
+function createClientId() {
+  return typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
 function getResumeSourceLabel(file) {
   if (!file) {
     return "Uploaded from device"
@@ -138,18 +145,19 @@ export default function SendInterviewModal({ isOpen, onClose, initialTrialCredit
   const searchParams = useAuthSearchParams()
   const primaryFileInputRef = useRef(null)
   const changeFileInputRef = useRef(null)
-  const submissionKeyRef = useRef("")
   const [jobs, setJobs] = useState([])
   const [jobsLoading, setJobsLoading] = useState(false)
   const [jobId, setJobId] = useState("")
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [resumeFile, setResumeFile] = useState(null)
+  const [queuedCandidates, setQueuedCandidates] = useState([])
   const [accessType, setAccessType] = useState("FLEXIBLE")
   const [startTime, setStartTime] = useState("")
   const [endTime, setEndTime] = useState("")
   const [loading, setLoading] = useState(false)
   const [link, setLink] = useState("")
+  const [batchResults, setBatchResults] = useState([])
   const [error, setError] = useState("")
   const [emailStatus, setEmailStatus] = useState(null)
   const [emailError, setEmailError] = useState("")
@@ -165,11 +173,13 @@ export default function SendInterviewModal({ isOpen, onClose, initialTrialCredit
     setName("")
     setEmail("")
     setResumeFile(null)
+    setQueuedCandidates([])
     setAccessType("FLEXIBLE")
     setStartTime("")
     setEndTime("")
     setLoading(false)
     setLink("")
+    setBatchResults([])
     setError("")
     setEmailStatus(null)
     setEmailError("")
@@ -178,7 +188,6 @@ export default function SendInterviewModal({ isOpen, onClose, initialTrialCredit
     setCreditConfirmationOpen(false)
     setConfirmedCreditNotice(false)
     setUpgradeLimitOpen(false)
-    submissionKeyRef.current = ""
     resetFileInputs()
   }
 
@@ -286,6 +295,8 @@ export default function SendInterviewModal({ isOpen, onClose, initialTrialCredit
 
   const hasJobs = jobs.length > 0
   const emptyJobsState = useMemo(() => !jobsLoading && !hasJobs, [jobsLoading, hasJobs])
+  const hasCurrentCandidateInput = Boolean(name.trim() || email.trim() || resumeFile)
+  const pendingCandidateCount = queuedCandidates.length + (hasCurrentCandidateInput ? 1 : 0)
 
   const showFormError = (message) => {
     setError(message)
@@ -315,9 +326,140 @@ export default function SendInterviewModal({ isOpen, onClose, initialTrialCredit
     }
   }
 
+  const getCurrentCandidate = () => ({
+    id: createClientId(),
+    name: name.trim(),
+    email: email.trim().toLowerCase(),
+    resumeFile,
+  })
+
+  const validateCandidate = (candidate, positionLabel = "Candidate") => {
+    if (!candidate.name || !candidate.email || !candidate.resumeFile) {
+      return `${positionLabel}: name, email, and resume are required`
+    }
+
+    if (!isValidEmail(candidate.email)) {
+      return `${positionLabel}: enter a valid email address`
+    }
+
+    return ""
+  }
+
+  const clearCurrentCandidate = () => {
+    setName("")
+    setEmail("")
+    setResumeFile(null)
+    resetFileInputs()
+  }
+
+  const addCandidateToBatch = () => {
+    if (queuedCandidates.length >= MAX_BATCH_CANDIDATES) {
+      showFormError(`A batch can include up to ${MAX_BATCH_CANDIDATES} candidates`)
+      return
+    }
+
+    const candidate = getCurrentCandidate()
+    const validationError = validateCandidate(candidate)
+
+    if (validationError) {
+      showFormError(validationError)
+      return
+    }
+
+    const duplicateEmail = queuedCandidates.some((item) => item.email === candidate.email)
+    if (duplicateEmail) {
+      showFormError("This candidate email is already in the batch")
+      return
+    }
+
+    setQueuedCandidates((current) => [...current, candidate])
+    clearCurrentCandidate()
+    setError("")
+    showActionFeedback({
+      tone: "success",
+      title: "Candidate added",
+      message: "Add another candidate or send the batch when ready.",
+    })
+  }
+
+  const removeQueuedCandidate = (candidateId) => {
+    setQueuedCandidates((current) => current.filter((candidate) => candidate.id !== candidateId))
+  }
+
+  const collectCandidatesForSubmission = () => {
+    const hasCurrentCandidateInput = Boolean(name.trim() || email.trim() || resumeFile)
+    return hasCurrentCandidateInput
+      ? [...queuedCandidates, getCurrentCandidate()]
+      : queuedCandidates
+  }
+
+  const sendCandidateInterview = async (candidate, confirmedDuplicate) => {
+    const candidateFormData = new FormData()
+    candidateFormData.append("fullName", candidate.name)
+    candidateFormData.append("email", candidate.email)
+    candidateFormData.append("jobId", jobId)
+    candidateFormData.append("resume", candidate.resumeFile)
+    candidateFormData.append("includeResumeText", "false")
+
+    const candidateResponse = await fetch(buildAuthUrl("/api/candidate", searchParams), {
+      method: "POST",
+      credentials: "include",
+      body: candidateFormData,
+    })
+
+    const candidateText = await candidateResponse.text()
+    const candidateData = candidateText ? JSON.parse(candidateText) : {}
+
+    if (!candidateResponse.ok) {
+      throw new Error(candidateData.message || candidateData.error?.message || "Failed to create candidate")
+    }
+
+    const candidateId =
+      candidateData.candidateId ||
+      candidateData.candidate_id ||
+      candidateData.data?.candidateId ||
+      candidateData.data?.candidate_id
+
+    if (!candidateId) {
+      throw new Error("Candidate ID was not returned by the API")
+    }
+
+    const extractedResumeSkills =
+      candidateData.parsedData?.extractedSkills ||
+      candidateData.data?.parsedData?.extractedSkills ||
+      []
+    const interviewResponse = await fetch(buildAuthUrl("/api/interview/create-link", searchParams), {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        jobId,
+        candidateId,
+        resume_skills: Array.isArray(extractedResumeSkills) ? extractedResumeSkills : [],
+        accessType,
+        startTime: accessType === "SCHEDULED" ? startTime : undefined,
+        endTime: accessType === "SCHEDULED" ? endTime : undefined,
+        confirmDuplicateInvite: confirmedDuplicate,
+        idempotencyKey: createClientId(),
+      }),
+    })
+
+    const interviewText = await interviewResponse.text()
+    const interviewData = interviewText ? JSON.parse(interviewText) : {}
+
+    if (!interviewResponse.ok) {
+      throw new Error(interviewData.message || interviewData.error?.message || "Failed to generate link")
+    }
+
+    return interviewData.data || interviewData
+  }
+
   const handleSubmit = async ({ confirmedDuplicate = false, confirmedCredit = false } = {}) => {
     setError("")
     setLink("")
+    setBatchResults([])
     setEmailStatus(null)
     setEmailError("")
     setCopyStatus("idle")
@@ -327,22 +469,37 @@ export default function SendInterviewModal({ isOpen, onClose, initialTrialCredit
       return
     }
 
-    if (!jobId || !name || !email) {
-      showFormError("Please fill all required fields")
+    if (!jobId) {
+      showFormError("Please select a job")
       return
     }
 
-    if (!isValidEmail(email)) {
-      showFormError("Please enter a valid candidate email address")
+    const candidates = collectCandidatesForSubmission()
+    if (candidates.length === 0) {
+      showFormError("Add at least one candidate")
       return
     }
 
-    if (!resumeFile) {
-      showFormError("Resume is required")
+    if (candidates.length > MAX_BATCH_CANDIDATES) {
+      showFormError(`A batch can include up to ${MAX_BATCH_CANDIDATES} candidates`)
       return
     }
 
-    if (trialCredits.interviewCreditsRemaining <= 0) {
+    for (let index = 0; index < candidates.length; index += 1) {
+      const validationError = validateCandidate(candidates[index], `Candidate ${index + 1}`)
+      if (validationError) {
+        showFormError(validationError)
+        return
+      }
+    }
+
+    const uniqueEmails = new Set(candidates.map((candidate) => candidate.email))
+    if (uniqueEmails.size !== candidates.length) {
+      showFormError("Each candidate in the batch must have a unique email address")
+      return
+    }
+
+    if (trialCredits.interviewCreditsRemaining < candidates.length) {
       setUpgradeLimitOpen(true)
       return
     }
@@ -359,134 +516,96 @@ export default function SendInterviewModal({ isOpen, onClose, initialTrialCredit
 
     try {
       setLoading(true)
-      if (!submissionKeyRef.current) {
-        submissionKeyRef.current =
-          typeof crypto !== "undefined" && crypto.randomUUID
-            ? crypto.randomUUID()
-            : `${Date.now()}-${Math.random().toString(16).slice(2)}`
-      }
 
       if (!confirmedDuplicate) {
-        const duplicateResponse = await fetch(buildAuthUrl("/api/interview/invite-duplicate", searchParams), {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ email }),
-        })
-        const duplicateData = await duplicateResponse.json().catch(() => null)
+        const duplicateChecks = await Promise.all(candidates.map(async (candidate) => {
+          const duplicateResponse = await fetch(buildAuthUrl("/api/interview/invite-duplicate", searchParams), {
+            method: "POST",
+            credentials: "include",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ email: candidate.email }),
+          })
+          const duplicateData = await duplicateResponse.json().catch(() => null)
+          return duplicateResponse.ok && duplicateData?.warning
+            ? { email: candidate.email, lastSentAt: duplicateData.lastSentAt }
+            : null
+        }))
+        const duplicateCandidates = duplicateChecks.filter(Boolean)
 
-        if (duplicateResponse.ok && duplicateData?.warning) {
+        if (duplicateCandidates.length > 0) {
           setDuplicateWarning({
-            lastSentAt: duplicateData.lastSentAt,
+            candidates: duplicateCandidates,
           })
           return
         }
       }
 
-      const candidateFormData = new FormData()
-      candidateFormData.append("fullName", name)
-      candidateFormData.append("email", email)
-      candidateFormData.append("jobId", jobId)
-      candidateFormData.append("resume", resumeFile)
-      candidateFormData.append("includeResumeText", "false")
+      const results = []
+      let latestCredits = trialCredits
 
-      const candidateResponse = await fetch(buildAuthUrl("/api/candidate", searchParams), {
-        method: "POST",
-        credentials: "include",
-        body: candidateFormData,
-      })
-
-      const candidateText = await candidateResponse.text()
-      const candidateData = candidateText ? JSON.parse(candidateText) : {}
-
-      if (!candidateResponse.ok) {
-        throw new Error(candidateData.message || candidateData.error?.message || "Failed to create candidate")
-      }
-
-      const candidateId =
-        candidateData.candidateId ||
-        candidateData.candidate_id ||
-        candidateData.data?.candidateId ||
-        candidateData.data?.candidate_id
-
-      if (!candidateId) {
-        throw new Error("Candidate ID was not returned by the API")
-      }
-
-      const extractedResumeSkills =
-        candidateData.parsedData?.extractedSkills ||
-        candidateData.data?.parsedData?.extractedSkills ||
-        []
-      const interviewResponse = await fetch(buildAuthUrl("/api/interview/create-link", searchParams), {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          jobId,
-          candidateId,
-          resume_skills: Array.isArray(extractedResumeSkills) ? extractedResumeSkills : [],
-          accessType,
-          startTime: accessType === "SCHEDULED" ? startTime : undefined,
-          endTime: accessType === "SCHEDULED" ? endTime : undefined,
-          confirmDuplicateInvite: confirmedDuplicate,
-          idempotencyKey: submissionKeyRef.current,
-        }),
-      })
-
-      const interviewText = await interviewResponse.text()
-      const interviewData = interviewText ? JSON.parse(interviewText) : {}
-      if (interviewData?.warning) {
-        setDuplicateWarning({
-          lastSentAt: interviewData.lastSentAt,
-        })
-        return
-      }
-      if (!interviewResponse.ok) {
-        throw new Error(interviewData.message || interviewData.error?.message || "Failed to generate link")
-      }
-
-      const responseData = interviewData.data || interviewData
-      if (responseData.trialCredits) {
-        const nextCredits = normalizeTrialCredits(responseData.trialCredits)
-        setTrialCredits(nextCredits)
-        notifyTrialCreditsUpdated(nextCredits)
-      } else {
-        setTrialCredits((current) => {
-          const nextCredits = {
-            ...current,
-            interviewCreditsRemaining: Math.max(0, current.interviewCreditsRemaining - 1),
+      for (const candidate of candidates) {
+        try {
+          const responseData = await sendCandidateInterview(candidate, confirmedDuplicate)
+          if (responseData.trialCredits) {
+            latestCredits = normalizeTrialCredits(responseData.trialCredits)
+          } else {
+            latestCredits = {
+              ...latestCredits,
+              interviewCreditsRemaining: Math.max(0, latestCredits.interviewCreditsRemaining - 1),
+            }
           }
-          notifyTrialCreditsUpdated(nextCredits)
-          return nextCredits
-        })
+
+          results.push({
+            id: candidate.id,
+            candidate,
+            name: candidate.name,
+            email: candidate.email,
+            status: "success",
+            link: responseData.link || "",
+            emailStatus: responseData.emailSent === true
+              ? "sent"
+              : responseData.emailQueued === true || responseData.preparationQueued === true
+                ? "queued"
+                : "failed",
+            emailError: responseData.emailError || "",
+          })
+        } catch (candidateError) {
+          results.push({
+            id: candidate.id,
+            candidate,
+            name: candidate.name,
+            email: candidate.email,
+            status: "failed",
+            error: candidateError instanceof Error ? candidateError.message : "Failed to send interview link",
+          })
+        }
       }
+
+      setTrialCredits(latestCredits)
+      notifyTrialCreditsUpdated(latestCredits)
       invalidateDashboardOverviewCache()
-      setLink(responseData.link || "")
-      setEmailStatus(
-        responseData.emailSent === true
-          ? "sent"
-          : responseData.emailQueued === true || responseData.preparationQueued === true
-            ? "queued"
-            : "failed"
-      )
-      setEmailError(responseData.emailError || "")
-      const emailQueued = responseData.emailQueued === true || responseData.preparationQueued === true
+      setBatchResults(results)
+      const successfulResults = results.filter((result) => result.status === "success")
+      const failedResults = results.filter((result) => result.status === "failed")
+      if (successfulResults.length === 1 && results.length === 1) {
+        setLink(successfulResults[0].link)
+        setEmailStatus(successfulResults[0].emailStatus)
+        setEmailError(successfulResults[0].emailError)
+      }
+      setQueuedCandidates(failedResults.map((result) => result.candidate))
+      clearCurrentCandidate()
+      setConfirmedCreditNotice(false)
+
       showActionFeedback({
-        tone: responseData.emailSent === true || emailQueued ? "success" : "warning",
-        title: responseData.emailSent === true
-          ? "Interview link sent successfully"
-          : emailQueued
-            ? "Interview link generated"
-          : "Interview link generated",
-        message: responseData.emailSent === true
-          ? "The candidate invite has been generated and emailed."
-          : emailQueued
-            ? "Preparation is running in the background. The email will send automatically."
-          : "Email delivery failed. Copy the link and send it manually.",
+        tone: failedResults.length === 0 ? "success" : successfulResults.length > 0 ? "warning" : "error",
+        title: failedResults.length === 0
+          ? `${successfulResults.length} interview ${successfulResults.length === 1 ? "invite" : "invites"} prepared`
+          : `${successfulResults.length} sent, ${failedResults.length} failed`,
+        message: failedResults.length === 0
+          ? "Interview preparation is running and each candidate will receive their email automatically."
+          : "Failed candidates remain in the batch. Retry them, or remove and re-add corrected details.",
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to send interview link"
@@ -506,14 +625,6 @@ export default function SendInterviewModal({ isOpen, onClose, initialTrialCredit
     }
   }
 
-  const duplicateWarningDate = duplicateWarning?.lastSentAt
-    ? new Date(duplicateWarning.lastSentAt)
-    : null
-  const duplicateWarningDateLabel =
-    duplicateWarningDate && !Number.isNaN(duplicateWarningDate.getTime())
-      ? formatDateTime(duplicateWarningDate.toISOString())
-      : "an earlier date"
-
   const copy = async () => {
     const copied = await copyText(link)
     setCopyStatus(copied ? "success" : "failed")
@@ -526,9 +637,27 @@ export default function SendInterviewModal({ isOpen, onClose, initialTrialCredit
     })
   }
 
+  const copyResultLink = async (result) => {
+    const copied = await copyText(result.link)
+    showActionFeedback({
+      tone: copied ? "success" : "error",
+      title: copied ? `Link copied for ${result.name}` : "Copy failed",
+      message: copied ? "The interview link is ready to share." : "Please select and copy the link manually.",
+    })
+  }
+
   const clearResumeFile = () => {
     setResumeFile(null)
     resetFileInputs()
+  }
+
+  const startAnotherBatch = () => {
+    setLink("")
+    setBatchResults([])
+    setEmailStatus(null)
+    setEmailError("")
+    setCopyStatus("idle")
+    setError("")
   }
 
   const handleClose = () => {
@@ -552,9 +681,11 @@ export default function SendInterviewModal({ isOpen, onClose, initialTrialCredit
         <div className="fixed inset-0 z-[65] flex items-start justify-center overflow-y-auto bg-slate-950/70 px-4 py-4 backdrop-blur-sm sm:py-6" role="dialog" aria-modal="true">
           <div className="w-full max-w-md rounded-2xl border border-cyan-400/20 bg-[#0b1220] p-6 shadow-[0_24px_80px_rgba(2,6,23,0.55)]">
             <p className="text-xs font-semibold uppercase tracking-[0.26em] text-cyan-200/75">Credit Notice</p>
-            <h3 className="mt-3 text-lg font-semibold text-white">You are about to use 1 AI Interview credit.</h3>
+            <h3 className="mt-3 text-lg font-semibold text-white">
+              You are about to use {pendingCandidateCount} AI Interview {pendingCandidateCount === 1 ? "credit" : "credits"}.
+            </h3>
             <p className="mt-3 text-sm leading-6 text-slate-300">
-              Remaining Interview Credits after this action: {Math.max(0, trialCredits.interviewCreditsRemaining - 1)}
+              Remaining Interview Credits after this batch: {Math.max(0, trialCredits.interviewCreditsRemaining - pendingCandidateCount)}
             </p>
             <div className="mt-6 flex justify-end gap-3">
               <button
@@ -590,8 +721,25 @@ export default function SendInterviewModal({ isOpen, onClose, initialTrialCredit
           <div className="w-full max-w-md rounded-2xl border border-amber-400/25 bg-[#0b1220] p-6 shadow-[0_24px_80px_rgba(2,6,23,0.55)]">
             <h3 className="text-lg font-semibold text-white">Duplicate invite detected</h3>
             <p className="mt-3 text-sm leading-6 text-slate-300">
-              You already sent an interview to this candidate on {duplicateWarningDateLabel}. Send again?
+              {duplicateWarning.candidates.length === 1
+                ? "This candidate has already received an interview invite. Send another invite?"
+                : `${duplicateWarning.candidates.length} candidates have already received interview invites. Send those invites again?`}
             </p>
+            <div className="mt-4 max-h-48 space-y-2 overflow-y-auto">
+              {duplicateWarning.candidates.map((candidate) => {
+                const sentAt = candidate.lastSentAt ? new Date(candidate.lastSentAt) : null
+                const sentAtLabel = sentAt && !Number.isNaN(sentAt.getTime())
+                  ? formatDateTime(sentAt.toISOString())
+                  : "an earlier date"
+
+                return (
+                  <div key={candidate.email} className="rounded-xl border border-amber-300/15 bg-amber-500/[0.06] px-3 py-2">
+                    <p className="text-sm font-medium text-white">{candidate.email}</p>
+                    <p className="mt-1 text-xs text-amber-100/70">Last sent {sentAtLabel}</p>
+                  </div>
+                )
+              })}
+            </div>
             <div className="mt-6 flex justify-end gap-3">
               <button
                 type="button"
@@ -622,8 +770,8 @@ export default function SendInterviewModal({ isOpen, onClose, initialTrialCredit
               <p className="text-xs uppercase tracking-[0.35em] text-cyan-300/80">Interview Access</p>
               <h2 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">Send Interview Link</h2>
               <p className="mt-2 max-w-lg text-sm text-slate-300">
-                Secure candidate access with one-time validation, optional resume intake,
-                and time-window controls.
+                Add one or several candidates, apply one access window, and send every
+                secure interview invite in a single batch.
               </p>
             </div>
             <button
@@ -687,6 +835,55 @@ export default function SendInterviewModal({ isOpen, onClose, initialTrialCredit
                 })}
               </select>
 
+              {queuedCandidates.length > 0 ? (
+                <div className="mb-5 rounded-2xl border border-cyan-400/15 bg-cyan-400/[0.045] p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-white">Candidates in this batch</p>
+                      <p className="mt-1 text-xs text-slate-400">
+                        {queuedCandidates.length} {queuedCandidates.length === 1 ? "candidate" : "candidates"} ready · max {MAX_BATCH_CANDIDATES}
+                      </p>
+                    </div>
+                    <span className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-3 py-1 text-xs font-semibold text-cyan-100">
+                      {queuedCandidates.length}
+                    </span>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {queuedCandidates.map((candidate, index) => (
+                      <div key={candidate.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-700/80 bg-slate-950/45 px-3 py-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-white">
+                            {index + 1}. {candidate.name}
+                          </p>
+                          <p className="mt-1 truncate text-xs text-slate-400">
+                            {candidate.email} · {candidate.resumeFile.name}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeQueuedCandidate(candidate.id)}
+                          disabled={loading}
+                          className="shrink-0 rounded-lg border border-rose-400/25 bg-rose-500/10 px-2.5 py-1.5 text-xs font-medium text-rose-200 transition hover:border-rose-300/50 hover:text-white disabled:opacity-50"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-white">
+                    {queuedCandidates.length > 0 ? "Add another candidate" : "Candidate details"}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Each candidate needs their own name, email, and resume.
+                  </p>
+                </div>
+              </div>
+
               <label className="text-sm text-gray-400">Candidate Full Name *</label>
               <input
                 className="mb-4 w-full rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-400/60 focus:shadow-[0_0_0_3px_rgba(34,211,238,0.08)]"
@@ -745,6 +942,16 @@ export default function SendInterviewModal({ isOpen, onClose, initialTrialCredit
                   </div>
                 ) : null}
               </div>
+
+              <button
+                type="button"
+                onClick={addCandidateToBatch}
+                disabled={loading}
+                className="mb-5 flex w-full items-center justify-center gap-2 rounded-2xl border border-cyan-400/25 bg-cyan-400/[0.07] px-4 py-3 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300/50 hover:bg-cyan-400/10 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <span className="text-lg leading-none">+</span>
+                Add candidate to batch
+              </button>
 
               <div className="mb-5 rounded-2xl border border-slate-800 bg-slate-900/55 p-4">
                 <p className="mb-3 text-sm font-medium text-slate-300">Interview Access Type</p>
@@ -805,7 +1012,16 @@ export default function SendInterviewModal({ isOpen, onClose, initialTrialCredit
                       </button>
                     </div>
                   )
-                  : `AI Interviews Left: ${trialCredits.interviewCreditsRemaining}`}
+                  : (
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span>AI Interviews Left: {trialCredits.interviewCreditsRemaining}</span>
+                      {pendingCandidateCount > 0 ? (
+                        <span className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-3 py-1 text-xs font-semibold">
+                          This batch uses {pendingCandidateCount}
+                        </span>
+                      ) : null}
+                    </div>
+                  )}
               </div>
 
               {error && <p className="mb-2 text-sm text-red-400">{error}</p>}
@@ -814,8 +1030,72 @@ export default function SendInterviewModal({ isOpen, onClose, initialTrialCredit
                 disabled={loading || jobsLoading || trialCredits.interviewCreditsRemaining <= 0}
                 className="w-full rounded-2xl bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 px-4 py-3 text-base font-medium text-white shadow-[0_18px_30px_rgba(37,99,235,0.3)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {loading ? "Generating secure link..." : "Send Interview Link"}
+                {loading
+                  ? `Preparing ${pendingCandidateCount || queuedCandidates.length} ${pendingCandidateCount === 1 ? "invite" : "invites"}...`
+                  : pendingCandidateCount > 1
+                    ? `Send ${pendingCandidateCount} Interview Invites`
+                    : "Send Interview Invite"}
               </button>
+
+              {batchResults.length > 1 || batchResults.some((result) => result.status === "failed") ? (
+                <div className="mt-5 rounded-2xl border border-slate-700 bg-slate-950/55 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-white">Batch results</p>
+                      <p className="mt-1 text-xs text-slate-400">
+                        {batchResults.filter((result) => result.status === "success").length} successful ·{" "}
+                        {batchResults.filter((result) => result.status === "failed").length} failed
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-4 space-y-3">
+                    {batchResults.map((result) => (
+                      <article
+                        key={result.id}
+                        className={`rounded-xl border p-3 ${
+                          result.status === "success"
+                            ? "border-emerald-400/20 bg-emerald-500/[0.07]"
+                            : "border-rose-400/20 bg-rose-500/[0.07]"
+                        }`}
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-white">{result.name}</p>
+                            <p className="mt-1 truncate text-xs text-slate-400">{result.email}</p>
+                            <p className={`mt-2 text-xs ${result.status === "success" ? "text-emerald-200" : "text-rose-200"}`}>
+                              {result.status === "success"
+                                ? result.emailStatus === "sent"
+                                  ? "Invite emailed successfully"
+                                  : result.emailStatus === "queued"
+                                    ? "Invite queued for email delivery"
+                                    : "Link created; manual delivery may be needed"
+                                : result.error}
+                            </p>
+                          </div>
+                          {result.status === "success" && result.link ? (
+                            <button
+                              type="button"
+                              onClick={() => copyResultLink(result)}
+                              className="shrink-0 rounded-lg border border-emerald-300/25 bg-emerald-400/10 px-3 py-2 text-xs font-semibold text-emerald-100 transition hover:border-emerald-200/50"
+                            >
+                              Copy link
+                            </button>
+                          ) : null}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                  {batchResults.every((result) => result.status === "success") ? (
+                    <button
+                      type="button"
+                      onClick={startAnotherBatch}
+                      className="mt-4 w-full rounded-xl border border-cyan-400/25 bg-cyan-400/[0.07] px-4 py-2.5 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300/50"
+                    >
+                      Send another batch
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
 
               {link && (
                 <div className="mt-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
@@ -847,6 +1127,13 @@ export default function SendInterviewModal({ isOpen, onClose, initialTrialCredit
                     className="w-full rounded-2xl border border-slate-600 bg-slate-900/90 px-4 py-3 text-sm text-slate-100 transition hover:border-cyan-400/50 hover:bg-slate-800"
                   >
                     {copyStatus === "success" ? "Copied" : "Copy Link"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={startAnotherBatch}
+                    className="mt-3 w-full rounded-2xl border border-cyan-400/25 bg-cyan-400/[0.07] px-4 py-3 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300/50 hover:bg-cyan-400/10"
+                  >
+                    Send another candidate
                   </button>
                 </div>
               )}

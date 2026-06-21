@@ -309,6 +309,7 @@ export async function getDashboardRecordings(organizationId: string, limit = 6, 
     left join public.candidates c on c.candidate_id = i.candidate_id
     left join public.job_positions jp on jp.job_id = i.job_id
     where i.organization_id = $1::uuid
+      ${columns.has("status") ? "and coalesce(ir.status, 'completed') = 'completed'" : ""}
     order by ${columns.has("created_at") ? "ir.created_at desc nulls last" : `ir.${quoteIdentifier(idColumn)} desc`}
     limit ${safeLimit}
   `
