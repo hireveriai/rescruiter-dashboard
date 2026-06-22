@@ -53,7 +53,8 @@ function buildResumeQuestion(skill: string, index: number, seniorityLevel: "juni
 }
 
 function isCodingRequired(input: BaseGenerationInput) {
-  return String(input.codingRequired ?? "").toUpperCase() === "YES"
+  const requirement = String(input.codingRequired ?? "").toUpperCase()
+  return requirement === "YES" || (requirement === "AUTO" && input.codingRecommended === true)
 }
 
 function buildCodingQuestion(input: BaseGenerationInput) {
@@ -65,7 +66,7 @@ function buildCodingQuestion(input: BaseGenerationInput) {
     return {
       skill: "SQL query design",
       question:
-        "Write a SQL query to find records with the highest recent activity, and explain the indexes you would use to keep it efficient.",
+        "Write a SQL query that returns the most active users during the last thirty days.",
     }
   }
 
@@ -73,7 +74,7 @@ function buildCodingQuestion(input: BaseGenerationInput) {
     return {
       skill: "Debugging",
       question:
-        "Debug a failing function or query, identify the root cause, and describe the smallest safe fix you would apply.",
+        "Debug a failing function and implement the smallest safe fix for its root cause.",
     }
   }
 
@@ -81,7 +82,7 @@ function buildCodingQuestion(input: BaseGenerationInput) {
     return {
       skill: "Backend logic",
       question:
-        `Implement a small ${language || "backend"} function that validates input, handles an error case, and returns a predictable response.`,
+        `Implement a ${language || "TypeScript"} function that validates an API payload and returns a typed success or error result.`,
     }
   }
 
@@ -96,7 +97,7 @@ function buildCodingQuestion(input: BaseGenerationInput) {
   return {
     skill: language ? `${language} coding` : "Practical coding",
     question:
-      `Write a ${language || "code"} solution for a small real-world task, then explain how you would test edge cases.`,
+      `Implement a ${language || "TypeScript"} function that groups records by status while preserving their original order.`,
   }
 }
 

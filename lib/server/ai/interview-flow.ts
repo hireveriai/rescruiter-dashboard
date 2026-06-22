@@ -38,6 +38,7 @@ export type BaseGenerationInput = {
   previousQuestions?: string[]
   similarityThreshold?: number
   codingRequired?: string | null
+  codingRecommended?: boolean | null
   codingAssessmentType?: string | null
   codingDifficulty?: string | null
   codingDurationMinutes?: number | null

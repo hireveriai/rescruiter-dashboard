@@ -52,6 +52,7 @@ type InterviewContextRow = {
   experience_level_id: number | null
   interview_duration_minutes: number | null
   coding_required: string | null
+  coding_recommended: boolean | null
   coding_assessment_type: string | null
   coding_difficulty: string | null
   coding_duration_minutes: number | null
@@ -312,6 +313,7 @@ async function getInterviewContext(organizationId: string, interviewId: string) 
       jp.experience_level_id,
       jp.interview_duration_minutes,
       jp.coding_required,
+      jp.coding_recommended,
       jp.coding_assessment_type,
       jp.coding_difficulty,
       jp.coding_duration_minutes,
@@ -443,6 +445,7 @@ export async function prepareInterviewQuestionsWithRetry(input: GenerateQuestion
           interviewDurationMinutes: input.interviewDurationMinutes ?? context.interview_duration_minutes ?? undefined,
           jobTitle: context.job_title ?? undefined,
           codingRequired: context.coding_required,
+          codingRecommended: context.coding_recommended,
           codingAssessmentType: context.coding_assessment_type,
           codingDifficulty: context.coding_difficulty,
           codingDurationMinutes: context.coding_duration_minutes,

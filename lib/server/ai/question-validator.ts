@@ -36,7 +36,7 @@ export function validateQuestionStrict(q: string): ValidationResult {
   }
 
   // must start correctly
-  if (!/^(how|what|walk)/i.test(q)) {
+  if (!/^(how|what|walk|write|implement|create|build|debug|optimi[sz]e)/i.test(q)) {
     return { valid: false, reason: "bad_format" }
   }
 
