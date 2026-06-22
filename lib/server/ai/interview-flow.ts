@@ -691,18 +691,30 @@ function normalizeExperienceLevel(level?: string) {
 }
 
 function resolveBaseQuestionCount(input: BaseGenerationInput) {
+  const duration = input.interviewDurationMinutes ?? 30
+  const durationMinimum =
+    duration >= 60
+      ? 15
+      : duration >= 45
+        ? 12
+        : duration >= 30
+          ? 8
+          : 4
+
   if (typeof input.totalQuestions === "number" && input.totalQuestions > 0) {
-    return input.totalQuestions
+    return Math.max(input.totalQuestions, durationMinimum)
   }
 
-  const duration = input.interviewDurationMinutes ?? 30
   if (duration >= 60) {
-    return 10
+    return 15
   }
   if (duration >= 45) {
+    return 12
+  }
+  if (duration >= 30) {
     return 8
   }
-  return 7
+  return 4
 }
 
 function prioritizeSkillsByExperience(skills: string[], input: BaseGenerationInput) {
