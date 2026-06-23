@@ -1915,7 +1915,13 @@ export default function AiScreeningPage() {
       }
       invalidateDashboardOverviewCache()
       setSendResults(payload.data?.results ?? [])
-      setNotice(`${payload.data?.sentCount ?? 0} interview invitations sent.`)
+      const queuedCount = Number(payload.data?.queuedCount ?? 0)
+      const sentCount = Number(payload.data?.sentCount ?? 0)
+      setNotice(
+        queuedCount > 0
+          ? `${queuedCount} interview invitations queued. VERIS is preparing questions and sending emails in the background.`
+          : `${sentCount} interview invitations sent.`
+      )
       return "sent"
     } catch (sendError) {
       const message = sendError instanceof Error ? sendError.message : "Bulk interview send failed"

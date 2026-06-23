@@ -1,2 +1,0 @@
-{"level":"warn","msg":"slow_dashboard_step","step":"recordedInterviews","durationMs":1060}
-{"level":"warn","msg":"slow_dashboard_overview","cache":"refresh","authMs":553,"dataMs":1632,"durationMs":2189}

@@ -502,6 +502,26 @@ export default function PendingInterviews({ initialPendingInterviews, initialPen
   }, [hasInitial, loadPendingInterviews])
 
   useEffect(() => {
+    if (!hasInitial || typeof window === "undefined") {
+      return undefined
+    }
+
+    let isMounted = true
+    const timeoutId = window.setTimeout(() => {
+      loadPendingInterviews({ limit: 5 }).catch((error) => {
+        if (isMounted) {
+          console.error("Failed to refresh initial pending interviews", error)
+        }
+      })
+    }, 150)
+
+    return () => {
+      isMounted = false
+      window.clearTimeout(timeoutId)
+    }
+  }, [hasInitial, loadPendingInterviews])
+
+  useEffect(() => {
     if (!hasAuthQuery(searchParams) || typeof window === "undefined") {
       return undefined
     }

@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client"
 
-import { generateInterviewQuestions } from "@/lib/interview-flow"
+import { generateInterviewQuestions, type InterviewQuestion } from "@/lib/interview-flow"
+import { InterviewQuestionType } from "@/lib/server/ai/interview-question-types"
 import { ApiError } from "@/lib/server/errors"
 import { getInterviewAppUrl } from "@/lib/server/interview-url"
 import { prisma } from "@/lib/server/prisma"
@@ -13,7 +14,7 @@ import {
 } from "@/lib/server/services/interview-questions"
 import { sendInterviewEmail } from "@/lib/services/email.service"
 
-const CREATE_LINK_AI_TIMEOUT_MS = 12000
+const CREATE_LINK_AI_TIMEOUT_MS = Number(process.env.INTERVIEW_QUESTION_TIMEOUT_MS ?? 45000)
 const MIN_QUESTION_COUNT = 5
 const QUESTION_RETRY_COUNT = 3
 const BASE_BACKOFF_MS = 400
@@ -89,6 +90,106 @@ function sleep(ms: number) {
 
 function normalizeMessage(error: unknown) {
   return error instanceof Error ? error.message : "Unknown error"
+}
+
+function normalizeSkill(value: string | null | undefined) {
+  return String(value ?? "").replace(/\s+/g, " ").trim()
+}
+
+function getEmergencySkillPool(context: InterviewContextRow) {
+  const skills = [
+    ...(context.core_skills ?? []),
+    context.job_title ?? "",
+    "problem solving",
+    "communication",
+    "delivery ownership",
+    "quality mindset",
+    "collaboration",
+  ]
+    .map(normalizeSkill)
+    .filter(Boolean)
+
+  return Array.from(new Set(skills.map((skill) => skill.toLowerCase()))).map((skill) =>
+    skill.replace(/\b\w/g, (letter) => letter.toUpperCase())
+  )
+}
+
+function buildEmergencyInterviewQuestions(
+  context: InterviewContextRow,
+  input: GenerateQuestionInput
+): InterviewQuestion[] {
+  const durationQuestionCount = Math.round((context.interview_duration_minutes ?? 30) / 4)
+  const fallbackQuestionCount = input.totalQuestions ?? (durationQuestionCount || 7)
+  const targetCount = Math.max(
+    MIN_QUESTION_COUNT,
+    Math.min(10, Number(fallbackQuestionCount))
+  )
+  const skills = getEmergencySkillPool(context)
+  const templates = [
+    (skill: string) => `How have you applied ${skill} to solve a production issue under delivery pressure?`,
+    (skill: string) => `Walk me through a recent decision where ${skill} affected quality, speed, or reliability.`,
+    (skill: string) => `What would you check first when ${skill} work starts failing before a deadline?`,
+    (skill: string) => `How do you communicate trade-offs in ${skill} when requirements change during implementation?`,
+    (skill: string) => `What signals tell you that ${skill} is working well for users or stakeholders?`,
+    (skill: string) => `How would you improve a weak process involving ${skill} without slowing delivery?`,
+    (skill: string) => `Walk me through how you validate assumptions before making a ${skill} decision.`,
+    (skill: string) => `How do you recover when a ${skill} approach does not produce the expected result?`,
+    (skill: string) => `What would you document after solving a difficult ${skill} problem for the team?`,
+    (skill: string) => `How do you balance speed and correctness when working on ${skill} tasks?`,
+  ]
+
+  const questions: InterviewQuestion[] = []
+
+  for (let index = 0; index < targetCount; index += 1) {
+    const skill = skills[index % skills.length] ?? "Problem Solving"
+    questions.push({
+      id: `emergency-${index}`,
+      question: templates[index % templates.length](skill),
+      skill,
+      skill_type: index === targetCount - 1 ? "behavioral" : "technical",
+      skill_bucket: skill,
+      source_type: index === targetCount - 1 ? "behavioral" : "job",
+      reference_context: {
+        anchor: skill,
+        source: "emergency_question_fallback",
+      },
+      is_dynamic: true,
+      allow_followups: true,
+      question_type: index === targetCount - 1 ? InterviewQuestionType.BEHAVIORAL : InterviewQuestionType.TECHNICAL_DISCUSSION,
+      classifier_confidence: 0.72,
+      recruiter_override: false,
+      rendering_mode: index === targetCount - 1 ? "behavioral" : "discussion",
+      phase_hint: index === 0 ? "warmup" : index >= targetCount - 2 ? "closing" : "core",
+    })
+  }
+
+  const codingRequired = String(context.coding_required ?? "").toUpperCase() === "YES" ||
+    (String(context.coding_required ?? "").toUpperCase() === "AUTO" && context.coding_recommended === true)
+
+  if (codingRequired && questions.length >= MIN_QUESTION_COUNT) {
+    const language = (context.coding_languages ?? []).find((item) => item?.trim())?.trim() || "TypeScript"
+    questions.splice(Math.min(2, questions.length - 1), 1, {
+      id: "emergency-coding",
+      question: `Implement a ${language} function that validates an input record and returns a clear success or error result.`,
+      skill: `${language} coding`,
+      skill_type: "technical",
+      skill_bucket: "Coding",
+      source_type: "job",
+      reference_context: {
+        anchor: `${language} coding`,
+        source: "emergency_question_fallback",
+      },
+      is_dynamic: true,
+      allow_followups: true,
+      question_type: InterviewQuestionType.CODING,
+      classifier_confidence: 0.85,
+      recruiter_override: false,
+      rendering_mode: "code_editor",
+      phase_hint: "core",
+    })
+  }
+
+  return questions
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
@@ -485,6 +586,35 @@ export async function prepareInterviewQuestionsWithRetry(input: GenerateQuestion
         await sleep(BASE_BACKOFF_MS * 2 ** (attempt - 1))
       }
     }
+  }
+
+  try {
+    const emergencyQuestions = buildEmergencyInterviewQuestions(context, input)
+    const replaced = await replaceInterviewQuestions(input.interviewId, emergencyQuestions)
+
+    if (!replaced) {
+      throw new Error("Emergency interview questions could not be saved")
+    }
+
+    const verified = await verifyInterviewQuestionsPersisted(input.interviewId, emergencyQuestions)
+    if (!verified) {
+      const existingQuestions = await fetchExistingInterviewQuestions(input.interviewId)
+      if (existingQuestions.length === 0) {
+        throw new Error("Emergency interview questions could not be verified after saving")
+      }
+    }
+
+    console.warn("AI question generation failed; emergency fallback questions were persisted", {
+      interviewId: input.interviewId,
+      organizationId: input.organizationId,
+      lastError: normalizeMessage(lastError),
+      questionCount: emergencyQuestions.length,
+    })
+
+    await markQuestionGenerationSucceeded(input.organizationId, input.interviewId)
+    return { success: true, fallback: true }
+  } catch (fallbackError) {
+    lastError = fallbackError
   }
 
   await markQuestionGenerationFailed(input.organizationId, input.interviewId, lastError)

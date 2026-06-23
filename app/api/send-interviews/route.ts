@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { after, NextResponse } from "next/server"
 import { Prisma } from "@prisma/client"
 
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
@@ -32,6 +32,22 @@ type CandidateInterviewSchedule = {
   accessType: InterviewAccessType
   startTime: string | null
   endTime: string | null
+}
+
+type QueuedScreeningInvite = {
+  interviewId: string
+  candidateId: string
+  candidateName: string
+  email: string
+  inviteLink: string
+  matchId: string | null
+  screeningJobId: string
+  organizationId: string
+  jobId: string
+  companyName: string
+  roleTitle: string
+  duration: number | null
+  expiryDate: string | null
 }
 
 type OrganizationEmailBrandRow = {
@@ -134,6 +150,64 @@ function getErrorMessage(error: unknown) {
   }
 
   return "Unknown error"
+}
+
+async function prepareAndSendQueuedScreeningInvite(input: QueuedScreeningInvite) {
+  try {
+    await prepareInterviewQuestionsWithRetry({
+      organizationId: input.organizationId,
+      interviewId: input.interviewId,
+      totalQuestions: 10,
+      interviewDurationMinutes: input.duration ?? undefined,
+    })
+
+    await sendAiScreeningInterviewEmail({
+      to: input.email,
+      name: input.candidateName,
+      link: input.inviteLink,
+      companyName: input.companyName,
+      roleTitle: input.roleTitle,
+      duration: input.duration,
+      expiryDate: input.expiryDate,
+    })
+
+    await recordInterviewInviteForScreening({
+      interviewId: input.interviewId,
+      candidateId: input.candidateId,
+      screeningJobId: input.screeningJobId,
+      email: input.email,
+      inviteLink: input.inviteLink,
+      matchId: input.matchId,
+      emailStatus: "SENT",
+    })
+    await recordInterviewInviteTracking({
+      interviewId: input.interviewId,
+      companyId: input.organizationId,
+      jobId: input.jobId,
+      candidateEmail: input.email,
+    })
+  } catch (error) {
+    console.error("Queued VERIS interview preparation failed", {
+      interviewId: input.interviewId,
+      candidateId: input.candidateId,
+      error: getErrorMessage(error),
+    })
+
+    await recordInterviewInviteForScreening({
+      interviewId: input.interviewId,
+      candidateId: input.candidateId,
+      screeningJobId: input.screeningJobId,
+      email: input.email,
+      inviteLink: input.inviteLink,
+      matchId: input.matchId,
+      emailStatus: "FAILED",
+    }).catch((recordError) => {
+      console.warn("Failed to record queued VERIS invite failure", {
+        interviewId: input.interviewId,
+        error: getErrorMessage(recordError),
+      })
+    })
+  }
 }
 
 async function getOrganizationEmailBrand(organizationId: string) {
@@ -301,6 +375,7 @@ export async function POST(request: Request) {
       }
     }
 
+    const queuedInvites: QueuedScreeningInvite[] = []
     const results = await processInBatches(selected, BATCH_SIZE, async (match) => {
       const email = normalizeEmail(match.email)
 
@@ -324,73 +399,29 @@ export async function POST(request: Request) {
           startTime: scheduleByCandidateId.get(match.candidate_id)?.startTime ?? undefined,
           endTime: scheduleByCandidateId.get(match.candidate_id)?.endTime ?? undefined,
         })
-        await prepareInterviewQuestionsWithRetry({
-          organizationId: auth.organizationId,
+        queuedInvites.push({
           interviewId: link.interviewId,
-          totalQuestions: 10,
-          interviewDurationMinutes: emailDuration ?? undefined,
+          candidateId: match.candidate_id,
+          candidateName: match.candidate_name,
+          email,
+          inviteLink: link.link,
+          matchId: match.match_id ?? null,
+          screeningJobId,
+          organizationId: auth.organizationId,
+          jobId: interviewJobId,
+          companyName,
+          roleTitle: emailRoleTitle,
+          duration: emailDuration,
+          expiryDate: scheduleByCandidateId.get(match.candidate_id)?.endTime ?? null,
         })
 
-        try {
-          await sendAiScreeningInterviewEmail({
-            to: email,
-            name: match.candidate_name,
-            link: link.link,
-            companyName,
-            roleTitle: emailRoleTitle,
-            duration: emailDuration,
-            expiryDate: scheduleByCandidateId.get(match.candidate_id)?.endTime ?? null,
-          })
-
-          await recordInterviewInviteForScreening({
-            interviewId: link.interviewId,
-            candidateId: match.candidate_id,
-            screeningJobId,
-            email,
-            inviteLink: link.link,
-            matchId: match.match_id,
-            emailStatus: "SENT",
-          })
-          await recordInterviewInviteTracking({
-            interviewId: link.interviewId,
-            companyId: auth.organizationId,
-            jobId: interviewJobId,
-            candidateEmail: email,
-          })
-
-          return {
-            candidateId: match.candidate_id,
-            candidateName: match.candidate_name,
-            email,
-            status: "SENT",
-            error: null,
-            inviteLink: link.link,
-          }
-        } catch (emailError) {
-          await recordInterviewInviteForScreening({
-            interviewId: link.interviewId,
-            candidateId: match.candidate_id,
-            screeningJobId,
-            email,
-            inviteLink: link.link,
-            matchId: match.match_id,
-            emailStatus: "FAILED",
-          })
-          await recordInterviewInviteTracking({
-            interviewId: link.interviewId,
-            companyId: auth.organizationId,
-            jobId: interviewJobId,
-            candidateEmail: email,
-          })
-
-          return {
-            candidateId: match.candidate_id,
-            candidateName: match.candidate_name,
-            email,
-            status: "FAILED",
-            error: getErrorMessage(emailError),
-            inviteLink: link.link,
-          }
+        return {
+          candidateId: match.candidate_id,
+          candidateName: match.candidate_name,
+          email,
+          status: "QUEUED",
+          error: null,
+          inviteLink: link.link,
         }
       } catch (error) {
         return {
@@ -403,6 +434,16 @@ export async function POST(request: Request) {
         }
       }
     })
+
+    if (queuedInvites.length > 0) {
+      after(() =>
+        processInBatches(queuedInvites, 2, prepareAndSendQueuedScreeningInvite).catch((error) => {
+          console.error("Queued VERIS interview batch failed", {
+            error: getErrorMessage(error),
+          })
+        })
+      )
+    }
 
     const chargeableLinkCount = results.filter((result) => result.inviteLink).length
     const trialCredits = chargeableLinkCount > 0
@@ -418,6 +459,7 @@ export async function POST(request: Request) {
       data: {
         requestedCount: selected.length,
         sentCount: results.filter((result) => result.status === "SENT").length,
+        queuedCount: results.filter((result) => result.status === "QUEUED").length,
         skippedCount: results.filter((result) => result.status === "SKIPPED").length,
         failedCount: results.filter((result) => result.status === "FAILED").length,
         matchScope,
