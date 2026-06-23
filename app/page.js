@@ -139,6 +139,7 @@ function DashboardContent({ profile, overview, isLoading }) {
   const displayProfile = profile ?? overview?.profile ?? null;
   const permissionProfile = displayProfile?.permissions?.length ? displayProfile : DEFAULT_RECRUITER_PERMISSION_PROFILE;
   const fullOverview = normalizeDashboardOverview(overview) ?? createEmptyDashboardOverview(displayProfile);
+  const isPartialOverview = Boolean(fullOverview?.partial);
   const [trialCredits, setTrialCredits] = useState(overview?.trialCredits ?? null);
   const activeInterviewCount = fullOverview?.pendingInterviewsTotal ?? fullOverview?.pendingInterviews?.length ?? 0;
   const candidateCount = fullOverview?.candidates?.length ?? 0;
@@ -269,7 +270,7 @@ function DashboardContent({ profile, overview, isLoading }) {
           {canViewInterviews || canViewReports ? (
           <Suspense fallback={null}>
             <RecordedInterviews
-              initialRecordedInterviews={fullOverview?.recordedInterviews}
+              initialRecordedInterviews={isPartialOverview ? undefined : fullOverview?.recordedInterviews}
               organizationId={displayProfile?.organizationId}
               profile={displayProfile}
               isLoading={false}
@@ -283,7 +284,10 @@ function DashboardContent({ profile, overview, isLoading }) {
           ) : null}
           {canUseAiScreening || canViewReports ? (
           <Suspense fallback={null}>
-            <VerisSummary initialSummaries={fullOverview?.veris} isLoading={false} />
+            <VerisSummary
+              initialSummaries={isPartialOverview ? undefined : fullOverview?.veris}
+              isLoading={false}
+            />
           </Suspense>
           ) : null}
           {canViewWarRoom ? <WarRoomButton organizationId={displayProfile?.organizationId} /> : null}
