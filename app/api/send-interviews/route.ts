@@ -1,4 +1,4 @@
-import { after, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { Prisma } from "@prisma/client"
 
 import { getRecruiterRequestContext } from "@/lib/server/auth-context"
@@ -12,8 +12,8 @@ import {
 import {
   createPreparingInterview,
   prepareInterviewQuestionsWithRetry,
+  sendInterviewEmailForInterview,
 } from "@/lib/server/services/interview-workflow"
-import { sendAiScreeningInterviewEmail } from "@/lib/server/ai-screening/email"
 import {
   getMatchesForInviteSelection,
   getScreeningJob,
@@ -25,7 +25,8 @@ import { assertTrialCreditsAvailable, deductTrialCredits, getOrCreateTrialCredit
 export const runtime = "nodejs"
 export const maxDuration = 300
 
-const BATCH_SIZE = 8
+const LINK_CREATION_BATCH_SIZE = 2
+const PREPARATION_BATCH_SIZE = 12
 type MatchScope = "BATCH" | "GLOBAL"
 type InterviewAccessType = "FLEXIBLE" | "SCHEDULED"
 type CandidateInterviewSchedule = {
@@ -154,22 +155,32 @@ function getErrorMessage(error: unknown) {
 }
 
 async function prepareAndSendQueuedScreeningInvite(input: QueuedScreeningInvite) {
+  console.log("VERIS bulk interview preparation started", {
+    interviewId: input.interviewId,
+    candidateId: input.candidateId,
+  })
+
   try {
     await prepareInterviewQuestionsWithRetry({
       organizationId: input.organizationId,
       interviewId: input.interviewId,
       totalQuestions: 10,
       interviewDurationMinutes: input.duration ?? undefined,
+      maxAttempts: 1,
+      generationTimeoutMs: 30000,
+    })
+    console.log("VERIS bulk interview questions ready", {
+      interviewId: input.interviewId,
+      candidateId: input.candidateId,
     })
 
-    await sendAiScreeningInterviewEmail({
-      to: input.email,
-      name: input.candidateName,
-      link: input.inviteLink,
-      companyName: input.companyName,
-      roleTitle: input.roleTitle,
-      duration: input.duration,
-      expiryDate: input.expiryDate,
+    const emailResult = await sendInterviewEmailForInterview(input.organizationId, input.interviewId)
+    if (!emailResult.emailSent) {
+      throw new Error(emailResult.emailError || "Interview email could not be sent")
+    }
+    console.log("VERIS bulk interview email sent", {
+      interviewId: input.interviewId,
+      candidateId: input.candidateId,
     })
 
     await recordInterviewInviteForScreening({
@@ -187,11 +198,22 @@ async function prepareAndSendQueuedScreeningInvite(input: QueuedScreeningInvite)
       jobId: input.jobId,
       candidateEmail: input.email,
     })
+
+    return {
+      interviewId: input.interviewId,
+      candidateId: input.candidateId,
+      candidateName: input.candidateName,
+      email: input.email,
+      status: "SENT" as const,
+      error: null,
+      inviteLink: input.inviteLink,
+    }
   } catch (error) {
+    const errorMessage = getErrorMessage(error)
     console.error("Queued VERIS interview preparation failed", {
       interviewId: input.interviewId,
       candidateId: input.candidateId,
-      error: getErrorMessage(error),
+      error: errorMessage,
     })
 
     await recordInterviewInviteForScreening({
@@ -208,6 +230,16 @@ async function prepareAndSendQueuedScreeningInvite(input: QueuedScreeningInvite)
         error: getErrorMessage(recordError),
       })
     })
+
+    return {
+      interviewId: input.interviewId,
+      candidateId: input.candidateId,
+      candidateName: input.candidateName,
+      email: input.email,
+      status: "FAILED" as const,
+      error: errorMessage,
+      inviteLink: input.inviteLink,
+    }
   }
 }
 
@@ -377,11 +409,12 @@ export async function POST(request: Request) {
     }
 
     const queuedInvites: QueuedScreeningInvite[] = []
-    const results = await processInBatches(selected, BATCH_SIZE, async (match) => {
+    const linkResults = await processInBatches(selected, LINK_CREATION_BATCH_SIZE, async (match) => {
       const email = normalizeEmail(match.email)
 
       if (!email) {
         return {
+          interviewId: null,
           candidateId: match.candidate_id,
           candidateName: match.candidate_name,
           email: match.email,
@@ -417,6 +450,7 @@ export async function POST(request: Request) {
         })
 
         return {
+          interviewId: link.interviewId,
           candidateId: match.candidate_id,
           candidateName: match.candidate_name,
           email,
@@ -426,6 +460,7 @@ export async function POST(request: Request) {
         }
       } catch (error) {
         return {
+          interviewId: null,
           candidateId: match.candidate_id,
           candidateName: match.candidate_name,
           email,
@@ -436,15 +471,29 @@ export async function POST(request: Request) {
       }
     })
 
-    if (queuedInvites.length > 0) {
-      after(() =>
-        processInBatches(queuedInvites, BATCH_SIZE, prepareAndSendQueuedScreeningInvite).catch((error) => {
-          console.error("Queued VERIS interview batch failed", {
-            error: getErrorMessage(error),
-          })
-        })
-      )
-    }
+    const deliveryResults = queuedInvites.length > 0
+      ? await processInBatches(queuedInvites, PREPARATION_BATCH_SIZE, prepareAndSendQueuedScreeningInvite)
+      : []
+    const deliveryResultByInterviewId = new Map(
+      deliveryResults.map((result) => [result.interviewId, result])
+    )
+    const results = linkResults.map((result) => {
+      if (result.status !== "QUEUED" || !result.interviewId) {
+        return result
+      }
+
+      return deliveryResultByInterviewId.get(result.interviewId) ?? {
+        ...result,
+        status: "FAILED" as const,
+        error: "Interview preparation did not return a final result",
+      }
+    })
+    console.log("VERIS bulk interview pipeline completed", {
+      requestedCount: selected.length,
+      sentCount: results.filter((result) => result.status === "SENT").length,
+      failedCount: results.filter((result) => result.status === "FAILED").length,
+      skippedCount: results.filter((result) => result.status === "SKIPPED").length,
+    })
 
     const chargeableLinkCount = results.filter((result) => result.inviteLink).length
     const trialCredits = chargeableLinkCount > 0

@@ -1952,13 +1952,14 @@ export default function AiScreeningPage() {
       }
       invalidateDashboardOverviewCache()
       setSendResults(payload.data?.results ?? [])
-      const queuedCount = Number(payload.data?.queuedCount ?? 0)
       const sentCount = Number(payload.data?.sentCount ?? 0)
-      setNotice(
-        queuedCount > 0
-          ? `${queuedCount} interview invitations queued. VERIS is preparing questions and sending emails in the background.`
-          : `${sentCount} interview invitations sent.`
-      )
+      const failedCount = Number(payload.data?.failedCount ?? 0)
+      const skippedCount = Number(payload.data?.skippedCount ?? 0)
+      setNotice([
+        `${sentCount} interview invitation${sentCount === 1 ? "" : "s"} sent.`,
+        failedCount > 0 ? `${failedCount} failed.` : "",
+        skippedCount > 0 ? `${skippedCount} skipped.` : "",
+      ].filter(Boolean).join(" "))
       return "sent"
     } catch (sendError) {
       const message = sendError instanceof Error ? sendError.message : "Bulk interview send failed"
@@ -3070,7 +3071,10 @@ export default function AiScreeningPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate font-medium text-white">{result.candidateName}</p>
-                      <p className="mt-1 truncate text-sm text-slate-500">{result.email || result.error || "No email"}</p>
+                      <p className="mt-1 truncate text-sm text-slate-500">{result.email || "No email"}</p>
+                      {result.error ? (
+                        <p className="mt-2 text-xs leading-5 text-rose-300">{result.error}</p>
+                      ) : null}
                     </div>
                     <span className={`rounded-full border px-3 py-1 text-xs uppercase tracking-[0.18em] ${result.status === "SENT" ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-300" : result.status === "SKIPPED" ? "border-amber-500/20 bg-amber-500/10 text-amber-300" : "border-rose-500/20 bg-rose-500/10 text-rose-300"}`}>
                       {result.status}

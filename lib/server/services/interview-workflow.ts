@@ -18,6 +18,7 @@ const CREATE_LINK_AI_TIMEOUT_MS = Number(process.env.INTERVIEW_QUESTION_TIMEOUT_
 const MIN_QUESTION_COUNT = 5
 const QUESTION_RETRY_COUNT = 3
 const BASE_BACKOFF_MS = 400
+let interviewWorkflowSchemaReady: Promise<void> | null = null
 
 type PreparingInterviewInput = {
   organizationId: string
@@ -82,6 +83,8 @@ type GenerateQuestionInput = {
   totalQuestions?: number
   interviewDurationMinutes?: number
   similarityThreshold?: number
+  maxAttempts?: number
+  generationTimeoutMs?: number
 }
 
 function sleep(ms: number) {
@@ -225,47 +228,56 @@ function mapWorkflowRow(row: InterviewWorkflowRow) {
 }
 
 export async function ensureInterviewWorkflowSchema() {
-  await prisma.$executeRawUnsafe(`
-    alter table public.interviews
-      add column if not exists question_status text not null default 'PENDING',
-      add column if not exists email_status text not null default 'PENDING',
-      add column if not exists failure_reason text,
-      add column if not exists last_error text,
-      add column if not exists questions_generated_at timestamptz,
-      add column if not exists email_sent_at timestamptz,
-      add column if not exists idempotency_key text
-  `)
+  if (!interviewWorkflowSchemaReady) {
+    interviewWorkflowSchemaReady = (async () => {
+      await prisma.$executeRawUnsafe(`
+        alter table public.interviews
+          add column if not exists question_status text not null default 'PENDING',
+          add column if not exists email_status text not null default 'PENDING',
+          add column if not exists failure_reason text,
+          add column if not exists last_error text,
+          add column if not exists questions_generated_at timestamptz,
+          add column if not exists email_sent_at timestamptz,
+          add column if not exists idempotency_key text
+      `)
 
-  await prisma.$executeRawUnsafe(`
-    create unique index if not exists idx_interviews_org_idempotency_key
-      on public.interviews (organization_id, idempotency_key)
-      where idempotency_key is not null
-  `)
+      await prisma.$executeRawUnsafe(`
+        create unique index if not exists idx_interviews_org_idempotency_key
+          on public.interviews (organization_id, idempotency_key)
+          where idempotency_key is not null
+      `)
 
-  await prisma.$executeRawUnsafe(`
-    alter table public.interview_invites
-      drop constraint if exists interview_invites_status_check,
-      drop constraint if exists status_check
-  `)
+      await prisma.$executeRawUnsafe(`
+        alter table public.interview_invites
+          drop constraint if exists interview_invites_status_check,
+          drop constraint if exists status_check
+      `)
 
-  await prisma.$executeRawUnsafe(`
-    alter table public.interview_invites
-      add constraint interview_invites_status_check
-      check (
-        status = any (
-          array[
-            'ACTIVE',
-            'EXPIRED',
-            'USED',
-            'REVOKED',
-            'COMPLETED',
-            'CANCELLED',
-            'PREPARING',
-            'PREPARATION_FAILED'
-          ]::text[]
-        )
-      )
-  `)
+      await prisma.$executeRawUnsafe(`
+        alter table public.interview_invites
+          add constraint interview_invites_status_check
+          check (
+            status = any (
+              array[
+                'ACTIVE',
+                'EXPIRED',
+                'USED',
+                'REVOKED',
+                'COMPLETED',
+                'CANCELLED',
+                'PREPARING',
+                'PREPARATION_FAILED'
+              ]::text[]
+            )
+          )
+      `)
+    })().catch((error) => {
+      interviewWorkflowSchemaReady = null
+      throw error
+    })
+  }
+
+  await interviewWorkflowSchemaReady
 }
 
 async function getWorkflowByIdempotencyKey(organizationId: string, idempotencyKey: string) {
@@ -521,8 +533,9 @@ export async function prepareInterviewQuestionsWithRetry(input: GenerateQuestion
   await markQuestionGenerationStarted(input.organizationId, input.interviewId)
   const context = await getInterviewContext(input.organizationId, input.interviewId)
   let lastError: unknown = null
+  const maxAttempts = Math.max(1, Math.min(QUESTION_RETRY_COUNT, input.maxAttempts ?? QUESTION_RETRY_COUNT))
 
-  for (let attempt = 1; attempt <= QUESTION_RETRY_COUNT; attempt += 1) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
       const candidateResumeText = input.candidateResumeText || context.resume_text || undefined
       const parsedResumeSkills = candidateResumeText ? parseResumeText(candidateResumeText).skills ?? [] : []
@@ -554,7 +567,7 @@ export async function prepareInterviewQuestionsWithRetry(input: GenerateQuestion
           previousQuestions: [],
           similarityThreshold: input.similarityThreshold ?? 0.8,
         }),
-        CREATE_LINK_AI_TIMEOUT_MS,
+        input.generationTimeoutMs ?? CREATE_LINK_AI_TIMEOUT_MS,
         "AI question generation timed out"
       )
 
@@ -582,7 +595,7 @@ export async function prepareInterviewQuestionsWithRetry(input: GenerateQuestion
       return { success: true }
     } catch (error) {
       lastError = error
-      if (attempt < QUESTION_RETRY_COUNT) {
+      if (attempt < maxAttempts) {
         await sleep(BASE_BACKOFF_MS * 2 ** (attempt - 1))
       }
     }
