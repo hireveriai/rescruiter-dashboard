@@ -19,6 +19,7 @@ import {
 import { assertTrialCreditsAvailable, deductTrialCredits } from "@/lib/server/services/trial-credits"
 
 export const runtime = "nodejs"
+export const maxDuration = 300
 
 const BATCH_SIZE = 12
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -373,72 +374,91 @@ export async function POST(request: Request) {
       amount: candidates.length,
     })
 
-    const generatedMatches = await processInBatches(candidates, BATCH_SIZE, async (candidate) => {
-      const result = await matchCandidateToJobWithAI({
-        candidateJson: candidate.extracted_json ?? {},
-        resumeText: candidate.resume_text,
-        job: {
-          title: job.title,
-          description: job.description,
-          roleTitle: job.roleTitle,
-          requiredSkills: job.requiredSkills,
-          experienceNeeded: job.experienceNeeded,
-          seniority:
-            job.extractedJson &&
-            typeof job.extractedJson === "object" &&
-            "seniority" in job.extractedJson &&
-            (job.extractedJson.seniority === "JUNIOR" ||
-              job.extractedJson.seniority === "MID" ||
-              job.extractedJson.seniority === "SENIOR")
-              ? job.extractedJson.seniority
-              : null,
-          summary:
-            job.extractedJson &&
-            typeof job.extractedJson === "object" &&
-            "summary" in job.extractedJson &&
-            typeof job.extractedJson.summary === "string"
-              ? job.extractedJson.summary
-              : job.description.slice(0, 700),
-        },
-      })
+    const generatedMatchResults = await processInBatches(candidates, BATCH_SIZE, async (candidate) => {
+      try {
+        const result = await matchCandidateToJobWithAI({
+          candidateJson: candidate.extracted_json ?? {},
+          resumeText: candidate.resume_text,
+          job: {
+            title: job.title,
+            description: job.description,
+            roleTitle: job.roleTitle,
+            requiredSkills: job.requiredSkills,
+            experienceNeeded: job.experienceNeeded,
+            seniority:
+              job.extractedJson &&
+              typeof job.extractedJson === "object" &&
+              "seniority" in job.extractedJson &&
+              (job.extractedJson.seniority === "JUNIOR" ||
+                job.extractedJson.seniority === "MID" ||
+                job.extractedJson.seniority === "SENIOR")
+                ? job.extractedJson.seniority
+                : null,
+            summary:
+              job.extractedJson &&
+              typeof job.extractedJson === "object" &&
+              "summary" in job.extractedJson &&
+              typeof job.extractedJson.summary === "string"
+                ? job.extractedJson.summary
+                : job.description.slice(0, 700),
+          },
+        })
 
-      await upsertCandidateJobMatch({
-        organizationId: auth.organizationId,
-        candidateId: candidate.candidate_id,
-        jobId,
-        result,
-      }).catch((error) => {
-        console.warn("VERIS generated match cache write skipped", {
+        await upsertCandidateJobMatch({
+          organizationId: auth.organizationId,
+          candidateId: candidate.candidate_id,
+          jobId,
+          result,
+        }).catch((error) => {
+          console.warn("VERIS generated match cache write skipped", {
+            candidateId: candidate.candidate_id,
+            jobId,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        })
+
+        return {
+          id: `generated-${candidate.candidate_id}`,
+          candidateId: candidate.candidate_id,
+          candidateName: candidate.full_name,
+          email: candidate.email,
+          phone: candidate.phone,
+          resumeUrl: candidate.resume_url,
+          matchScore: result.matchScore,
+          skillMatch: result.skillMatch,
+          experienceMatch: result.experienceMatch,
+          riskLevel: result.riskLevel,
+          recommendation: result.recommendation,
+          insights: {
+            missing_skills: result.missingSkills,
+            short_reasoning: result.shortReasoning,
+            evaluated_at: new Date().toISOString(),
+          },
+          createdAt: new Date().toISOString(),
+        }
+      } catch (error) {
+        console.error("VERIS candidate match failed; continuing bulk screening", {
           candidateId: candidate.candidate_id,
           jobId,
           error: error instanceof Error ? error.message : String(error),
         })
-      })
-
-      return {
-        id: `generated-${candidate.candidate_id}`,
-        candidateId: candidate.candidate_id,
-        candidateName: candidate.full_name,
-        email: candidate.email,
-        phone: candidate.phone,
-        resumeUrl: candidate.resume_url,
-        matchScore: result.matchScore,
-        skillMatch: result.skillMatch,
-        experienceMatch: result.experienceMatch,
-        riskLevel: result.riskLevel,
-        recommendation: result.recommendation,
-        insights: {
-          missing_skills: result.missingSkills,
-          short_reasoning: result.shortReasoning,
-          evaluated_at: new Date().toISOString(),
-        },
-        createdAt: new Date().toISOString(),
+        return null
       }
     })
+    const generatedMatches = generatedMatchResults.filter(
+      (match): match is NonNullable<typeof match> => match !== null
+    )
+    const failedMatchCount = candidates.length - generatedMatches.length
+
+    if (generatedMatches.length === 0) {
+      throw new ApiError(502, "VERIS_MATCHING_FAILED", "No candidates could be screened. Please retry the screening.")
+    }
+
+    const successfullyMatchedCandidateIds = generatedMatches.map((match) => match.candidateId)
 
     let matches = await getMatchResults(auth.organizationId, jobId, {
       uploadBatchId: effectiveBatchId || null,
-      candidateIds: resolvedCandidateIds,
+      candidateIds: successfullyMatchedCandidateIds,
       fileNames: uploadFileNames,
       includeAllCandidates,
     }).catch((error) => {
@@ -448,11 +468,11 @@ export async function POST(request: Request) {
       })
       return [] as typeof generatedMatches
     })
-    matches = includeAllCandidates ? matches : filterMatchesToCandidateIds(matches, resolvedCandidateIds)
+    matches = filterMatchesToCandidateIds(matches, successfullyMatchedCandidateIds)
 
-    if (matches.length === 0 && !includeAllCandidates && uploadFileNames.length > 0 && resolvedCandidateIds.length > 0) {
+    if (matches.length === 0 && !includeAllCandidates && uploadFileNames.length > 0 && successfullyMatchedCandidateIds.length > 0) {
       matches = await getMatchResults(auth.organizationId, jobId, {
-        candidateIds: resolvedCandidateIds,
+        candidateIds: successfullyMatchedCandidateIds,
         fileNames: uploadFileNames,
         includeAllCandidates: false,
       }).catch((error) => {
@@ -462,16 +482,16 @@ export async function POST(request: Request) {
         })
         return [] as typeof generatedMatches
       })
-      matches = filterMatchesToCandidateIds(matches, resolvedCandidateIds)
+      matches = filterMatchesToCandidateIds(matches, successfullyMatchedCandidateIds)
     }
 
     if (matches.length === 0) {
-      matches = includeAllCandidates ? generatedMatches : filterMatchesToCandidateIds(generatedMatches, resolvedCandidateIds)
+      matches = generatedMatches
     }
     const trialCredits = await deductTrialCredits({
       organizationId: auth.organizationId,
       kind: "SCREENING",
-      amount: candidates.length,
+      amount: generatedMatches.length,
     })
     const runId = await createScreeningRun({
       organizationId: auth.organizationId,
@@ -492,7 +512,8 @@ export async function POST(request: Request) {
       data: {
         job,
         runId,
-        matchedCount: candidates.length,
+        matchedCount: generatedMatches.length,
+        failedCount: failedMatchCount,
         matchScope,
         source,
         matches,

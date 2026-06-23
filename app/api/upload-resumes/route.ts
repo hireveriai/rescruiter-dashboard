@@ -19,10 +19,12 @@ import {
 } from "@/lib/server/ai-screening/service"
 
 export const runtime = "nodejs"
+export const maxDuration = 300
 
 const MAX_FILES = 50
 const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024
 const BATCH_SIZE = 3
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 type UploadResult = {
   fileName: string
@@ -68,6 +70,7 @@ export async function POST(request: Request) {
     const auth = await getRecruiterRequestContext(request)
     const formData = await request.formData()
     const files = getResumeFiles(formData)
+    const requestedBatchId = String(formData.get("batchId") ?? formData.get("batch_id") ?? "").trim()
 
     if (files.length === 0) {
       throw new ApiError(400, "RESUMES_REQUIRED", "At least one PDF or DOCX resume is required")
@@ -77,7 +80,11 @@ export async function POST(request: Request) {
       throw new ApiError(400, "TOO_MANY_FILES", `Upload at most ${MAX_FILES} resumes at a time`)
     }
 
-    const batchId = randomUUID()
+    if (requestedBatchId && !UUID_REGEX.test(requestedBatchId)) {
+      throw new ApiError(400, "INVALID_UPLOAD_BATCH", "Upload batch ID is invalid")
+    }
+
+    const batchId = requestedBatchId || randomUUID()
     const results = await processInBatches(files, BATCH_SIZE, async (file): Promise<UploadResult> => {
       try {
         if (!isSupportedResumeFile(file)) {

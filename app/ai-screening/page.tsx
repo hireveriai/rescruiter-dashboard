@@ -443,6 +443,7 @@ const screeningLoaderSteps: Array<{ phase: ScreeningLoaderPhase; label: string; 
     detail: "Screening intelligence is ready for recruiter review.",
   },
 ]
+const RESUME_UPLOAD_CHUNK_SIZE = 8
 
 function ScreeningAnalysisOverlay({ phase }: { phase: ScreeningLoaderPhase | null }) {
   if (!phase) {
@@ -1447,35 +1448,61 @@ export default function AiScreeningPage() {
         email: null,
         error: null,
       })))
-      const formData = new FormData()
-      files.forEach((file) => formData.append("files", file))
-      const response = await fetch(authUrl("/api/upload-resumes"), {
-        method: "POST",
-        credentials: "include",
-        body: formData,
-      })
+      const batchId = crypto.randomUUID()
+      const rows: UploadRow[] = []
+      let uploadedCount = 0
+
+      for (let index = 0; index < files.length; index += RESUME_UPLOAD_CHUNK_SIZE) {
+        const chunk = files.slice(index, index + RESUME_UPLOAD_CHUNK_SIZE)
+        const formData = new FormData()
+        formData.append("batchId", batchId)
+        chunk.forEach((file) => formData.append("files", file))
+        setNotice(`Uploading and parsing resumes... ${Math.min(index + chunk.length, files.length)} of ${files.length}`)
+
+        try {
+          const response = await fetch(authUrl("/api/upload-resumes"), {
+            method: "POST",
+            credentials: "include",
+            body: formData,
+          })
+          const payload = await response.json().catch(() => null)
+          const chunkRows = ((payload?.data?.results ?? []) as UploadRow[]).map((row) => ({
+            ...row,
+            status: row.status === "uploaded" ? "ready" : row.status,
+          }))
+
+          if (chunkRows.length === 0) {
+            throw new Error(payload?.error?.message || payload?.message || "Resume upload failed")
+          }
+
+          rows.push(...chunkRows)
+          uploadedCount += Number(payload?.data?.uploadedCount ?? chunkRows.filter(isResumeReady).length)
+        } catch (chunkError) {
+          const message = chunkError instanceof Error ? chunkError.message : "Resume upload failed"
+          rows.push(...chunk.map((file) => ({
+            fileName: file.name,
+            status: "failed" as const,
+            candidateId: null,
+            uploadBatchId: null,
+            name: null,
+            email: null,
+            error: message,
+          })))
+        }
+
+        setUploadRows([...rows])
+      }
+
       setScreeningLoaderStep("uploaded")
       setResumeState("PROCESSING")
-      const payload = await response.json().catch(() => null)
-      const rows = ((payload?.data?.results ?? []) as UploadRow[]).map((row) => ({
-        ...row,
-        status: row.status === "uploaded" ? "ready" : row.status,
-      }))
-      const batchId = payload?.data?.batchId ?? ""
-      const uploadedCount = payload?.data?.uploadedCount ?? 0
       const candidateIds = rows
         .filter((row) => isResumeReady(row) && row.candidateId)
         .map((row) => row.candidateId as string)
       setUploadRows(rows)
 
-      if (!response.ok || !payload?.success) {
+      if (uploadedCount === 0) {
         const firstFailure = rows.find((row: UploadRow) => row.status === "failed" && row.error)
-        throw new Error(
-          payload?.error?.message ||
-            payload?.message ||
-            firstFailure?.error ||
-            "Resume upload failed"
-        )
+        throw new Error(firstFailure?.error || "No resumes could be processed")
       }
 
       setCurrentBatchId(batchId)
@@ -1488,7 +1515,12 @@ export default function AiScreeningPage() {
       setCompareCandidateIds([])
       setSendResults([])
       setFlowStep("JD_READY")
-      setNotice(`${uploadedCount} resumes parsed and saved. Select a job and analyze it next.`)
+      const failedCount = rows.length - uploadedCount
+      setNotice(
+        failedCount > 0
+          ? `${uploadedCount} resumes parsed and saved; ${failedCount} failed. Select a job and analyze the successful resumes.`
+          : `${uploadedCount} resumes parsed and saved. Select a job and analyze it next.`
+      )
 
       if (AUTO_RUN && batchId && uploadedCount > 0 && selectedJobIdForUpload && !isProcessingJD && !isMatching) {
         const job = await processJobIntelligence({
@@ -1787,7 +1819,12 @@ export default function AiScreeningPage() {
       }
       setSelectedCandidateIds(getDefaultSelectedCandidateIds(rankedMatches))
       setFlowStep("MATCHED")
-      setNotice("Matching complete. Review top candidates below.")
+      const failedCount = Number(payload.data?.failedCount ?? 0)
+      setNotice(
+        failedCount > 0
+          ? `Matching complete for ${rankedMatches.length} candidates; ${failedCount} could not be screened. Review the results below.`
+          : "Matching complete. Review top candidates below."
+      )
       finishScreeningLoader()
 
       if (typeof window !== "undefined") {
@@ -2388,7 +2425,11 @@ export default function AiScreeningPage() {
                   <div key={row.id} className="flex items-center justify-between gap-4 border-b border-slate-800/80 px-4 py-3 last:border-b-0">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-white">{row.name || row.fileName}</p>
-                      <p className="mt-1 truncate text-xs text-slate-500">{row.email || row.error || "No Email ⚠️"}</p>
+                      {row.email || row.error || row.status === "READY" ? (
+                        <p className="mt-1 truncate text-xs text-slate-500">
+                          {row.email || row.error || "No Email ⚠️"}
+                        </p>
+                      ) : null}
                     </div>
                     <span className={`shrink-0 rounded-full border px-3 py-1 text-xs font-semibold ${getResumeStatusClass(row.status)}`}>
                       {getResumeStatusLabel(row.status)}

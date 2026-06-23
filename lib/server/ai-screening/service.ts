@@ -374,8 +374,20 @@ export async function recordUploadBatchManifest(input: {
       set
         organization_id = excluded.organization_id,
         created_by = excluded.created_by,
-        candidate_ids = excluded.candidate_ids,
-        file_names = excluded.file_names
+        candidate_ids = (
+          select coalesce(jsonb_agg(distinct candidate_id), '[]'::jsonb)
+          from jsonb_array_elements(
+            coalesce(public.ai_screening_upload_batches.candidate_ids, '[]'::jsonb) ||
+            coalesce(excluded.candidate_ids, '[]'::jsonb)
+          ) as candidates(candidate_id)
+        ),
+        file_names = (
+          select coalesce(jsonb_agg(distinct file_name), '[]'::jsonb)
+          from jsonb_array_elements(
+            coalesce(public.ai_screening_upload_batches.file_names, '[]'::jsonb) ||
+            coalesce(excluded.file_names, '[]'::jsonb)
+          ) as files(file_name)
+        )
     `)
   } catch (error) {
     console.warn("VERIS screening upload batch manifest write skipped", error)

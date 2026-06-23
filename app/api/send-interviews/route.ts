@@ -23,8 +23,9 @@ import {
 import { assertTrialCreditsAvailable, deductTrialCredits, getOrCreateTrialCredits } from "@/lib/server/services/trial-credits"
 
 export const runtime = "nodejs"
+export const maxDuration = 300
 
-const BATCH_SIZE = 4
+const BATCH_SIZE = 8
 type MatchScope = "BATCH" | "GLOBAL"
 type InterviewAccessType = "FLEXIBLE" | "SCHEDULED"
 type CandidateInterviewSchedule = {
@@ -437,7 +438,7 @@ export async function POST(request: Request) {
 
     if (queuedInvites.length > 0) {
       after(() =>
-        processInBatches(queuedInvites, 2, prepareAndSendQueuedScreeningInvite).catch((error) => {
+        processInBatches(queuedInvites, BATCH_SIZE, prepareAndSendQueuedScreeningInvite).catch((error) => {
           console.error("Queued VERIS interview batch failed", {
             error: getErrorMessage(error),
           })
