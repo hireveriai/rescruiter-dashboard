@@ -264,53 +264,78 @@ export async function getDashboardRecordings(organizationId: string, limit = 6, 
   const expiresExpression = columns.has("expires_at") ? "ir.expires_at::text" : "null::text"
   const createdExpression = columns.has("created_at") ? "ir.created_at::text" : "null::text"
   const filePathExpression = columns.has("file_path") ? "ir.file_path::text" : "null::text"
+  const groupingExpression = columns.has("attempt_id")
+    ? `coalesce(ir.attempt_id::text, i.interview_id::text, ir.${quoteIdentifier(idColumn)}::text)`
+    : `coalesce(i.interview_id::text, ir.${quoteIdentifier(idColumn)}::text)`
+  const recordingSortExpression = columns.has("created_at") ? "ir.created_at desc nulls last" : `ir.${quoteIdentifier(idColumn)} desc`
+  const resultSortExpression = columns.has("created_at") ? `"createdAt" desc nulls last` : `"recordingId" desc`
 
   const query = `
+    with latest_recording_per_attempt as (
+      select distinct on (${groupingExpression})
+        ir.${quoteIdentifier(idColumn)}::text as "recordingId",
+        coalesce(c.full_name, 'Unknown Candidate') as "candidateName",
+        coalesce(jp.job_title, '-') as "jobTitle",
+        ir.${quoteIdentifier(urlColumn)}::text as "recordingUrl",
+        ir.${quoteIdentifier(urlColumn)}::text as "audioUrl",
+        ${filePathExpression} as "storagePath",
+        true as "hasRecordingFile",
+        ${transcriptExpression} as "transcriptPreview",
+        (${transcriptReadyExpression}) as "transcriptReady",
+        (
+          (iev.ai_summary is not null and btrim(iev.ai_summary) <> '')
+          or iev.final_score is not null
+          or (iev.decision is not null and btrim(iev.decision) <> '')
+          or coalesce(ans_eval.evaluated_answer_count, 0) > 0
+        ) as "cognitiveAnalysisReady",
+        case
+          when iev.ai_summary is null or btrim(iev.ai_summary) = '' then null::text
+          when char_length(regexp_replace(iev.ai_summary, '\\s+', ' ', 'g')) > 160
+            then left(regexp_replace(iev.ai_summary, '\\s+', ' ', 'g'), 157) || '...'
+          else regexp_replace(iev.ai_summary, '\\s+', ' ', 'g')
+        end as "aiSummaryPreview",
+        ${retentionExpression}::int as "retentionDays",
+        ${expiresExpression} as "expiresAt",
+        ${createdExpression} as "createdAt",
+        ${groupingExpression} as "recordingGroupKey"
+      from public.interview_recordings ir
+      ${attemptJoin}
+      left join public.interviews i on i.interview_id = ${joinInterviewExpression}
+      left join lateral (
+        select ia2.*
+        from public.interview_attempts ia2
+        where ia2.interview_id = i.interview_id
+        order by
+          case when ia.attempt_id is not null and ia2.attempt_id = ia.attempt_id then 0 else 1 end,
+          ia2.started_at desc
+        limit 1
+      ) ia_latest on true
+      ${answerJoin}
+      ${evaluationJoin}
+      ${answerEvaluationJoin}
+      left join public.candidates c on c.candidate_id = i.candidate_id
+      left join public.job_positions jp on jp.job_id = i.job_id
+      where i.organization_id = $1::uuid
+        ${columns.has("status") ? "and coalesce(ir.status, 'completed') = 'completed'" : ""}
+      order by ${groupingExpression}, ${recordingSortExpression}
+    )
     select
-      ir.${quoteIdentifier(idColumn)}::text as "recordingId",
-      coalesce(c.full_name, 'Unknown Candidate') as "candidateName",
-      coalesce(jp.job_title, '-') as "jobTitle",
-      ir.${quoteIdentifier(urlColumn)}::text as "recordingUrl",
-      ir.${quoteIdentifier(urlColumn)}::text as "audioUrl",
-      ${filePathExpression} as "storagePath",
-      true as "hasRecordingFile",
-      ${transcriptExpression} as "transcriptPreview",
-      (${transcriptReadyExpression}) as "transcriptReady",
-      (
-        (iev.ai_summary is not null and btrim(iev.ai_summary) <> '')
-        or iev.final_score is not null
-        or (iev.decision is not null and btrim(iev.decision) <> '')
-        or coalesce(ans_eval.evaluated_answer_count, 0) > 0
-      ) as "cognitiveAnalysisReady",
-      case
-        when iev.ai_summary is null or btrim(iev.ai_summary) = '' then null::text
-        when char_length(regexp_replace(iev.ai_summary, '\\s+', ' ', 'g')) > 160
-          then left(regexp_replace(iev.ai_summary, '\\s+', ' ', 'g'), 157) || '...'
-        else regexp_replace(iev.ai_summary, '\\s+', ' ', 'g')
-      end as "aiSummaryPreview",
-      ${retentionExpression}::int as "retentionDays",
-      ${expiresExpression} as "expiresAt",
-      ${createdExpression} as "createdAt"
-    from public.interview_recordings ir
-    ${attemptJoin}
-    left join public.interviews i on i.interview_id = ${joinInterviewExpression}
-    left join lateral (
-      select ia2.*
-      from public.interview_attempts ia2
-      where ia2.interview_id = i.interview_id
-      order by
-        case when ia.attempt_id is not null and ia2.attempt_id = ia.attempt_id then 0 else 1 end,
-        ia2.started_at desc
-      limit 1
-    ) ia_latest on true
-    ${answerJoin}
-    ${evaluationJoin}
-    ${answerEvaluationJoin}
-    left join public.candidates c on c.candidate_id = i.candidate_id
-    left join public.job_positions jp on jp.job_id = i.job_id
-    where i.organization_id = $1::uuid
-      ${columns.has("status") ? "and coalesce(ir.status, 'completed') = 'completed'" : ""}
-    order by ${columns.has("created_at") ? "ir.created_at desc nulls last" : `ir.${quoteIdentifier(idColumn)} desc`}
+      "recordingId",
+      "candidateName",
+      "jobTitle",
+      "recordingUrl",
+      "audioUrl",
+      "storagePath",
+      "hasRecordingFile",
+      "transcriptPreview",
+      "transcriptReady",
+      "cognitiveAnalysisReady",
+      "aiSummaryPreview",
+      "retentionDays",
+      "expiresAt",
+      "createdAt"
+    from latest_recording_per_attempt
+    order by ${resultSortExpression}
     limit ${safeLimit}
   `
 
