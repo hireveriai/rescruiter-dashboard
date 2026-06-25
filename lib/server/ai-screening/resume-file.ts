@@ -22,11 +22,6 @@ type PdfWorkerModule = {
   WorkerMessageHandler?: unknown
 }
 
-type PdfScreenshotPage = {
-  dataUrl?: string
-  pageNumber?: number
-}
-
 type OpenAIResponsesOutputText = {
   output_text?: string
   output?: Array<{
@@ -119,6 +114,7 @@ async function extractPdfTextWithPdfJs(resumeBuffer: Buffer) {
 
   const getDocument = pdfjsModule.getDocument as (options: {
     data: Uint8Array
+    disableWorker?: boolean
     useWorkerFetch?: boolean
     isEvalSupported?: boolean
     useSystemFonts?: boolean
@@ -126,6 +122,7 @@ async function extractPdfTextWithPdfJs(resumeBuffer: Buffer) {
 
   const loadingTask = getDocument({
     data: new Uint8Array(resumeBuffer),
+    disableWorker: true,
     useWorkerFetch: false,
     isEvalSupported: false,
     useSystemFonts: true,
@@ -160,44 +157,6 @@ async function extractPdfTextWithPdfJs(resumeBuffer: Buffer) {
   } finally {
     await pdfDocument.destroy?.()
     await loadingTask.destroy?.()
-  }
-}
-
-async function extractPdfTextWithPdfParse(resumeBuffer: Buffer) {
-  await ensurePdfDomPolyfills()
-  const workerHost = globalThis as typeof globalThis & {
-    pdfjsWorker?: PdfWorkerModule
-  }
-  const previousWorker = workerHost.pdfjsWorker
-
-  delete workerHost.pdfjsWorker
-
-  const pdfParseModule = await import("pdf-parse")
-  const PDFParse = ("PDFParse" in pdfParseModule ? pdfParseModule.PDFParse : null) as unknown as
-    | {
-        new (options: { data: Uint8Array | Buffer | ArrayBuffer }): {
-          getText: () => Promise<{ text?: string }>
-          destroy?: () => Promise<void>
-        }
-      }
-    | null
-
-  if (!PDFParse) {
-    throw new Error("pdf-parse PDFParse export is unavailable")
-  }
-
-  const parser = new PDFParse({ data: resumeBuffer })
-
-  try {
-    const parsed = await parser.getText()
-    return parsed.text?.trim() || null
-  } finally {
-    await parser.destroy?.()
-    if (previousWorker) {
-      workerHost.pdfjsWorker = previousWorker
-    } else {
-      delete workerHost.pdfjsWorker
-    }
   }
 }
 
@@ -279,58 +238,55 @@ async function extractTextWithVisionOcr(imageDataUrls: string[], sourceLabel: st
   return hasMeaningfulResumeText(text) ? text : null
 }
 
-async function renderPdfPagesForOcr(resumeBuffer: Buffer) {
-  await ensurePdfDomPolyfills()
-  const workerHost = globalThis as typeof globalThis & {
-    pdfjsWorker?: PdfWorkerModule
-  }
-  const previousWorker = workerHost.pdfjsWorker
-
-  delete workerHost.pdfjsWorker
-
-  const pdfParseModule = await import("pdf-parse")
-  const PDFParse = ("PDFParse" in pdfParseModule ? pdfParseModule.PDFParse : null) as unknown as
-    | {
-        new (options: { data: Uint8Array | Buffer | ArrayBuffer }): {
-          getScreenshot: (options: {
-            first?: number
-            desiredWidth?: number
-            imageDataUrl?: boolean
-            imageBuffer?: boolean
-          }) => Promise<{ pages?: PdfScreenshotPage[] }>
-          destroy?: () => Promise<void>
-        }
-      }
-    | null
-
-  if (!PDFParse) {
-    throw new Error("pdf-parse PDFParse export is unavailable")
-  }
-
-  const parser = new PDFParse({ data: resumeBuffer })
-
-  try {
-    const screenshots = await parser.getScreenshot({
-      first: MAX_OCR_IMAGES,
-      desiredWidth: 1600,
-      imageDataUrl: true,
-      imageBuffer: false,
-    })
-
-    return (screenshots.pages ?? []).map((page) => page.dataUrl).filter((dataUrl): dataUrl is string => Boolean(dataUrl))
-  } finally {
-    await parser.destroy?.()
-    if (previousWorker) {
-      workerHost.pdfjsWorker = previousWorker
-    } else {
-      delete workerHost.pdfjsWorker
-    }
-  }
-}
-
 async function extractPdfTextWithOcr(resumeBuffer: Buffer) {
-  const pageImages = await renderPdfPagesForOcr(resumeBuffer)
-  return extractTextWithVisionOcr(pageImages, "PDF resume")
+  const apiKey = process.env.OPENAI_API_KEY?.trim().replace(/^"|"$/g, "")
+
+  if (!apiKey) {
+    throw new Error("PDF resume appears to be image-based and requires OPENAI_API_KEY for OCR")
+  }
+
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: OCR_MODEL,
+      input: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_file",
+              filename: "resume.pdf",
+              file_data: `data:application/pdf;base64,${resumeBuffer.toString("base64")}`,
+            },
+            {
+              type: "input_text",
+              text: [
+                "Extract the resume text from this PDF resume.",
+                "Return only the readable resume text in clean plain text.",
+                "Preserve candidate name, contact details, headings, dates, skills, education, projects, and experience.",
+                "Do not summarize and do not invent missing text.",
+              ].join(" "),
+            },
+          ],
+        },
+      ],
+      temperature: 0,
+    }),
+  })
+
+  if (!response.ok) {
+    const message = await response.text().catch(() => "")
+    throw new Error(`OpenAI PDF OCR failed with status ${response.status}: ${message.slice(0, 300)}`)
+  }
+
+  const payload = (await response.json()) as OpenAIResponsesOutputText
+  const text = extractStructuredOutputText(payload)
+
+  return hasMeaningfulResumeText(text) ? text : null
 }
 
 async function extractDocxText(resumeBuffer: Buffer) {
@@ -382,16 +338,6 @@ export async function extractResumeText(file: File, resumeBuffer: Buffer) {
       parserErrors.push("pdfjs-dist returned empty text")
     } catch (error) {
       parserErrors.push(`pdfjs-dist: ${getErrorMessage(error)}`)
-    }
-
-    try {
-      const text = await extractPdfTextWithPdfParse(resumeBuffer)
-      if (hasMeaningfulResumeText(text)) {
-        return text
-      }
-      parserErrors.push("pdf-parse returned empty text")
-    } catch (error) {
-      parserErrors.push(`pdf-parse: ${getErrorMessage(error)}`)
     }
 
     try {
