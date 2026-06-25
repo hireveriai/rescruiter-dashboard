@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 
-import { evaluateCandidateResponse, updateSkillState } from "@/lib/server/ai/interview-flow"
+import { evaluateCandidateResponse, updateSkillState } from "@/lib/server/ai/response-evaluation"
 import { fetchSkillState, upsertSkillState } from "@/lib/server/ai/skill-state"
 import { errorResponse } from "@/lib/server/response"
 
