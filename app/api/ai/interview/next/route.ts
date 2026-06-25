@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 
-import { decideNextQuestion, generateFollowUpWithAI } from "@/lib/server/ai/interview-flow"
+import { decideNextQuestion, generateFollowUpWithAI } from "@/lib/server/ai/adaptive-interview"
 import { fetchSkillState, upsertSkillState } from "@/lib/server/ai/skill-state"
 import { errorResponse } from "@/lib/server/response"
 

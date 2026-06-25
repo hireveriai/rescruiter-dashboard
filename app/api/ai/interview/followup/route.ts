@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 
-import { generateFollowUp, generateFollowUpWithAI } from "@/lib/server/ai/interview-flow"
+import { generateFollowUp, generateFollowUpWithAI } from "@/lib/server/ai/adaptive-interview"
 import { errorResponse } from "@/lib/server/response"
 
 export async function POST(request: Request) {
