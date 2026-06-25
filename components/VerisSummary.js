@@ -1,6 +1,5 @@
 "use client"
 
-import Link from "next/link"
 import { useEffect, useState } from "react"
 import { useAuthSearchParams } from "@/lib/client/use-auth-search-params"
 
@@ -50,14 +49,135 @@ function getInsightSummary(item) {
   return "Review evidence and pipeline signals before final decision."
 }
 
+function VerisInsightCard({ item, expanded, onToggle }) {
+  return (
+    <div className="rounded-lg bg-[#111a2e] p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="truncate text-base font-semibold text-white">
+            {item.candidateName}
+          </div>
+
+          <div className="mt-0.5 truncate text-sm text-gray-400">
+            {item.jobTitle}
+          </div>
+        </div>
+
+        <div className="shrink-0 text-right">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Risk Level</div>
+          <div className={`mt-1 text-sm font-semibold ${getRiskColor(item.riskLevel)}`}>{item.riskLevel}</div>
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-slate-400">Recommendation</span>
+        <span className={`font-semibold ${getRecommendationColor(item.recommendation)}`}>
+          {item.recommendation}
+        </span>
+      </div>
+
+      <p className="mt-2 line-clamp-2 min-h-[38px] text-sm leading-5 text-slate-300">
+        {getInsightSummary(item)}
+      </p>
+
+      <button
+        type="button"
+        onClick={onToggle}
+        className="mt-3 text-xs font-semibold text-cyan-200 transition hover:text-cyan-100"
+      >
+        {expanded ? "Hide details" : "View evidence details"}
+      </button>
+
+      {expanded ? (
+        <div className="mt-3 rounded-lg border border-slate-800 bg-slate-950/25 p-3">
+          <div className="grid gap-2 text-sm text-slate-300">
+            <div>
+              Score: <span className="text-blue-400">{item.scoreLabel ?? "-"}</span>
+            </div>
+
+            <div>
+              Strengths: <span className="text-slate-100">{item.strengthsShort}</span>
+            </div>
+
+            <div>
+              Weaknesses: <span className="text-slate-100">{item.weaknessesShort}</span>
+            </div>
+
+            <div>
+              Behavioral Flags: <span className="text-slate-100">{item.behavioralFlagsShort}</span>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function VerisInsightsModal({ isOpen, onClose, summaries, expandedSummaryIds, onToggle, isLoading }) {
+  if (!isOpen) {
+    return null
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#020817]/80 px-4 py-4 backdrop-blur-md sm:py-6" role="dialog" aria-modal="true">
+      <div className="relative w-full max-w-6xl overflow-hidden rounded-[28px] border border-cyan-400/20 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.14),_transparent_34%),linear-gradient(180deg,rgba(15,23,42,0.98),rgba(9,14,28,0.98))] shadow-[0_0_80px_rgba(34,211,238,0.12)]">
+        <div className="absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/70 to-transparent" />
+
+        <div className="flex items-center justify-between border-b border-white/10 px-8 py-6">
+          <div>
+            <h3 className="text-2xl font-semibold text-white">All VERIS Insights</h3>
+            <p className="mt-2 text-sm text-slate-400">
+              Complete candidate evidence cards with recommendation, risk level, strengths, weaknesses, and behavioral flags.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-cyan-400/25 bg-cyan-400/10 px-4 py-2 text-sm text-cyan-100 transition hover:bg-cyan-400/20"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="max-h-[75vh] overflow-auto px-8 py-6">
+          {isLoading ? (
+            <CardSkeleton count={4} className="grid-cols-1 lg:grid-cols-2" />
+          ) : (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {summaries.length === 0 ? (
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-6 text-center text-slate-400 lg:col-span-2">
+                  No VERIS summaries available
+                </div>
+              ) : (
+                summaries.map((item) => (
+                  <VerisInsightCard
+                    key={item.attemptId}
+                    item={item}
+                    expanded={expandedSummaryIds.has(item.attemptId)}
+                    onToggle={() => onToggle(item.attemptId)}
+                  />
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function VerisSummary({ initialSummaries, isLoading = false }) {
   const searchParams = useAuthSearchParams()
   const [summaries, setSummaries] = useState(() => initialSummaries ?? [])
   const [isFetching, setIsFetching] = useState(initialSummaries === undefined)
   const [expandedSummaryIds, setExpandedSummaryIds] = useState(() => new Set())
+  const [allSummaries, setAllSummaries] = useState(() => initialSummaries ?? [])
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isLoadingAll, setIsLoadingAll] = useState(false)
   const baseSummaries = summaries
   const displaySummaries = baseSummaries.slice(0, DASHBOARD_SUMMARY_LIMIT)
-  const hasMoreSummaries = baseSummaries.length > DASHBOARD_SUMMARY_LIMIT
+  const canViewAll = baseSummaries.length > 0
   const isBusy = isLoading || isFetching
 
   useEffect(() => {
@@ -87,6 +207,7 @@ export default function VerisSummary({ initialSummaries, isLoading = false }) {
         .then((data) => {
           if (isMounted && data.success) {
             setSummaries(data.data ?? [])
+            setAllSummaries(data.data ?? [])
           }
         })
         .catch((error) => {
@@ -134,6 +255,7 @@ export default function VerisSummary({ initialSummaries, isLoading = false }) {
         .then((data) => {
           if (data.success) {
             setSummaries(data.data ?? [])
+            setAllSummaries((current) => current.length > data.data?.length ? current : (data.data ?? []))
           }
         })
         .catch((error) => {
@@ -173,9 +295,34 @@ export default function VerisSummary({ initialSummaries, isLoading = false }) {
     })
   }
 
+  async function handleOpenAllSummaries() {
+    setIsModalOpen(true)
+
+    try {
+      setIsLoadingAll(true)
+      const response = await fetch(buildAuthUrl(`/api/dashboard/veris?limit=all&refresh=${Date.now()}`, searchParams), {
+        credentials: "include",
+        cache: "no-store",
+      })
+      const data = await response.json()
+
+      if (!response.ok || !data.success) {
+        throw new Error(data?.error?.message || data?.message || "Failed to fetch VERIS summaries")
+      }
+
+      setAllSummaries(data.data ?? [])
+    } catch (error) {
+      console.error("Failed to fetch all VERIS summaries", error)
+      setAllSummaries((current) => current.length ? current : baseSummaries)
+    } finally {
+      setIsLoadingAll(false)
+    }
+  }
+
   return (
-    <div className="mt-8">
-      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <>
+      <div className="mt-8">
+        <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold">
             VERIS Insights
@@ -190,13 +337,14 @@ export default function VerisSummary({ initialSummaries, isLoading = false }) {
           ) : null}
         </div>
 
-        {hasMoreSummaries ? (
-          <Link
-            href="/veris-insights"
+        {canViewAll ? (
+          <button
+            type="button"
+            onClick={handleOpenAllSummaries}
             className="self-start rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-300 transition hover:border-cyan-400/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60 sm:self-auto"
           >
-            View all
-          </Link>
+            {isLoadingAll ? "Loading..." : "View all"}
+          </button>
         ) : null}
       </div>
 
@@ -222,74 +370,28 @@ export default function VerisSummary({ initialSummaries, isLoading = false }) {
             const isExpanded = expandedSummaryIds.has(item.attemptId)
 
             return (
-              <div
+              <VerisInsightCard
                 key={item.attemptId}
-                className="rounded-lg bg-[#111a2e] p-4"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="truncate text-base font-semibold text-white">
-                      {item.candidateName}
-                    </div>
-
-                    <div className="mt-0.5 truncate text-sm text-gray-400">
-                      {item.jobTitle}
-                    </div>
-                  </div>
-
-                  <div className="shrink-0 text-right">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Risk Level</div>
-                    <div className={`mt-1 text-sm font-semibold ${getRiskColor(item.riskLevel)}`}>{item.riskLevel}</div>
-                  </div>
-                </div>
-
-                <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-                  <span className="text-slate-400">Recommendation</span>
-                  <span className={`font-semibold ${getRecommendationColor(item.recommendation)}`}>
-                    {item.recommendation}
-                  </span>
-                </div>
-
-                <p className="mt-2 line-clamp-2 min-h-[38px] text-sm leading-5 text-slate-300">
-                  {getInsightSummary(item)}
-                </p>
-
-                <button
-                  type="button"
-                  onClick={() => toggleSummaryDetails(item.attemptId)}
-                  className="mt-3 text-xs font-semibold text-cyan-200 transition hover:text-cyan-100"
-                >
-                  {isExpanded ? "Hide details" : "View evidence details"}
-                </button>
-
-                {isExpanded ? (
-                  <div className="mt-3 rounded-lg border border-slate-800 bg-slate-950/25 p-3">
-                    <div className="grid gap-2 text-sm text-slate-300">
-                      <div>
-                        Score: <span className="text-blue-400">{item.scoreLabel ?? "-"}</span>
-                      </div>
-
-                      <div>
-                        Strengths: <span className="text-slate-100">{item.strengthsShort}</span>
-                      </div>
-
-                      <div>
-                        Weaknesses: <span className="text-slate-100">{item.weaknessesShort}</span>
-                      </div>
-
-                      <div>
-                        Behavioral Flags: <span className="text-slate-100">{item.behavioralFlagsShort}</span>
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
+                item={item}
+                expanded={isExpanded}
+                onToggle={() => toggleSummaryDetails(item.attemptId)}
+              />
             )
           })
         )}
         </div>
       )}
-    </div>
+      </div>
+
+      <VerisInsightsModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        summaries={allSummaries}
+        expandedSummaryIds={expandedSummaryIds}
+        onToggle={toggleSummaryDetails}
+        isLoading={isLoadingAll}
+      />
+    </>
   )
 }
 
