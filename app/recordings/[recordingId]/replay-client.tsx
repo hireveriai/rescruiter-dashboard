@@ -237,7 +237,7 @@ export default function ReplayClient({ recordingId }: { recordingId: string }) {
             </div>
             <div className="rounded-xl border border-slate-800 bg-slate-950/35 p-4">
               <AlertTriangle className="h-4 w-4 text-amber-200" />
-              <p className="mt-3 text-xs text-slate-500">Timeline Signals</p>
+              <p className="mt-3 text-xs text-slate-500">Fraud Signals</p>
               <p className="mt-1 text-2xl font-semibold">{data.summary.signalCount}</p>
             </div>
             <div className="rounded-xl border border-slate-800 bg-slate-950/35 p-4">
@@ -304,17 +304,23 @@ export default function ReplayClient({ recordingId }: { recordingId: string }) {
             </div>
 
             <div className="mt-4 grid gap-2 md:grid-cols-2">
-              {data.signals.slice(0, 8).map((signal) => (
-                <button
-                  key={signal.id}
-                  type="button"
-                  onClick={() => seekTo(signal.offsetMs)}
-                  className={`flex items-center justify-between rounded-xl border px-3 py-2 text-left text-sm ${riskClass(signal.severity)}`}
-                >
-                  <span className="truncate">{signal.label}</span>
-                  <span className="ml-3 font-mono text-xs">{formatTime(signal.offsetMs)}</span>
-                </button>
-              ))}
+              {data.signals.length > 0 ? (
+                data.signals.slice(0, 8).map((signal) => (
+                  <button
+                    key={signal.id}
+                    type="button"
+                    onClick={() => seekTo(signal.offsetMs)}
+                    className={`flex items-center justify-between rounded-xl border px-3 py-2 text-left text-sm ${riskClass(signal.severity)}`}
+                  >
+                    <span className="truncate">{signal.label}</span>
+                    <span className="ml-3 font-mono text-xs">{formatTime(signal.offsetMs)}</span>
+                  </button>
+                ))
+              ) : (
+                <div className="rounded-xl border border-emerald-300/20 bg-emerald-400/10 px-3 py-3 text-sm text-emerald-100 md:col-span-2">
+                  No suspicious fraud signals were detected for this recording.
+                </div>
+              )}
             </div>
           </div>
         </div>

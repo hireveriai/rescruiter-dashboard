@@ -133,6 +133,50 @@ function mergeTrialCredits(current, incoming) {
   };
 }
 
+function formatCompactCount(value) {
+  const safeValue = Math.max(0, Number(value) || 0);
+
+  return new Intl.NumberFormat(undefined, {
+    notation: safeValue >= 10000 ? "compact" : "standard",
+    maximumFractionDigits: 1,
+  }).format(safeValue);
+}
+
+function InterviewCredibilityStat({ completedInterviews }) {
+  const safeCompletedInterviews = Math.max(0, Number(completedInterviews) || 0);
+  const label =
+    safeCompletedInterviews === 1
+      ? "interview completed successfully"
+      : "interviews completed successfully";
+
+  return (
+    <section className="mb-6 overflow-hidden rounded-2xl border border-cyan-300/20 bg-[#0b1828] shadow-[0_18px_55px_rgba(8,145,178,0.12)]">
+      <div className="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <div className="flex min-w-0 items-center gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-emerald-300/25 bg-emerald-400/10">
+            <span className="h-2.5 w-2.5 rounded-full bg-emerald-300 shadow-[0_0_18px_rgba(110,231,183,0.75)]" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-300/75">
+              HireVeri trust signal
+            </p>
+            <p className="mt-1 text-sm text-slate-300">
+              Real completed interview activity from your workspace.
+            </p>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-left sm:min-w-[300px] sm:text-right">
+          <p className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+            {formatCompactCount(safeCompletedInterviews)}
+          </p>
+          <p className="mt-1 text-sm font-medium text-emerald-200">{label}</p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function DashboardContent({ profile, overview, isLoading }) {
   const searchParams = useAuthSearchParams();
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -143,6 +187,10 @@ function DashboardContent({ profile, overview, isLoading }) {
   const [trialCredits, setTrialCredits] = useState(overview?.trialCredits ?? null);
   const activeInterviewCount = fullOverview?.pendingInterviewsTotal ?? fullOverview?.pendingInterviews?.length ?? 0;
   const candidateCount = fullOverview?.candidates?.length ?? 0;
+  const completedInterviewCount =
+    fullOverview?.workflowMetrics?.completedInterviews ??
+    fullOverview?.pipeline?.completed ??
+    0;
   const canCreateJob = canAccessFeature(permissionProfile, "createJob");
   const canSendInterview = canAccessFeature(permissionProfile, "sendInterview");
   const canViewCandidates = canAccessFeature(permissionProfile, "candidates");
@@ -157,8 +205,14 @@ function DashboardContent({ profile, overview, isLoading }) {
 
   useEffect(() => {
     if (overview?.trialCredits) {
-      setTrialCredits((current) => mergeTrialCredits(current, overview.trialCredits));
+      const timer = window.setTimeout(() => {
+        setTrialCredits((current) => mergeTrialCredits(current, overview.trialCredits));
+      }, 0);
+
+      return () => window.clearTimeout(timer);
     }
+
+    return undefined;
   }, [overview?.trialCredits]);
 
   useEffect(() => {
@@ -245,6 +299,8 @@ function DashboardContent({ profile, overview, isLoading }) {
               </p>
             </div>
           </div>
+
+          <InterviewCredibilityStat completedInterviews={completedInterviewCount} />
 
           <DashboardIntelligenceBanner
             overview={fullOverview}

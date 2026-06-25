@@ -41,6 +41,16 @@ type SignalRow = {
   created_at: string | null
 }
 
+type ReviewSignal = {
+  id: string
+  type: string
+  label: string
+  severity: "low" | "medium" | "high"
+  occurredAt: string | null
+  offsetMs: number
+  value: unknown | null
+}
+
 function toNumber(value: unknown) {
   const numeric = typeof value === "number" ? value : Number(value)
   return Number.isFinite(numeric) ? numeric : null
@@ -79,6 +89,41 @@ function readSignalOffset(value: unknown) {
   return typeof offset === "number" && Number.isFinite(offset) ? Math.max(0, Math.round(offset)) : null
 }
 
+function readObjectNumber(value: unknown, key: string) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null
+  }
+
+  return toNumber((value as Record<string, unknown>)[key])
+}
+
+function isActionableSignal(type: string, value: unknown) {
+  const normalizedType = type.trim().toLowerCase()
+
+  if (
+    normalizedType === "face_detected" ||
+    normalizedType === "camera_ready" ||
+    normalizedType === "audio_ready" ||
+    normalizedType === "heartbeat"
+  ) {
+    return false
+  }
+
+  if (normalizedType === "focus_metrics") {
+    const focusRatio = readObjectNumber(value, "focusRatio")
+    const lookAwayEvents = readObjectNumber(value, "lookAwayEvents") ?? 0
+    const maxLookAwayDuration = readObjectNumber(value, "maxLookAwayDuration") ?? 0
+
+    return (
+      (focusRatio !== null && focusRatio < 0.8) ||
+      lookAwayEvents > 0 ||
+      maxLookAwayDuration >= 3_000
+    )
+  }
+
+  return true
+}
+
 function getSignalSeverity(type: string, value: unknown): "low" | "medium" | "high" {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     const severity = (value as { severity?: unknown }).severity
@@ -87,19 +132,57 @@ function getSignalSeverity(type: string, value: unknown): "low" | "medium" | "hi
     }
   }
 
-  if (/\b(multi_face|tab_switch|no_face)\b/i.test(type)) {
+  if (/\b(multi_face|tab_switch|no_face|screen_share|window_blur|copy_paste|devtools|external_device)\b/i.test(type)) {
     return "high"
   }
 
-  if (/\b(long_gaze_away|attention_loss)\b/i.test(type)) {
+  if (type === "focus_metrics") {
+    const focusRatio = readObjectNumber(value, "focusRatio")
+    const maxLookAwayDuration = readObjectNumber(value, "maxLookAwayDuration") ?? 0
+
+    if ((focusRatio !== null && focusRatio < 0.5) || maxLookAwayDuration >= 10_000) {
+      return "high"
+    }
+
+    return "medium"
+  }
+
+  if (/\b(long_gaze_away|attention_loss|focus_lost|audio_anomaly|network_reconnect)\b/i.test(type)) {
     return "medium"
   }
 
   return "low"
 }
 
-function getSignalLabel(type: string) {
-  return type
+function getSignalLabel(type: string, value: unknown) {
+  const labels: Record<string, string> = {
+    no_face: "No face detected",
+    multi_face: "Multiple faces detected",
+    tab_switch: "Tab switch detected",
+    long_gaze_away: "Long gaze away",
+    attention_loss: "Attention lost",
+    focus_lost: "Focus lost",
+    focus_metrics: "Low focus window",
+    screen_share: "Screen sharing detected",
+    window_blur: "Window focus lost",
+    copy_paste: "Copy/paste activity",
+    devtools: "Developer tools opened",
+    external_device: "External device signal",
+    audio_anomaly: "Audio anomaly",
+    network_reconnect: "Network reconnect",
+    coding_start: "Coding started",
+    coding_end: "Coding ended",
+    war_room_action: "Manual review action",
+  }
+
+  if (type === "focus_metrics") {
+    const focusRatio = readObjectNumber(value, "focusRatio")
+    return focusRatio !== null
+      ? `Low focus window (${Math.round(focusRatio * 100)}% focused)`
+      : labels.focus_metrics
+  }
+
+  return (labels[type] ?? type)
     .split("_")
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
@@ -205,19 +288,25 @@ export async function GET(request: Request, context: { params: Promise<{ recordi
       }
     })
 
-    const signals = signalRows.map((row) => {
+    const signals = signalRows.reduce<ReviewSignal[]>((items, row) => {
+      if (!isActionableSignal(row.type, row.value)) {
+        return items
+      }
+
       const fallbackOffset = offsetMs(recording.started_at, row.created_at)
 
-      return {
+      items.push({
         id: row.signal_id,
         type: row.type,
-        label: getSignalLabel(row.type),
+        label: getSignalLabel(row.type, row.value),
         severity: getSignalSeverity(row.type, row.value),
         occurredAt: row.created_at,
         offsetMs: readSignalOffset(row.value) ?? fallbackOffset ?? 0,
         value: row.value,
-      }
-    })
+      })
+
+      return items
+    }, [])
 
     return NextResponse.json({
       recording: {
