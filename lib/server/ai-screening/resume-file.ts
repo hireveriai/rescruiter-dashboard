@@ -145,7 +145,14 @@ async function extractPdfTextWithPdfJs(resumeBuffer: Buffer) {
 }
 
 async function extractPdfTextWithPdfParse(resumeBuffer: Buffer) {
-  await ensurePdfServerRuntime()
+  await ensurePdfDomPolyfills()
+  const workerHost = globalThis as typeof globalThis & {
+    pdfjsWorker?: PdfWorkerModule
+  }
+  const previousWorker = workerHost.pdfjsWorker
+
+  delete workerHost.pdfjsWorker
+
   const pdfParseModule = await import("pdf-parse")
   const PDFParse = ("PDFParse" in pdfParseModule ? pdfParseModule.PDFParse : null) as unknown as
     | {
@@ -167,6 +174,11 @@ async function extractPdfTextWithPdfParse(resumeBuffer: Buffer) {
     return parsed.text?.trim() || null
   } finally {
     await parser.destroy?.()
+    if (previousWorker) {
+      workerHost.pdfjsWorker = previousWorker
+    } else {
+      delete workerHost.pdfjsWorker
+    }
   }
 }
 
