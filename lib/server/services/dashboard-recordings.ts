@@ -6,6 +6,7 @@ type RecordingColumnRow = {
 
 type DashboardRecordingRow = {
   recordingId: string
+  attemptId: string | null
   candidateName: string
   jobTitle: string
   recordingUrl: string | null
@@ -40,7 +41,7 @@ function quoteIdentifier(value: string) {
 }
 
 function buildRecordingPlaybackUrl(recordingId: string) {
-  return `/api/recordings/${encodeURIComponent(recordingId)}`
+  return `/recordings/${encodeURIComponent(recordingId)}`
 }
 
 function getSupabaseUrl() {
@@ -274,6 +275,7 @@ export async function getDashboardRecordings(organizationId: string, limit = 6, 
     with latest_recording_per_attempt as (
       select distinct on (${groupingExpression})
         ir.${quoteIdentifier(idColumn)}::text as "recordingId",
+        ia_latest.attempt_id::text as "attemptId",
         coalesce(c.full_name, 'Unknown Candidate') as "candidateName",
         coalesce(jp.job_title, '-') as "jobTitle",
         ir.${quoteIdentifier(urlColumn)}::text as "recordingUrl",
@@ -321,6 +323,7 @@ export async function getDashboardRecordings(organizationId: string, limit = 6, 
     )
     select
       "recordingId",
+      "attemptId",
       "candidateName",
       "jobTitle",
       "recordingUrl",
