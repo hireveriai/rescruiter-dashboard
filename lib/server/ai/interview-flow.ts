@@ -249,7 +249,18 @@ const AI_BAD_PREFIXES = [
   "when jul",
 ]
 
-const NON_TECHNICAL_FORBIDDEN_PHRASES = ["troubleshoot", "production", "deployment", "latency", "rollback", "regression"]
+const NON_TECHNICAL_FORBIDDEN_PHRASES = [
+  "troubleshoot",
+  "production",
+  "deployment",
+  "latency",
+  "rollback",
+  "regression",
+  "database",
+  "dba",
+  "debug",
+  "patching",
+]
 const TECHNICAL_LANGUAGE_MARKERS = [
   "api",
   "database",
@@ -449,6 +460,16 @@ function isNonTechnicalRoleFamily(family?: RoleIntelligence["family"]) {
   return family !== "technical"
 }
 
+function isTechnicalSkillForNonTechnicalRole(skill: string) {
+  const normalizedSkill = normalizeText(skill)
+
+  return (
+    /\b(api|backend|frontend|coding|debug|deployment|devops|docker|kubernetes|latency|logging|monitoring|patching|programming|rollback|sre|system|troubleshoot)\b/.test(normalizedSkill) ||
+    /\b(database|dba|etl|mysql|postgres|postgresql|query|redis|sql)\b/.test(normalizedSkill) ||
+    /\b(aws|azure|gcp|java|javascript|node|python|react|typescript)\b/.test(normalizedSkill)
+  )
+}
+
 function filterSkillsForRoleFamily(
   skills: string[],
   roleIntelligence: RoleIntelligence,
@@ -470,6 +491,10 @@ function filterSkillsForRoleFamily(
 
     const skillType = classifySkillType(skill)
     const bucket = bucketSkill(skill)
+
+    if (isTechnicalSkillForNonTechnicalRole(skill) && !normalizedJob.has(normalizedSkill)) {
+      return false
+    }
 
     if (skillType !== "technical" && !isTechnicalBucket(bucket)) {
       return true
@@ -539,6 +564,10 @@ function filterResumeSkillsForRoleContext(
 
     if (normalizedJob.has(normalizedSkill) || normalizedFallback.has(normalizedSkill)) {
       return true
+    }
+
+    if (isTechnicalSkillForNonTechnicalRole(skill)) {
+      return false
     }
 
     if (skillType === "technical" || isTechnicalBucket(bucket)) {

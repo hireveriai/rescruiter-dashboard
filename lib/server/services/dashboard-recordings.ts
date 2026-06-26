@@ -268,7 +268,16 @@ export async function getDashboardRecordings(organizationId: string, limit = 6, 
   const groupingExpression = columns.has("attempt_id")
     ? `coalesce(ir.attempt_id::text, i.interview_id::text, ir.${quoteIdentifier(idColumn)}::text)`
     : `coalesce(i.interview_id::text, ir.${quoteIdentifier(idColumn)}::text)`
-  const recordingSortExpression = columns.has("created_at") ? "ir.created_at desc nulls last" : `ir.${quoteIdentifier(idColumn)} desc`
+  const recordingSortExpression = [
+    columns.has("status") ? "case when coalesce(ir.status, 'completed') = 'completed' then 0 else 1 end" : null,
+    columns.has("ended_at") && columns.has("started_at")
+      ? "extract(epoch from (coalesce(ir.ended_at, ir.created_at, now()) - coalesce(ir.started_at, ir.created_at, now()))) desc nulls last"
+      : null,
+    columns.has("file_path")
+      ? "case when ir.file_path ilike '%.mp4%' then 0 when ir.file_path is not null then 1 else 2 end"
+      : null,
+    columns.has("created_at") ? "ir.created_at desc nulls last" : `ir.${quoteIdentifier(idColumn)} desc`,
+  ].filter(Boolean).join(", ")
   const resultSortExpression = columns.has("created_at") ? `"createdAt" desc nulls last` : `"recordingId" desc`
 
   const query = `

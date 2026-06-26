@@ -52,6 +52,49 @@ function buildResumeQuestion(skill: string, index: number, seniorityLevel: "juni
   return templates[index % templates.length]
 }
 
+const TECHNICAL_RESUME_ONLY_PATTERNS = [
+  /\b(api|backend|frontend|coding|debug|deployment|devops|docker|kubernetes|latency|logging|monitoring|patching|programming|rollback|sre|system|troubleshoot)\b/i,
+  /\b(database|dba|etl|mysql|postgres|postgresql|query|redis|sql)\b/i,
+  /\b(aws|azure|gcp|java|javascript|node|python|react|typescript)\b/i,
+]
+
+const NON_TECH_ROLE_PATTERNS = [
+  /\b(customer|support|service|operations|manager|lead|head|director|finance|banking|medical|healthcare|govt|government|hr|sales|marketing|procurement|legal|compliance|education|training|logistics|warehouse|manufacturing)\b/i,
+]
+
+function isTechnicalResumeOnlySkill(skill: string) {
+  return TECHNICAL_RESUME_ONLY_PATTERNS.some((pattern) => pattern.test(skill))
+}
+
+function isClearlyNonTechnicalRole(input: BaseGenerationInput) {
+  const corpus = `${input.jobTitle ?? ""} ${input.jobDescription ?? ""} ${(input.coreSkills ?? []).join(" ")}`
+  const hasNonTechnicalSignal = NON_TECH_ROLE_PATTERNS.some((pattern) => pattern.test(corpus))
+  const hasTechnicalRoleSignal = /\b(software|developer|engineer|programmer|data engineer|database administrator|dba|devops|sre|qa automation|full stack|frontend|backend|cloud|cybersecurity)\b/i.test(corpus)
+
+  return hasNonTechnicalSignal && !hasTechnicalRoleSignal
+}
+
+function filterResumeSkillsForJobFit(input: BaseGenerationInput, resumeSkills: string[], jobSkills: string[]) {
+  const normalizedJobSkills = new Set(jobSkills.map(normalizeSkillName))
+  const nonTechnicalRole = isClearlyNonTechnicalRole(input)
+
+  const filtered = resumeSkills.filter((skill) => {
+    const normalizedSkill = normalizeSkillName(skill)
+
+    if (normalizedJobSkills.has(normalizedSkill)) {
+      return true
+    }
+
+    if (nonTechnicalRole && isTechnicalResumeOnlySkill(skill)) {
+      return false
+    }
+
+    return true
+  })
+
+  return filtered
+}
+
 function isCodingRequired(input: BaseGenerationInput) {
   const requirement = String(input.codingRequired ?? "").toUpperCase()
   return requirement === "YES" || (requirement === "AUTO" && input.codingRecommended === true)
@@ -185,13 +228,14 @@ export async function generateInterviewQuestions(
     }),
     ...deriveSkillsFromText(input.jobDescription),
   ])).map(normalizeSkillName)
-  const resumeSkills = Array.from(new Set([
+  const rawResumeSkills = Array.from(new Set([
     ...sanitizeSkillList(input.candidateResumeSkills ?? [], {
       jobTitle: input.jobTitle,
       jobDescription: input.jobDescription,
     }),
     ...deriveSkillsFromText(input.candidateResumeText),
   ])).map(normalizeSkillName)
+  const resumeSkills = filterResumeSkillsForJobFit(input, rawResumeSkills, jobSkills)
   const resumeOnlySkills = resumeSkills.filter((skill) => !jobSkills.includes(skill))
   const selectedResumeSkills = (resumeOnlySkills.length > 0 ? resumeOnlySkills : resumeSkills)
     .slice(0, targetResumeCount)
