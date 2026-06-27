@@ -22,6 +22,8 @@ type DashboardPipelineItem = {
   startTime: Date | string | null
   endTime: Date | string | null
   expiresAt: Date | string | null
+  startedAt: Date | string | null
+  endedAt: Date | string | null
   createdAt: Date | string | null
   interviewId: string
   status: string | null
@@ -190,6 +192,8 @@ function buildPendingItem(row: PendingPipelineRow, appUrl: string, displayStatus
     startTime: row.latest_invite_start_time ?? null,
     endTime: row.latest_invite_end_time ?? null,
     expiresAt: row.latest_invite_expires_at ?? null,
+    startedAt: row.latest_attempt_started_at ?? null,
+    endedAt: row.latest_attempt_ended_at ?? null,
     createdAt: row.latest_invite_created_at ?? row.created_at,
     status,
     questionStatus: row.question_status ?? null,
@@ -330,7 +334,13 @@ export async function getDashboardPipelineData(
       from counted
       where display_status <> 'FLAGGED'
         and is_pending_queue
-      order by created_at desc
+      order by coalesce(
+        latest_attempt_ended_at,
+        latest_attempt_started_at,
+        latest_invite_start_time,
+        latest_invite_created_at,
+        created_at
+      ) desc nulls last
       ${take ? Prisma.sql`limit ${take}` : Prisma.empty}
     )
     select

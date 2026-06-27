@@ -16,6 +16,12 @@ import { TableSkeleton } from "@/components/system/skeletons"
 
 const DASHBOARD_INVALIDATED_EVENT = "hireveri:dashboard-data-invalidated"
 
+function getInterviewActivityTime(interview) {
+  const value = interview?.endedAt || interview?.startedAt || interview?.startTime || interview?.createdAt
+  const time = value ? new Date(value).getTime() : 0
+  return Number.isFinite(time) ? time : 0
+}
+
 function getExpiryLabel(expiresAt, nowTick) {
   if (!expiresAt) {
     return "No expiry"
@@ -572,7 +578,7 @@ export default function PendingInterviews({ initialPendingInterviews, initialPen
   const sortedInterviews = useMemo(
     () =>
       [...interviews].sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        (a, b) => getInterviewActivityTime(b) - getInterviewActivityTime(a)
       ),
     [interviews]
   )

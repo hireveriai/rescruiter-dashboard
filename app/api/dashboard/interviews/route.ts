@@ -392,6 +392,22 @@ type InterviewScreenOptions = {
   finalizeStale?: boolean
 }
 
+function getInterviewActivityTime(interview: {
+  endedAt?: Date | string | null
+  startedAt?: Date | string | null
+  startTime?: Date | string | null
+  createdAt?: Date | string | null
+}) {
+  const value =
+    interview.endedAt ??
+    interview.startedAt ??
+    interview.startTime ??
+    interview.createdAt
+
+  const time = value ? new Date(value).getTime() : 0
+  return Number.isFinite(time) ? time : 0
+}
+
 async function getInterviewsScreenData(auth: RecruiterRequestContext, options: InterviewScreenOptions = {}) {
   if (options.finalizeStale !== false) {
     await finalizeStaleInterviewAttempts(auth.organizationId)
@@ -405,7 +421,6 @@ async function getInterviewsScreenData(auth: RecruiterRequestContext, options: I
     orderBy: {
       createdAt: "desc",
     },
-    take: options.limit,
     include: {
       candidate: {
         select: {
@@ -458,7 +473,7 @@ async function getInterviewsScreenData(auth: RecruiterRequestContext, options: I
     interviews.map((interview) => interview.interviewId)
   )
 
-  return interviews.map((interview) => {
+  const rows = interviews.map((interview) => {
     const latestInvite = interview.interviewInvites[0] ?? null
     const latestAttempt = interview.attempts[0] ?? null
     const evaluation = latestAttempt?.evaluation ?? null
@@ -516,6 +531,10 @@ async function getInterviewsScreenData(auth: RecruiterRequestContext, options: I
       createdAt: interview.createdAt,
     }
   })
+
+  return rows
+    .sort((left, right) => getInterviewActivityTime(right) - getInterviewActivityTime(left))
+    .slice(0, options.limit)
 }
 
 export async function GET(request: Request) {

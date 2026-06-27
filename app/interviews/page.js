@@ -52,6 +52,16 @@ function uniqueSorted(values) {
     .sort((a, b) => a.localeCompare(b))
 }
 
+function getInterviewActivityTime(interview) {
+  const value = getInterviewActivityValue(interview)
+  const time = value ? new Date(value).getTime() : 0
+  return Number.isFinite(time) ? time : 0
+}
+
+function getInterviewActivityValue(interview) {
+  return interview?.endedAt || interview?.startedAt || interview?.startTime || interview?.createdAt
+}
+
 function getEvaluationState(interview) {
   if (isCompletedInterview(interview)) {
     return "COMPLETED"
@@ -477,7 +487,7 @@ export default function InterviewsPage() {
       const matchesEvaluation = evaluationFilter === "ALL" || evaluationState === evaluationFilter
 
       return matchesSearch && matchesStatus && matchesJob && matchesAccess && matchesEvaluation
-    })
+    }).sort((left, right) => getInterviewActivityTime(right) - getInterviewActivityTime(left))
   }, [interviews, searchTerm, statusFilter, jobFilter, accessFilter, evaluationFilter])
 
   const hasActiveFilters =
@@ -681,7 +691,7 @@ export default function InterviewsPage() {
                   <th className="px-4 py-5 text-left font-medium">Interview Type</th>
                   <th className="p-5 text-left font-medium">Score</th>
                   <th className="p-5 text-left font-medium">Decision</th>
-                  <th className="p-5 text-left font-medium">Created</th>
+                  <th className="p-5 text-left font-medium">Latest Activity</th>
                   <th className="p-5 text-left font-medium">Hiring Action</th>
                   <th className="p-5 text-center font-medium">Action</th>
                 </tr>
@@ -709,7 +719,7 @@ export default function InterviewsPage() {
                       <td className="px-4 py-5 text-slate-300"><span className="block truncate">{getAccessLabel(interview)}</span></td>
                       <td className="p-5 text-slate-300">{formatScore(interview.score)}</td>
                       <td className="p-5 text-slate-300"><span className="block truncate">{interview.decision ?? "-"}</span></td>
-                      <td className="p-5 text-slate-400"><span className="block truncate">{formatDateTime(interview.createdAt)}</span></td>
+                      <td className="p-5 text-slate-400"><span className="block truncate">{formatDateTime(getInterviewActivityValue(interview))}</span></td>
                       <td className="p-4 align-middle">
                         {isCompletedInterview(interview) ? (
                           interview.recruiterDecisionStatus ? (

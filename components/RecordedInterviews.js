@@ -11,6 +11,12 @@ import RecordedInterviewCard from "@/components/interviews/RecordedInterviewCard
 
 const DASHBOARD_INVALIDATED_EVENT = "hireveri:dashboard-data-invalidated"
 
+function getInterviewActivityTime(interview) {
+  const value = interview?.endedAt || interview?.startedAt || interview?.startTime || interview?.createdAt
+  const time = value ? new Date(value).getTime() : 0
+  return Number.isFinite(time) ? time : 0
+}
+
 function RecordedInterviewsModal({ isOpen, onClose, interviews, organizationId, profile }) {
   const canOpenWarRoom = canAccessFeature(profile, "warRoom")
 
@@ -184,7 +190,7 @@ export default function RecordedInterviews({ initialRecordedInterviews, organiza
   const sortedInterviews = useMemo(
     () =>
       [...displayInterviews].sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        (a, b) => getInterviewActivityTime(b) - getInterviewActivityTime(a)
       ),
     [displayInterviews]
   )
