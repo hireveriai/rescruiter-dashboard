@@ -5,6 +5,8 @@ type InterviewAnswerSummaryRow = {
   attempt_id: string
   answer_id: string
   answer_text: string | null
+  code_text: string | null
+  language: string | null
   answer_payload: unknown | null
   answered_at: Date | null
   question_text: string | null
@@ -74,7 +76,9 @@ function mapAnswerSummaryRow(row: InterviewAnswerSummaryRow) {
   return {
     answerId: row.answer_id,
     question: row.question_text || "Question text was not recorded for this answer.",
-    answerText: row.answer_text || "No response provided.",
+    answerText: row.code_text
+      ? `[Coding submission in ${row.language || "code"}]\n${row.code_text}`
+      : row.answer_text || "No response provided.",
     answerPayload: row.answer_payload ?? null,
     answeredAt: row.answered_at,
     questionOrder: row.question_order,
@@ -234,6 +238,8 @@ export async function fetchAnswerSummaries(attemptIds: string[]) {
           ans.attempt_id,
           ans.answer_id,
           ans.answer_text,
+          cs.code_text,
+          cs.language,
           ans.answer_payload,
           ans.answered_at,
           coalesce(sq.content, iq.question_text, q.question_text) as question_text,
@@ -271,6 +277,8 @@ export async function fetchAnswerSummaries(attemptIds: string[]) {
           on iae.answer_id = ans.answer_id
         left join public.answer_evaluations ae
           on ae.answer_id = ans.answer_id
+        left join public.interview_code_submissions cs
+          on cs.answer_id = ans.answer_id
         where ans.attempt_id = any($1::uuid[])
         order by ans.attempt_id, coalesce(sq.question_order, iq.question_order) asc nulls last, ans.answered_at asc nulls last
       `,

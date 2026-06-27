@@ -25,6 +25,8 @@ type TimelineRow = {
   asked_at: string | null
   answer_id: string | null
   answer_text: string | null
+  code_text: string | null
+  language: string | null
   answered_at: string | null
   skill_score: unknown | null
   clarity_score: unknown | null
@@ -234,6 +236,8 @@ export async function GET(request: Request, context: { params: Promise<{ recordi
           sq.asked_at::text,
           ia.answer_id::text,
           ia.answer_text,
+          cs.code_text,
+          cs.language,
           ia.answered_at::text,
           iae.skill_score,
           iae.clarity_score,
@@ -246,6 +250,8 @@ export async function GET(request: Request, context: { params: Promise<{ recordi
           on ia.session_question_id = sq.session_question_id
         left join public.interview_answer_evaluations iae
           on iae.answer_id = ia.answer_id
+        left join public.interview_code_submissions cs
+          on cs.answer_id = ia.answer_id
         where sq.attempt_id = ${recording.attempt_id}::uuid
         order by sq.asked_at asc nulls last, sq.question_order asc nulls last
       `,
@@ -271,7 +277,9 @@ export async function GET(request: Request, context: { params: Promise<{ recordi
         index: row.question_order ?? index + 1,
         question: row.question_text ?? "",
         source: row.question_source ?? "",
-        answer: row.answer_text ?? "",
+        answer: row.code_text
+          ? `[Coding submission in ${row.language || "code"}]\n${row.code_text}`
+          : row.answer_text ?? "",
         askedAt: row.asked_at,
         answeredAt: row.answered_at,
         offsetMs: questionOffset ?? answerOffset ?? 0,
