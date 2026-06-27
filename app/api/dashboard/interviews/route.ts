@@ -32,6 +32,13 @@ type InterviewAnswerSummaryRow = {
   legacy_feedback: string | null
 }
 
+type AttemptScoreSummaryRow = {
+  attempt_id: string
+  is_completed: boolean
+  fallback_score: unknown | null
+  fallback_decision: string | null
+}
+
 function toNumberOrNull(value: unknown) {
   if (value === null || value === undefined) {
     return null
@@ -296,6 +303,80 @@ async function fetchAnswerSummaries(attemptIds: string[]) {
   }
 }
 
+async function fetchAttemptScoreSummaries(attemptIds: string[]) {
+  if (attemptIds.length === 0) {
+    return new Map<string, { score: number | null; decision: string | null }>()
+  }
+
+  const rows = await prisma.$queryRawUnsafe<AttemptScoreSummaryRow[]>(
+    `
+      select
+        ia.attempt_id::text,
+        (
+          upper(coalesce(i.status, ia.status, '')) in ('COMPLETED', 'SUBMITTED', 'EVALUATED')
+          or ia.ended_at is not null
+        ) as is_completed,
+        coalesce(
+          case
+            when (
+              upper(coalesce(i.status, ia.status, '')) in ('COMPLETED', 'SUBMITTED', 'EVALUATED')
+              or ia.ended_at is not null
+            )
+            and ia.termination_metadata->>'final_score' ~ '^[0-9]+(\\.[0-9]+)?$'
+              then (ia.termination_metadata->>'final_score')::numeric
+            else null
+          end,
+          case
+            when not (
+              upper(coalesce(i.status, ia.status, '')) in ('COMPLETED', 'SUBMITTED', 'EVALUATED')
+              or ia.ended_at is not null
+            ) then null::numeric
+            when count(ans.answer_id) filter (
+              where ans.answer_text is not null
+                and nullif(trim(ans.answer_text), '') is not null
+                and lower(trim(ans.answer_text)) <> 'no response provided.'
+            ) = 0 then null::numeric
+            when count(iae.answer_id) filter (where iae.evaluator_type = 'AI') > 0 then
+              round(avg(
+                coalesce(iae.skill_score, 0) * 40
+                + coalesce(iae.clarity_score, 0) * 20
+                + coalesce(iae.depth_score, 0) * 20
+                + coalesce(iae.confidence_score, 0) * 15
+                + greatest(0, 1 - coalesce(iae.fraud_score, 0)) * 5
+              ))
+            else null::numeric
+          end
+        ) as fallback_score,
+        case
+          when upper(coalesce(ia.termination_metadata->>'decision', ia.termination_metadata->>'recommendation', '')) in ('HIRE', 'STRONG_HIRE', 'STRONG HIRE') then 'HIRE'
+          when upper(coalesce(ia.termination_metadata->>'decision', ia.termination_metadata->>'recommendation', '')) in ('REVIEW', 'REVIEW_REQUIRED', 'REVIEW REQUIRED') then 'REVIEW'
+          when upper(coalesce(ia.termination_metadata->>'decision', ia.termination_metadata->>'recommendation', '')) = 'FLAGGED' then 'FLAGGED'
+          when upper(coalesce(ia.termination_metadata->>'decision', ia.termination_metadata->>'recommendation', '')) in ('REJECT', 'NO_HIRE') then 'REJECT'
+          else null
+        end as fallback_decision
+      from public.interview_attempts ia
+      left join public.interviews i
+        on i.interview_id = ia.interview_id
+      left join public.interview_answers ans
+        on ans.attempt_id = ia.attempt_id
+      left join public.interview_answer_evaluations iae
+        on iae.answer_id = ans.answer_id
+       and iae.evaluator_type = 'AI'
+      where ia.attempt_id = any($1::uuid[])
+      group by ia.attempt_id, ia.termination_metadata, i.status
+    `,
+    attemptIds
+  ).catch(() => [] as AttemptScoreSummaryRow[])
+
+  return rows.reduce((map, row) => {
+    map.set(row.attempt_id, {
+      score: row.is_completed ? toNumberOrNull(row.fallback_score) : null,
+      decision: row.is_completed ? row.fallback_decision : null,
+    })
+    return map
+  }, new Map<string, { score: number | null; decision: string | null }>())
+}
+
 type InterviewScreenOptions = {
   includeAnswers?: boolean
   limit?: number
@@ -360,6 +441,10 @@ async function getInterviewsScreenData(auth: RecruiterRequestContext, options: I
     options.includeAnswers !== false
       ? await fetchAnswerSummaries(attemptIds)
       : new Map<string, ReturnType<typeof mapAnswerSummaryRow>[]>()
+  const attemptScoreSummaryMap =
+    options.includeAnswers === false
+      ? await fetchAttemptScoreSummaries(attemptIds)
+      : new Map<string, { score: number | null; decision: string | null }>()
   const recruiterDecisionMap = await getRecruiterDecisionsForInterviews(
     auth.organizationId,
     interviews.map((interview) => interview.interviewId)
@@ -371,6 +456,7 @@ async function getInterviewsScreenData(auth: RecruiterRequestContext, options: I
     const evaluation = latestAttempt?.evaluation ?? null
     const recruiterDecision = recruiterDecisionMap.get(interview.interviewId) ?? null
     const answerSummaries = latestAttempt?.attemptId ? answerSummaryMap.get(latestAttempt.attemptId) ?? [] : []
+    const fallbackScoreSummary = latestAttempt?.attemptId ? attemptScoreSummaryMap.get(latestAttempt.attemptId) : null
     const calculatedResult = deriveResultFromAnswerSummaries(answerSummaries)
     const questionStatus = interview.questionStatus ?? null
     const emailStatus = interview.emailStatus ?? null
@@ -408,8 +494,11 @@ async function getInterviewsScreenData(auth: RecruiterRequestContext, options: I
       expiresAt: latestInvite?.expiresAt ?? null,
       startedAt: latestAttempt?.startedAt ?? null,
       endedAt: latestAttempt?.endedAt ?? null,
-      score: evaluation?.finalScore === null || evaluation?.finalScore === undefined ? calculatedResult.score : Number(evaluation.finalScore),
-      decision: evaluation?.decision ?? calculatedResult.decision,
+      score:
+        evaluation?.finalScore === null || evaluation?.finalScore === undefined
+          ? calculatedResult.score ?? fallbackScoreSummary?.score ?? null
+          : Number(evaluation.finalScore),
+      decision: evaluation?.decision ?? calculatedResult.decision ?? fallbackScoreSummary?.decision ?? null,
       recruiterDecisionStatus: recruiterDecision?.status ?? null,
       recruiterDecisionAt: recruiterDecision?.decidedAt ?? null,
       recruiterDecisionNotes: recruiterDecision?.notes ?? null,

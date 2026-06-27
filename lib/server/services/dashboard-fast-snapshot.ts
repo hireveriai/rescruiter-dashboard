@@ -10,6 +10,7 @@ type FastCandidateRow = {
   job_title: string | null
   status: string | null
   score: unknown | null
+  fallback_score: unknown | null
   veris_screening_score: unknown | null
   ai_summary: string | null
   decision: string | null
@@ -124,7 +125,22 @@ export async function getFastDashboardCandidates(organizationId: string, limit =
         when li.invite_id is not null then 'INVITED'
         else coalesce(nullif(upper(c.status), ''), 'PENDING')
       end as status,
-      iev.final_score as score,
+      coalesce(
+        iev.final_score,
+        case
+          when upper(coalesce(i.status, la.status, '')) not in ('COMPLETED', 'SUBMITTED', 'EVALUATED')
+            and la.ended_at is null then null
+          when la.termination_metadata->>'final_score' ~ '^[0-9]+(\\.[0-9]+)?$'
+            then (la.termination_metadata->>'final_score')::numeric
+          else null
+        end,
+        case
+          when upper(coalesce(i.status, la.status, '')) in ('COMPLETED', 'SUBMITTED', 'EVALUATED')
+            or la.ended_at is not null then score_summary.fallback_score
+          else null
+        end
+      ) as score,
+      score_summary.fallback_score,
       sm.match_score as veris_screening_score,
       iev.ai_summary,
       iev.decision,
@@ -157,6 +173,30 @@ export async function getFastDashboardCandidates(organizationId: string, limit =
     ) la on true
     left join public.interview_evaluations iev on iev.attempt_id = la.attempt_id
     left join lateral (
+      select
+        case
+          when count(*) filter (
+            where ans.answer_text is not null
+              and nullif(trim(ans.answer_text), '') is not null
+              and lower(trim(ans.answer_text)) <> 'no response provided.'
+          ) = 0 then null::numeric
+          when count(iae.answer_id) filter (where iae.evaluator_type = 'AI') > 0 then
+            round(avg(
+              coalesce(iae.skill_score, 0) * 40
+              + coalesce(iae.clarity_score, 0) * 20
+              + coalesce(iae.depth_score, 0) * 20
+              + coalesce(iae.confidence_score, 0) * 15
+              + greatest(0, 1 - coalesce(iae.fraud_score, 0)) * 5
+            ))
+          else null::numeric
+        end as fallback_score
+      from public.interview_answers ans
+      left join public.interview_answer_evaluations iae
+        on iae.answer_id = ans.answer_id
+       and iae.evaluator_type = 'AI'
+      where ans.attempt_id = la.attempt_id
+    ) score_summary on true
+    left join lateral (
       select inv.*
       from public.interview_invites inv
       where inv.interview_id = i.interview_id
@@ -188,7 +228,7 @@ export async function getFastDashboardCandidates(organizationId: string, limit =
     candidateName: row.candidate_name || "Candidate",
     jobTitle: row.job_title || "-",
     status: normalizeStatus(row.status),
-    score: toNumberOrNull(row.score),
+    score: toNumberOrNull(row.score ?? row.fallback_score),
     verisScreeningScore: toNumberOrNull(row.veris_screening_score),
     aiSummaryShort: shortText(row.ai_summary),
     aiSummaryFull: row.ai_summary,
